@@ -3,7 +3,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -55,10 +55,46 @@ public class Tree {
 		return array;
 	}
 
-	public static class Node {
+	public static class Node implements Serializable {
 		public String parent;
 		public List<Node> directoryChildren = new ArrayList<Node>();;
 		public List<String> fileChildren = new ArrayList<String>();
+
+		private void writeObject(ObjectOutputStream out) throws IOException {
+			// Call the default serialization for the non-transient fields
+			out.defaultWriteObject();
+
+			// Serialize the directoryChildren list
+			out.writeInt(directoryChildren.size());
+			for (Node child : directoryChildren) {
+				out.writeObject(child);
+			}
+
+			// Serialize the fileChildren list
+			out.writeInt(fileChildren.size());
+			for (String file : fileChildren) {
+				out.writeUTF(file);
+			}
+		}
+
+		private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+			// Call the default deserialization for the non-transient fields
+			in.defaultReadObject();
+
+			// Deserialize the directoryChildren list
+			int numDirectoryChildren = in.readInt();
+			for (int i = 0; i < numDirectoryChildren; i++) {
+				Node child = (Node) in.readObject();
+				directoryChildren.add(child);
+			}
+
+			// Deserialize the fileChildren list
+			int numFileChildren = in.readInt();
+			for (int i = 0; i < numFileChildren; i++) {
+				String file = in.readUTF();
+				fileChildren.add(file);
+			}
+		}
 	}
 
 	public static Node gen(String url) {
@@ -108,10 +144,44 @@ public class Tree {
 		}
 	}
 
+	public static void save(Node root) {
+		FileOutputStream fileOut = null;
+		try {
+			fileOut = new FileOutputStream("serialized.ser");
+		} catch (FileNotFoundException e) {
+			throw new RuntimeException(e);
+		}
+		try {
+			ObjectOutputStream out = new ObjectOutputStream(fileOut);
+			out.writeObject(root);
+			out.close();
+			fileOut.close();
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public static Node load(String filename) {
+		Node root = null;
+		try {
+			FileInputStream fileInputStream = new FileInputStream(filename);
+			ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream);
+			root = (Node) objectInputStream.readObject();
+			objectInputStream.close();
+			fileInputStream.close();
+		} catch (IOException | ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+		return root;
+	}
+
 	public static void main(String[] args) {
 		String url = "https://eclass.aueb.gr/modules/document/?course=INF111";
 		//System.out.println(links(url));
 		//System.out.println(gen(url));
-		print(gen(url));
+		//print(gen(url));
+		save(gen(url));
+		Node root = load("serialized.ser");
+		print(root);
 	}
 }
