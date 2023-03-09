@@ -4,9 +4,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 public class Tree {
 	public static List<String>[] links(String url) {
@@ -175,13 +173,61 @@ public class Tree {
 		return root;
 	}
 
+	public static void diffChildren(Node previous, Node latest) {
+		for (String file : previous.fileChildren) {
+			if (!latest.fileChildren.contains(file)) {
+				System.out.println(file + " deleted!");
+			}
+		}
+		for (String file : latest.fileChildren) {
+			if (!previous.fileChildren.contains(file)) {
+				System.out.println(file + " added!");
+			}
+		}
+	}
+
+	public static void diff(Node previous, Node latest) {
+		HashMap<String, Node> oldDirectoryChildren = new HashMap<>();
+		HashMap<String, Node> newDirectoryChildren = new HashMap<>();
+
+		for (Node directory : previous.directoryChildren) {
+			oldDirectoryChildren.put(directory.parent, directory);
+		}
+
+		for (Node directory : latest.directoryChildren) {
+			newDirectoryChildren.put(directory.parent, directory);
+		}
+
+		Set<String> allDirectories = new LinkedHashSet<>(oldDirectoryChildren.keySet());
+		allDirectories.addAll(newDirectoryChildren.keySet());
+
+		for (String directory : oldDirectoryChildren.keySet()) {
+			if (!newDirectoryChildren.keySet().contains(directory)) {
+				System.out.println(directory + " deleted!");
+				allDirectories.remove(directory);
+			}
+		}
+		for (String directory : newDirectoryChildren.keySet()) {
+			if (!oldDirectoryChildren.keySet().contains(directory)) {
+				System.out.println(directory + " added!");
+				allDirectories.remove(directory);
+			}
+		}
+		for (String directory : allDirectories) {
+			diff(oldDirectoryChildren.get(directory), newDirectoryChildren.get(directory));
+		}
+		diffChildren(previous, latest);
+	}
+
 	public static void main(String[] args) {
 		String url = "https://eclass.aueb.gr/modules/document/?course=INF111";
 		//System.out.println(links(url));
 		//System.out.println(gen(url));
 		//print(gen(url));
-		save(gen(url));
 		Node root = load("serialized.ser");
-		print(root);
+		root.fileChildren = new ArrayList<>();
+		root.directoryChildren = new ArrayList<>();
+		diff(root, gen(url));
+		//print(root);
 	}
 }
