@@ -1,8 +1,12 @@
+import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.util.Scanner;
 import java.io.*;
 import java.util.*;
 
@@ -11,7 +15,7 @@ public class Tree {
 		List<String> filter_words = Arrays.asList("&sort", "help.php?language=el&topic=documents", "#collapse0",
 				"info/terms.php", "info/privacy_policy.php", "announcements/?course=",
 				"/courses", "modules/document/?course=", "&openDir=%", "/?course=", "https://",
-				"help.php?language=en&", "topic=documents&subtopic", "creativecommons.org/licenses");
+				"help.php?language=en&", "topic=documents&subtopic", "creativecommons.org/licenses", "main/login_form.php", "#collapse1", "#", "modules/auth/lostpass.php", "modules/course_metadata/openfaculties.php");
 
 		List<String> files = new ArrayList<>();
 		List<String> directories = new ArrayList<>();
@@ -20,6 +24,14 @@ public class Tree {
 		Elements links;
 		try {
 			Document doc = Jsoup.connect(url).get();
+			if (doc.html().contains("Σύνδεση")) {
+				doc = Jsoup.connect(url).cookies(getCookies()).get();
+			}
+			if (doc.html().contains("Σύνδεση")) {
+				updateCookies();
+				doc = Jsoup.connect(url).cookies(getCookies()).get();
+				System.out.println(doc.html());
+			}
 			links = doc.select("a[href]");
 		} catch (IOException e) {
 			throw new RuntimeException(e);
@@ -103,6 +115,8 @@ public class Tree {
 		Node root = new Node();
 		root.parent = url;
 		root.fileChildren = files;
+
+		System.out.println(root.parent);
 
 		for (int i = 0; i < directories.size(); i++) {
 			String directory = directories.get(i);
@@ -219,15 +233,96 @@ public class Tree {
 		diffChildren(previous, latest);
 	}
 
+	public static Map<String, String> getCookies() {
+		Map<String, String> cookies = null;
+		try {
+			FileInputStream fileInputStream = new FileInputStream("cookies.ser");
+			ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream);
+			cookies = (Map<String, String>) objectInputStream.readObject();
+			objectInputStream.close();
+			fileInputStream.close();
+		} catch (IOException | ClassNotFoundException e) {
+			throw new RuntimeException(e);
+		}
+		return cookies;
+	}
+
+	public static void updateCookies() {
+		String username, password;
+		Map <String, String> cookies;
+
+		File file = new File("credentials.txt");
+		Scanner scanner = null;
+		try {
+			scanner = new Scanner(file);
+			username = scanner.nextLine().trim();
+			password = scanner.nextLine().trim();
+			scanner.close();
+		} catch (FileNotFoundException e) {
+			throw new RuntimeException(e);
+		}
+
+		try {
+			/*
+			Connection.Response loginForm = Jsoup.connect("https://eclass.aueb.gr/main/login_form.php")
+					.method(Connection.Method.GET)
+					.execute();
+
+			Connection.Response res = Jsoup.connect("https://eclass.aueb.gr/?login_page=1")
+					.data("uname", username)
+					.data("pass", password)
+					.data("submit", "Είσοδος")
+					.cookies(loginForm.cookies())
+					.method(Connection.Method.POST)
+					.execute();
+			 */
+
+			Connection.Response loginForm = Jsoup.connect("https://eclass.aueb.gr/main/login_form.php")
+					.method(Connection.Method.GET)
+					.execute();
+
+			Connection.Response res = Jsoup.connect("https://eclass.aueb.gr/?login_page=1")
+					.data("uname", username)
+					.data("pass", password)
+					.data("next", "main/portfolio.php")
+					.data("submit", "Είσοδος")
+					.cookies(loginForm.cookies())
+					.method(Connection.Method.POST)
+					.execute();
+			//System.out.println(res.body());
+			cookies = res.cookies();
+
+		} catch (IOException ex) {
+			throw new RuntimeException(ex);
+		}
+
+		FileOutputStream fileOut = null;
+		try {
+			fileOut = new FileOutputStream("cookies.ser");
+		} catch (FileNotFoundException e) {
+			throw new RuntimeException(e);
+		}
+		try {
+			ObjectOutputStream out = new ObjectOutputStream(fileOut);
+			out.writeObject(cookies);
+			out.close();
+			fileOut.close();
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
 	public static void main(String[] args) {
-		String url = "https://eclass.aueb.gr/modules/document/?course=INF111";
-		//System.out.println(links(url));
-		//System.out.println(gen(url));
-		//print(gen(url));
+		String url = "https://eclass.aueb.gr/modules/document/?course=INF453";
+		print(gen(url));
+		/*
+		System.out.println(links(url));
+		System.out.println(gen(url));
 		Node root = load("serialized.ser");
 		root.fileChildren = new ArrayList<>();
 		root.directoryChildren = new ArrayList<>();
-		diff(root, gen(url));
-		//print(root);
+		diff(root, gen(url, cookies));
+		print(root);
+		*/
 	}
 }

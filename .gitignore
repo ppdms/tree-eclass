@@ -1,3 +1,6 @@
 .idea/
 tree-eclass.iml
 out/
+serialized.ser
+cookies.ser
+credentials.txt
