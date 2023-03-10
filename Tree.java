@@ -14,31 +14,33 @@ public class Tree {
 	public static List<String>[] links(String url) {
 		List<String> filter_words = Arrays.asList("&sort", "help.php?language=el&topic=documents", "#collapse0",
 				"info/terms.php", "info/privacy_policy.php", "announcements/?course=",
-				"/courses", "modules/document/?course=", "&openDir=%", "/?course=", "https://",
-				"help.php?language=en&", "topic=documents&subtopic", "creativecommons.org/licenses", "main/login_form.php", "#collapse1", "#", "modules/auth/lostpass.php", "modules/course_metadata/openfaculties.php");
+				"/courses", "/?course=", "https://", "&openDir=%",
+				"help.php?language=en&", "topic=documents&subtopic", "creativecommons.org/licenses", "main/",
+				"#collapse1", "#", "modules/auth/lostpass.php", "modules/course_metadata/openfaculties.php",
+				"modules/usage/", "modules/message", "modules/announcements", "modules/help/", "index.php?logout=yes");
 
 		List<String> files = new ArrayList<>();
 		List<String> directories = new ArrayList<>();
+		@SuppressWarnings("unchecked")
 		List<String>[] array = new ArrayList[2];
 
 		Elements links;
 		try {
 			Document doc = Jsoup.connect(url).get();
+
 			if (doc.html().contains("Σύνδεση")) {
-				doc = Jsoup.connect(url).cookies(getCookies()).get();
+				doc = Jsoup.connect(url).cookies(Collections.singletonMap("PHPSESSID", getCookie())).get();
 			}
 			if (doc.html().contains("Σύνδεση")) {
-				updateCookies();
-				doc = Jsoup.connect(url).cookies(getCookies()).get();
-				System.out.println(doc.html());
+				updateCookie();
+				doc = Jsoup.connect(url).cookies(Collections.singletonMap("PHPSESSID", getCookie())).get();
 			}
 			links = doc.select("a[href]");
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
 
-		linktest:
-		for (int i = 0; i < links.size(); i++) {
+		linktest: for (int i = 0; i < links.size(); i++) {
 			Element link = links.get(i);
 			String href = link.attr("href");
 			for (int j = 0; j < filter_words.size(); j++) {
@@ -49,10 +51,11 @@ public class Tree {
 			}
 			if (!href.contains("http") & !href.equals("/")) {
 				href = "https://eclass.aueb.gr" + href;
-				if (!(href+" ").contains("&openDir=/ ") & !(href+" ").contains("&openDir= ") & !href.equals(url)) {
-					if (href.substring(href.length()-6).contains(".")) {
+				if (!(href + " ").contains("&openDir=/ ") & !(href + " ").contains("&openDir= ") & !href.equals(url)) {
+
+					if (href.substring(href.length() - 6).contains(".")) {
 						files.add(href);
-					} else {
+					} else if (!href.contains("&download=/")) {
 						directories.add(href);
 					}
 				}
@@ -67,20 +70,17 @@ public class Tree {
 
 	public static class Node implements Serializable {
 		public String parent;
-		public List<Node> directoryChildren = new ArrayList<Node>();;
-		public List<String> fileChildren = new ArrayList<String>();
+		public List<Node> directoryChildren = new ArrayList<>();
+		public List<String> fileChildren = new ArrayList<>();
 
 		private void writeObject(ObjectOutputStream out) throws IOException {
-			// Call the default serialization for the non-transient fields
 			out.defaultWriteObject();
 
-			// Serialize the directoryChildren list
 			out.writeInt(directoryChildren.size());
 			for (Node child : directoryChildren) {
 				out.writeObject(child);
 			}
 
-			// Serialize the fileChildren list
 			out.writeInt(fileChildren.size());
 			for (String file : fileChildren) {
 				out.writeUTF(file);
@@ -88,17 +88,14 @@ public class Tree {
 		}
 
 		private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-			// Call the default deserialization for the non-transient fields
 			in.defaultReadObject();
 
-			// Deserialize the directoryChildren list
 			int numDirectoryChildren = in.readInt();
 			for (int i = 0; i < numDirectoryChildren; i++) {
 				Node child = (Node) in.readObject();
 				directoryChildren.add(child);
 			}
 
-			// Deserialize the fileChildren list
 			int numFileChildren = in.readInt();
 			for (int i = 0; i < numFileChildren; i++) {
 				String file = in.readUTF();
@@ -116,38 +113,21 @@ public class Tree {
 		root.parent = url;
 		root.fileChildren = files;
 
-		System.out.println(root.parent);
-
 		for (int i = 0; i < directories.size(); i++) {
 			String directory = directories.get(i);
 			root.directoryChildren.add(gen(directory));
 		}
 
-        return root;
+		return root;
 	}
 
-	public static void print(Node root) {
-		System.out.println("\t" + root.parent);
-		String branch_prefix = "\t";
-		for (int i = 0; i < root.directoryChildren.size(); i++) {
-			Node child = root.directoryChildren.get(i);
-			Boolean is_last_child = i == root.directoryChildren.size() - 1;
-			print(child, branch_prefix, is_last_child);
-		}
-		for (int i = 0; i < root.fileChildren.size(); i++) {
-			String file = root.fileChildren.get(i);
-			System.out.println(branch_prefix + '\t' + file);
-		}
-	}
-
-	public static void print(Node root, String prefix, Boolean is_last) {
+	public static void print(Node root, String prefix) {
 		System.out.println(prefix + "\t" + root.parent);
 		String branch_prefix = prefix + "\t";
 
 		for (int i = 0; i < root.directoryChildren.size(); i++) {
 			Node child = root.directoryChildren.get(i);
-			Boolean is_last_child = i == root.directoryChildren.size() - 1;
-			print(child, branch_prefix, is_last_child);
+			print(child, branch_prefix);
 		}
 
 		for (int i = 0; i < root.fileChildren.size(); i++) {
@@ -157,7 +137,7 @@ public class Tree {
 	}
 
 	public static void save(Node root) {
-		FileOutputStream fileOut = null;
+		FileOutputStream fileOut;
 		try {
 			fileOut = new FileOutputStream("serialized.ser");
 		} catch (FileNotFoundException e) {
@@ -233,23 +213,22 @@ public class Tree {
 		diffChildren(previous, latest);
 	}
 
-	public static Map<String, String> getCookies() {
-		Map<String, String> cookies = null;
+	public static String getCookie() {
+		String cookie = null;
 		try {
-			FileInputStream fileInputStream = new FileInputStream("cookies.ser");
+			FileInputStream fileInputStream = new FileInputStream("cookie.ser");
 			ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream);
-			cookies = (Map<String, String>) objectInputStream.readObject();
+			cookie = (String) objectInputStream.readObject();
 			objectInputStream.close();
 			fileInputStream.close();
 		} catch (IOException | ClassNotFoundException e) {
 			throw new RuntimeException(e);
 		}
-		return cookies;
+		return cookie;
 	}
 
-	public static void updateCookies() {
-		String username, password;
-		Map <String, String> cookies;
+	public static void updateCookie() {
+		String username, password, cookie = "";
 
 		File file = new File("credentials.txt");
 		Scanner scanner = null;
@@ -263,48 +242,34 @@ public class Tree {
 		}
 
 		try {
-			/*
-			Connection.Response loginForm = Jsoup.connect("https://eclass.aueb.gr/main/login_form.php")
-					.method(Connection.Method.GET)
-					.execute();
+			Connection.Response response = Jsoup.connect("https://eclass.aueb.gr/main/login_form.php")
+					.method(Connection.Method.GET).execute();
+			Document doc = response.parse();
 
-			Connection.Response res = Jsoup.connect("https://eclass.aueb.gr/?login_page=1")
+			cookie = response.cookie("PHPSESSID");
+
+			Connection connection = Jsoup.connect("https://eclass.aueb.gr/?login_page=1")
+					.method(Connection.Method.POST)
+					.cookie("PHPSESSID", cookie)
 					.data("uname", username)
 					.data("pass", password)
-					.data("submit", "Είσοδος")
-					.cookies(loginForm.cookies())
-					.method(Connection.Method.POST)
-					.execute();
-			 */
+					.data("submit", "Είσοδος");
 
-			Connection.Response loginForm = Jsoup.connect("https://eclass.aueb.gr/main/login_form.php")
-					.method(Connection.Method.GET)
-					.execute();
+			Connection.Response loginResponse = connection.execute();
 
-			Connection.Response res = Jsoup.connect("https://eclass.aueb.gr/?login_page=1")
-					.data("uname", username)
-					.data("pass", password)
-					.data("next", "main/portfolio.php")
-					.data("submit", "Είσοδος")
-					.cookies(loginForm.cookies())
-					.method(Connection.Method.POST)
-					.execute();
-			//System.out.println(res.body());
-			cookies = res.cookies();
-
-		} catch (IOException ex) {
-			throw new RuntimeException(ex);
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
 
-		FileOutputStream fileOut = null;
+		FileOutputStream fileOut;
 		try {
-			fileOut = new FileOutputStream("cookies.ser");
+			fileOut = new FileOutputStream("cookie.ser");
 		} catch (FileNotFoundException e) {
 			throw new RuntimeException(e);
 		}
 		try {
 			ObjectOutputStream out = new ObjectOutputStream(fileOut);
-			out.writeObject(cookies);
+			out.writeObject(cookie);
 			out.close();
 			fileOut.close();
 		} catch (IOException e) {
@@ -313,16 +278,16 @@ public class Tree {
 	}
 
 	public static void main(String[] args) {
-		String url = "https://eclass.aueb.gr/modules/document/?course=INF453";
-		print(gen(url));
+		String url = "https://eclass.aueb.gr/modules/document/index.php?course=INF453";
+		print(gen(url), "");
 		/*
-		System.out.println(links(url));
-		System.out.println(gen(url));
-		Node root = load("serialized.ser");
-		root.fileChildren = new ArrayList<>();
-		root.directoryChildren = new ArrayList<>();
-		diff(root, gen(url, cookies));
-		print(root);
-		*/
+		 * System.out.println(links(url));
+		 * System.out.println(gen(url));
+		 * Node root = load("serialized.ser");
+		 * root.fileChildren = new ArrayList<>();
+		 * root.directoryChildren = new ArrayList<>();
+		 * diff(root, gen(url, cookies));
+		 * print(root);
+		 */
 	}
 }
