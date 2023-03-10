@@ -136,10 +136,10 @@ public class Tree {
 		}
 	}
 
-	public static void save(Node root) {
+	public static void save(Node root, int CourseNum) {
 		FileOutputStream fileOut;
 		try {
-			fileOut = new FileOutputStream("serialized.ser");
+			fileOut = new FileOutputStream(CourseNum+".ser");
 		} catch (FileNotFoundException e) {
 			throw new RuntimeException(e);
 		}
@@ -161,8 +161,10 @@ public class Tree {
 			root = (Node) objectInputStream.readObject();
 			objectInputStream.close();
 			fileInputStream.close();
-		} catch (IOException | ClassNotFoundException e) {
+		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
+		} catch (IOException e) {
+			root = new Node();
 		}
 		return root;
 	}
@@ -221,7 +223,9 @@ public class Tree {
 			cookie = (String) objectInputStream.readObject();
 			objectInputStream.close();
 			fileInputStream.close();
-		} catch (IOException | ClassNotFoundException e) {
+		} catch (IOException e) {
+			updateCookie();
+		} catch (ClassNotFoundException e) {
 			throw new RuntimeException(e);
 		}
 		return cookie;
@@ -278,16 +282,13 @@ public class Tree {
 	}
 
 	public static void main(String[] args) {
-		String url = "https://eclass.aueb.gr/modules/document/index.php?course=INF453";
-		print(gen(url), "");
-		/*
-		 * System.out.println(links(url));
-		 * System.out.println(gen(url));
-		 * Node root = load("serialized.ser");
-		 * root.fileChildren = new ArrayList<>();
-		 * root.directoryChildren = new ArrayList<>();
-		 * diff(root, gen(url, cookies));
-		 * print(root);
-		 */
+		List<Integer> CourseNumbers = Arrays.asList(453, 169, 482, 176, 358, 157);
+		for (int CourseNum : CourseNumbers) {
+			String url =  "https://eclass.aueb.gr/modules/document/index.php?course=INF" + CourseNum;
+			Node oldRoot = load(CourseNum+".ser");
+			Node newRoot = gen(url);
+			diff(oldRoot, newRoot);
+			save(newRoot, CourseNum);
+		}
 	}
 }

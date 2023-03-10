@@ -1,6 +1,5 @@
 .idea/
 tree-eclass.iml
 out/
-serialized.ser
-cookie.ser
+*.ser
 credentials.txt
