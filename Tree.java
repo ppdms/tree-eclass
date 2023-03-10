@@ -225,6 +225,7 @@ public class Tree {
 			fileInputStream.close();
 		} catch (IOException e) {
 			updateCookie();
+			cookie = getCookie();
 		} catch (ClassNotFoundException e) {
 			throw new RuntimeException(e);
 		}
@@ -282,9 +283,10 @@ public class Tree {
 	}
 
 	public static void main(String[] args) {
-		List<Integer> CourseNumbers = Arrays.asList(453, 169, 482, 176, 358, 157);
-		for (int CourseNum : CourseNumbers) {
+		Map<Integer, String> courses = Map.of(453, "Διοίκηση Επιχειρήσεων", 169, "Μαθηματικά ΙΙ", 482, "Πιθανότητες", 176, "Java (Α-Λ)", 358, "Java (Μ-Ω)", 157, "ΣΨΣ");
+		for (int CourseNum : courses.keySet()) {
 			String url =  "https://eclass.aueb.gr/modules/document/index.php?course=INF" + CourseNum;
+                        System.out.println(courses.get(CourseNum));
 			Node oldRoot = load(CourseNum+".ser");
 			Node newRoot = gen(url);
 			diff(oldRoot, newRoot);
