@@ -169,19 +169,6 @@ public class Tree {
 		return root;
 	}
 
-	public static void diffChildren(Node previous, Node latest) {
-		for (String file : previous.fileChildren) {
-			if (!latest.fileChildren.contains(file)) {
-				System.out.println(file + " deleted!");
-			}
-		}
-		for (String file : latest.fileChildren) {
-			if (!previous.fileChildren.contains(file)) {
-				System.out.println(file + " added!");
-			}
-		}
-	}
-
 	public static void diff(Node previous, Node latest) {
 		HashMap<String, Node> oldDirectoryChildren = new HashMap<>();
 		HashMap<String, Node> newDirectoryChildren = new HashMap<>();
@@ -212,7 +199,17 @@ public class Tree {
 		for (String directory : allDirectories) {
 			diff(oldDirectoryChildren.get(directory), newDirectoryChildren.get(directory));
 		}
-		diffChildren(previous, latest);
+		
+        for (String file : previous.fileChildren) {
+			if (!latest.fileChildren.contains(file)) {
+				System.out.println(file + " deleted!");
+			}
+		}
+		for (String file : latest.fileChildren) {
+			if (!previous.fileChildren.contains(file)) {
+				System.out.println(file + " added!");
+			}
+		}
 	}
 
 	public static String getCookie() {
