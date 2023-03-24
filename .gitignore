@@ -3,3 +3,6 @@ tree-eclass.iml
 out/
 *.ser
 credentials.txt
+test.java
+Tree.class
+Tree$Node.class

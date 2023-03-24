@@ -3,12 +3,20 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.net.MalformedURLException;
+import java.net.ProtocolException;
 import java.util.Scanner;
 import java.io.*;
 import java.util.*;
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Map;
+import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Tree {
 	public static List<String>[] links(String url) {
@@ -50,13 +58,11 @@ public class Tree {
 				}
 			}
 			if (!href.contains("http") & !href.equals("/")) {
-				href = "https://eclass.aueb.gr" + href;
 				if (!(href + " ").contains("&openDir=/ ") & !(href + " ").contains("&openDir= ") & !href.equals(url)) {
-
 					if (href.substring(href.length() - 6).contains(".")) {
-						files.add(href);
+						files.add("https://eclass.aueb.gr"+href);
 					} else if (!href.contains("&download=/")) {
-						directories.add(href);
+						directories.add("https://eclass.aueb.gr"+href);
 					}
 				}
 			}
@@ -279,9 +285,83 @@ public class Tree {
 		}
 	}
 
+	public static String trueName(String url) {
+        if (url.contains("&openDir=")) {
+			Document doc;
+			try {
+				doc = Jsoup.connect(url).cookies(Collections.singletonMap("PHPSESSID", getCookie())).get();
+				if (!doc.html().contains("Λήψη όλου του καταλόγου")) {
+					updateCookie();
+					doc = Jsoup.connect(url).cookies(Collections.singletonMap("PHPSESSID", getCookie())).get();
+					System.out.println("here");
+				}
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+			//System.out.println("a[href="+url.substring(22)+"]");
+			Elements links = doc.select("a[href]");
+			for (Element link: links) {
+				System.out.println(link);
+			}
+
+		} else if (url.contains("&download")) {
+			URL href;
+			try {
+				href = new URL(url);
+			} catch (MalformedURLException e) {
+				throw new RuntimeException(e);
+			}
+			HttpURLConnection connection = null;
+			try {
+				connection = (HttpURLConnection) href.openConnection();
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+
+			try {
+				connection.setRequestMethod("HEAD");
+			} catch (ProtocolException e) {
+				throw new RuntimeException(e);
+			}
+
+			Map<String, java.util.List<String>> headers = connection.getHeaderFields();
+
+			if (!headers.containsKey("Content-Disposition")) {
+				try {
+					connection = (HttpURLConnection) href.openConnection();
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+				connection.setRequestProperty("Cookie", "PHPSESSID="+getCookie());
+				headers = connection.getHeaderFields();
+			}
+			if (!headers.containsKey("Content-Disposition")) {
+				try {
+					connection = (HttpURLConnection) href.openConnection();
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+				updateCookie();
+				connection.setRequestProperty("Cookie", "PHPSESSID="+getCookie());
+				headers = connection.getHeaderFields();
+			}
+
+			Pattern pattern = Pattern.compile("filename=(.+?)(;|])");
+			Matcher matcher = pattern.matcher(headers.get("Content-Disposition").toString());
+
+			if (matcher.find()) {
+				return matcher.group(1);
+			} else {
+				return url;
+			}
+		}
+		return url;
+	}
+
 	public static void main(String[] args) {
-		Map<Integer, String> courses = Map.of(453, "Διοίκηση Επιχειρήσεων", 169, "Μαθηματικά ΙΙ", 482, "Πιθανότητες", 176, "Java (Α-Λ)", 358, "Java (Μ-Ω)", 157, "ΣΨΣ");
-		for (int CourseNum : courses.keySet()) {
+		//Map<Integer, String> courses = Map.of(453, "Διοίκηση Επιχειρήσεων", 169, "Μαθηματικά ΙΙ", 482, "Πιθανότητες", 176, "Java (Α-Λ)", 358, "Java (Μ-Ω)", 157, "ΣΨΣ");
+		Map<Integer, String> courses = Map.of(259, "Python");
+                for (int CourseNum : courses.keySet()) {
 			String url =  "https://eclass.aueb.gr/modules/document/index.php?course=INF" + CourseNum;
                         System.out.println(courses.get(CourseNum));
 			Node oldRoot = load(CourseNum+".ser");
@@ -289,5 +369,17 @@ public class Tree {
 			diff(oldRoot, newRoot);
 			save(newRoot, CourseNum);
 		}
+		//print(gen("https://eclass.aueb.gr/modules/document/index.php?course=INF259"), "");
+		//System.out.println(trueName("https://eclass.aueb.gr/modules/document/index.php?course=INF176&download=/5308884e5b3t/63fe366fFlIM.pdf"));
+		//System.out.println(trueName("https://eclass.aueb.gr/modules/document/index.php?course=INF482&download=/63f0d4dau5fi.pdf"));
+		//System.out.println(trueName("https://eclass.aueb.gr/modules/document/index.php?course=INF259&openDir=%2F5bb2f60ad4Mv%2F5c12d33fbxWQ"));
+		//Connection.Response res;
+		/*try {
+			res = Jsoup.connect("https://eclass.aueb.gr/modules/document/index.php?course=INF259&download=/5d90f60ftArc").method(Connection.Method.HEAD).cookies(Collections.singletonMap("PHPSESSID", "akrltintibtts320jqvsve2hui")).execute();
+		} catch (IOException e) {
+			throw new RuntimeException(e);	
+		}
+		System.out.println(res.statusMessage());
+		*/
 	}
 }
