@@ -359,8 +359,7 @@ public class Tree {
 	}
 
 	public static void main(String[] args) {
-		//Map<Integer, String> courses = Map.of(453, "Διοίκηση Επιχειρήσεων", 169, "Μαθηματικά ΙΙ", 482, "Πιθανότητες", 176, "Java (Α-Λ)", 358, "Java (Μ-Ω)", 157, "ΣΨΣ");
-		Map<Integer, String> courses = Map.of(259, "Python");
+		Map<Integer, String> courses = Map.of(161, "Algorithms", 148, "Automata and Complexity", 218, "Databases", 168, "Operating Systems");
                 for (int CourseNum : courses.keySet()) {
 			String url =  "https://eclass.aueb.gr/modules/document/index.php?course=INF" + CourseNum;
                         System.out.println(courses.get(CourseNum));
@@ -369,17 +368,5 @@ public class Tree {
 			diff(oldRoot, newRoot);
 			save(newRoot, CourseNum);
 		}
-		//print(gen("https://eclass.aueb.gr/modules/document/index.php?course=INF259"), "");
-		//System.out.println(trueName("https://eclass.aueb.gr/modules/document/index.php?course=INF176&download=/5308884e5b3t/63fe366fFlIM.pdf"));
-		//System.out.println(trueName("https://eclass.aueb.gr/modules/document/index.php?course=INF482&download=/63f0d4dau5fi.pdf"));
-		//System.out.println(trueName("https://eclass.aueb.gr/modules/document/index.php?course=INF259&openDir=%2F5bb2f60ad4Mv%2F5c12d33fbxWQ"));
-		//Connection.Response res;
-		/*try {
-			res = Jsoup.connect("https://eclass.aueb.gr/modules/document/index.php?course=INF259&download=/5d90f60ftArc").method(Connection.Method.HEAD).cookies(Collections.singletonMap("PHPSESSID", "akrltintibtts320jqvsve2hui")).execute();
-		} catch (IOException e) {
-			throw new RuntimeException(e);	
-		}
-		System.out.println(res.statusMessage());
-		*/
 	}
 }
