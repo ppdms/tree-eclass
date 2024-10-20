@@ -25,8 +25,7 @@ public class Tree {
 				"/courses", "/?course=", "https://", "&openDir=%",
 				"help.php?language=en&", "topic=documents&subtopic", "creativecommons.org/licenses", "main/",
 				"#collapse1", "#", "modules/auth/lostpass.php", "modules/course_metadata/openfaculties.php",
-				"modules/usage/", "modules/message", "modules/announcements", "modules/help/", "index.php?logout=yes");
-
+				"modules/usage/", "modules/message", "modules/announcements", "modules/help/", "index.php?logout=yes", "modules/auth/logout.php");
 		List<String> files = new ArrayList<>();
 		List<String> directories = new ArrayList<>();
 		@SuppressWarnings("unchecked")
@@ -235,38 +234,37 @@ public class Tree {
 		return cookie;
 	}
 
-	public static void updateCookie() {
-		String username, password, cookie = "";
 
+	public static void updateCookie() {
+		String username, password, cookie;
 		File file = new File("credentials.txt");
-		Scanner scanner = null;
-		try {
-			scanner = new Scanner(file);
+		
+		try (Scanner scanner = new Scanner(file)) {
 			username = scanner.nextLine().trim();
 			password = scanner.nextLine().trim();
-			scanner.close();
 		} catch (FileNotFoundException e) {
-			throw new RuntimeException(e);
+			throw new RuntimeException("Credentials file not found", e);
 		}
 
 		try {
-			Connection.Response response = Jsoup.connect("https://eclass.aueb.gr/main/login_form.php")
-					.method(Connection.Method.GET).execute();
-			Document doc = response.parse();
+			// Initial GET request to obtain any necessary cookies
+			Connection.Response initialResponse = Jsoup.connect("https://eclass.aueb.gr/main/login_form.php")
+				.method(Connection.Method.GET)
+				.execute();
 
-			cookie = response.cookie("PHPSESSID");
+			// Perform login
+			Connection.Response loginResponse = Jsoup.connect("https://eclass.aueb.gr/?login_page=1")
+				.method(Connection.Method.POST)
+				.cookies(initialResponse.cookies()) // Use cookies from initial response
+				.data("uname", username)
+				.data("pass", password)
+				.data("submit", "Είσοδος")
+				.execute();
 
-			Connection connection = Jsoup.connect("https://eclass.aueb.gr/?login_page=1")
-					.method(Connection.Method.POST)
-					.cookie("PHPSESSID", cookie)
-					.data("uname", username)
-					.data("pass", password)
-					.data("submit", "Είσοδος");
-
-			Connection.Response loginResponse = connection.execute();
+			cookie = loginResponse.cookie("PHPSESSID");
 
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new RuntimeException("Error during login process", e);
 		}
 
 		FileOutputStream fileOut;
@@ -359,7 +357,7 @@ public class Tree {
 	}
 
 	public static void main(String[] args) {
-		Map<Integer, String> courses = Map.of(161, "Algorithms", 148, "Automata and Complexity", 218, "Databases", 168, "Operating Systems");
+		Map<Integer, String> courses = Map.of(119, "Networks");
                 for (int CourseNum : courses.keySet()) {
 			String url =  "https://eclass.aueb.gr/modules/document/index.php?course=INF" + CourseNum;
                         System.out.println(courses.get(CourseNum));
