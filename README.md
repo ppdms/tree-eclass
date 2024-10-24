@@ -1,7 +1,13 @@
 # tree-eclass
+
+## Dependencies
+
+- **maven**
+
 ## Usage
 
 ```sh
+$ ./build.sh && cd prod
 $ echo "YOUR_USERNAME" > credentials.txt && echo "YOUR_PASSWORD" >> credentials.txt
-$ java -classpath lib/jsoup.jar Tree.java
+$ java -jar tree-eclass.jar
 ```

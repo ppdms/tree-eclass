@@ -1,10 +1,4 @@
-.idea/
-tree-eclass.iml
-out/
+target/
 *.ser
 credentials.txt
-test.java
-Tree.class
-Tree$Node.class
-cred.txt
-out.txt
+**.DS_Store
