@@ -1,4 +1,5 @@
 # tree-eclass
+![](screenshot.png)
 
 ## Dependencies
 
