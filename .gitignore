@@ -2,3 +2,4 @@ target/
 *.ser
 credentials.txt
 **.DS_Store
+.vscode/settings.json

@@ -21,11 +21,16 @@ public class GoogleDriveDownloader {
         // Extract the resourcekey if available
         String resourceKey = extractResourceKey(fileURL);
         
-        String downloadUrl = String.format("https://drive.usercontent.google.com/download?id=%s&export=download&authuser=0", fileId);
+        // Extract authuser if available
+        String authUser = extractAuthUser(fileURL);
+        
+        String downloadUrl = String.format("https://drive.usercontent.google.com/download?id=%s&export=download", fileId);
         if (resourceKey != null) {
             downloadUrl += "&resourcekey=" + resourceKey;
         }
-        System.out.println("Downloading from: " + downloadUrl);
+        if (authUser != null) {
+            downloadUrl += "&authuser=" + authUser;
+        }
 
         URL url = new URL(downloadUrl);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -54,12 +59,22 @@ public class GoogleDriveDownloader {
     }
 
     private static String extractFileId(String url) {
-        String pattern = "https://drive.google.com/file/d/([a-zA-Z0-9_-]+)";
-        Pattern compiledPattern = Pattern.compile(pattern);
-        Matcher matcher = compiledPattern.matcher(url);
-        if (matcher.find()) {
-            return matcher.group(1);
+        // First try to match the file/d/ pattern
+        String filePattern = "https://drive.google.com/file/d/([a-zA-Z0-9_-]+)";
+        Pattern fileCompiled = Pattern.compile(filePattern);
+        Matcher fileMatcher = fileCompiled.matcher(url);
+        if (fileMatcher.find()) {
+            return fileMatcher.group(1);
         }
+        
+        // Then try to match the open?id= pattern
+        String openPattern = "id=([a-zA-Z0-9_-]+)";
+        Pattern openCompiled = Pattern.compile(openPattern);
+        Matcher openMatcher = openCompiled.matcher(url);
+        if (openMatcher.find()) {
+            return openMatcher.group(1);
+        }
+        
         return url;
     }
 
@@ -69,6 +84,20 @@ public class GoogleDriveDownloader {
         Matcher matcher = compiledPattern.matcher(url);
         if (matcher.find()) {
             return matcher.group(1);
+        }
+        return null;
+    }
+
+    private static String extractAuthUser(String url) {
+        String pattern = "authuser=([^&]+)";
+        Pattern compiledPattern = Pattern.compile(pattern);
+        Matcher matcher = compiledPattern.matcher(url);
+        if (matcher.find()) {
+            try {
+                return java.net.URLDecoder.decode(matcher.group(1), "UTF-8");
+            } catch (IOException e) {
+                return matcher.group(1);
+            }
         }
         return null;
     }
@@ -101,18 +130,19 @@ public class GoogleDriveDownloader {
 
     public static void main(String[] args) {
         if (args.length != 2) {
-            System.out.println("Usage: java GoogleDriveDownloader <fileId> <destinationPath>");
+            System.out.println("Usage: java GoogleDriveDownloader <fileUrl> <destinationPath>");
             return;
         }
 
-        String fileId = args[0];
+        String fileUrl = args[0];
         String destinationPath = args[1];
 
         try {
-            downloadFile(fileId, destinationPath);
-            System.out.println("File downloaded successfully to " + destinationPath);
+            String savedPath = downloadFile(fileUrl, destinationPath);
+            System.out.println("File downloaded successfully to: " + savedPath);
         } catch (IOException e) {
-            System.err.println("Failed to download file: " + e.getMessage());
+            System.err.println("Error downloading file: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }
