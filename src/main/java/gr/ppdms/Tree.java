@@ -346,8 +346,12 @@ public class Tree {
                     .execute();
 
             if (response.statusCode() == 200) {
+                // Create parent directories if they do not exist
+                File destinationFile = new File(destination);
+                destinationFile.getParentFile().mkdirs();
+
                 try (InputStream in = response.bodyStream()) {
-                    Files.copy(in, Paths.get(destination));
+                    Files.copy(in, destinationFile.toPath());
                 }
             } else if (response.statusCode() == 403) {
                 updateCookie();
