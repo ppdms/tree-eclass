@@ -1,4 +1,5 @@
 package gr.ppdms;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -9,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
@@ -22,6 +24,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.io.FileUtils;
@@ -34,14 +39,49 @@ import org.jsoup.select.Elements;
 
 public class Tree {
 
-    public static class Node implements Serializable {
+    private static final List<String> changesBuffer = new CopyOnWriteArrayList<>();
 
+    private static void scheduleChangeChecker() {
+        Timer timer = new Timer();
+        timer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                synchronized (changesBuffer) {
+                    if (!changesBuffer.isEmpty()) {
+                        sendEmail(changesBuffer);
+                        changesBuffer.clear();
+                    }
+                }
+            }
+        }, 0, 60*60*1000); // Every hour
+    }
+
+    private static void sendEmail(List<String> changes) {
+        StringBuilder emailContent = new StringBuilder("Changes detected:\n");
+        for (String change : changes) {
+            emailContent.append(change).append("\n");
+        }
+        try {
+            Process sendmail = Runtime.getRuntime().exec("sendmail -f \"basilpapadimas@gmail.com\" -t");
+            try (OutputStream os = sendmail.getOutputStream()) {
+                os.write(("To: p3220150@aueb.gr\r\n").getBytes());
+                os.write(("From: tree-eclass <tree-eclass@ppdms.gr>\r\n").getBytes());
+                os.write(("Subject: File Changes\r\n\r\n").getBytes());
+                os.write((emailContent.toString()).getBytes());
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to send email", e);
+        }
+    }
+
+    public static class Node implements Serializable {
         public String parent = "";
         public String name = "";
         public List<Node> directoryChildren = new ArrayList<>();
         public List<String> fileChildren = new ArrayList<>();
         public List<String> fileNames = new ArrayList<>();
         public Map<String, String> fileHashes = new HashMap<>();
+        public Map<String, String> fileEtags = new HashMap<>();
 
         private void writeObject(ObjectOutputStream out) throws IOException {
             out.defaultWriteObject();
@@ -63,6 +103,12 @@ public class Tree {
 
             out.writeInt(fileHashes.size());
             for (Map.Entry<String, String> entry : fileHashes.entrySet()) {
+                out.writeUTF(entry.getKey());
+                out.writeUTF(entry.getValue());
+            }
+
+            out.writeInt(fileEtags.size());
+            for (Map.Entry<String, String> entry : fileEtags.entrySet()) {
                 out.writeUTF(entry.getKey());
                 out.writeUTF(entry.getValue());
             }
@@ -94,6 +140,13 @@ public class Tree {
                 String key = in.readUTF();
                 String value = in.readUTF();
                 fileHashes.put(key, value);
+            }
+
+            int numFileEtags = in.readInt();
+            for (int i = 0; i < numFileEtags; i++) {
+                String key = in.readUTF();
+                String value = in.readUTF();
+                fileEtags.put(key, value);
             }
         }
     }
@@ -138,14 +191,6 @@ public class Tree {
                 directories.add("https://eclass.aueb.gr" + href);
                 directoryNames.add(linkText);
             }
-            /*
-            for (int idx = 0; idx < files.size(); idx++) {
-                System.out.println(files.get(idx));
-            }
-            for (int idx = 0; idx < directories.size(); idx++) {
-                System.out.println(directories.get(idx));
-            }
-            */
         }
 
         array[0] = files;
@@ -186,19 +231,31 @@ public class Tree {
 
         for (int i = 0; i < files.size(); i++) {
             String fileUrl = files.get(i);
-            String fileName = "";
+            // For Google downloads, always re-download & hash
             if (!fileUrl.contains("google")) {
-                fileName = fileUrl.substring(fileUrl.lastIndexOf('/') + 1);
-                try {
-                    fileName = URLDecoder.decode(fileName, "UTF-8");
-                } catch (UnsupportedEncodingException e) {
-                    throw new RuntimeException("Failed to decode filename: " + fileName, e);
+                String etag = fetchEtag(fileUrl);
+                String oldEtag = root.fileEtags.get(fileUrl);
+
+                // If ETag is missing or changed, re-download
+                if (etag == null || oldEtag == null || !oldEtag.equals(etag)) {
+                    String fileName = extractFileName(fileUrl);
+                    String filePath = parent + fileName;
+                    filePath = downloadFile(fileUrl, filePath);
+                    String fileHash = computeMD5(filePath);
+                    root.fileHashes.put(fileUrl, fileHash);
+                    root.fileEtags.put(fileUrl, etag);  // might be null, but tracked anyway
+                } else {
+                    root.fileEtags.put(fileUrl, oldEtag);
+                    root.fileHashes.put(fileUrl, previousHashIfAvailable(root, fileUrl));
                 }
+            } else {
+                // Google file: always download & compute new hash
+                String fileName = extractFileName(fileUrl);
+                String filePath = parent + fileName;
+                filePath = downloadFile(fileUrl, filePath);
+                String fileHash = computeMD5(filePath);
+                root.fileHashes.put(fileUrl, fileHash);
             }
-            String filePath = parent + fileName;
-            filePath = downloadFile(fileUrl, filePath);
-            String fileHash = computeMD5(filePath);
-            root.fileHashes.put(fileUrl, fileHash);
         }
 
         return root;
@@ -256,12 +313,18 @@ public class Tree {
         for (String directory : oldDirectoryChildren.keySet()) {
             if (!newDirectoryChildren.keySet().contains(directory)) {
                 System.out.println(directory + " deleted!");
+                synchronized (changesBuffer) {
+                    changesBuffer.add("Deleted directory: " + directory);
+                }
                 allDirectories.remove(directory);
             }
         }
         for (String directory : newDirectoryChildren.keySet()) {
             if (!oldDirectoryChildren.keySet().contains(directory)) {
                 System.out.println(directory + " added!");
+                synchronized (changesBuffer) {
+                    changesBuffer.add("Added directory: " + directory);
+                }
                 allDirectories.remove(directory);
             }
         }
@@ -272,13 +335,22 @@ public class Tree {
         for (String file : previous.fileChildren) {
             if (!latest.fileChildren.contains(file)) {
                 System.out.println(file + " deleted!");
+                synchronized (changesBuffer) {
+                    changesBuffer.add("Deleted: " + file);
+                }
             } else if (!previous.fileHashes.get(file).equals(latest.fileHashes.get(file))) {
                 System.out.println(file + " updated!");
+                synchronized (changesBuffer) {
+                    changesBuffer.add("Updated: " + file);
+                }
             }
         }
         for (String file : latest.fileChildren) {
             if (!previous.fileChildren.contains(file)) {
                 System.out.println(file + " added!");
+                synchronized (changesBuffer) {
+                    changesBuffer.add("Added: " + file);
+                }
             }
         }
     }
@@ -373,44 +445,90 @@ public class Tree {
     }
 
     private static String computeMD5(String filePath) {
-    try (InputStream is = Files.newInputStream(Paths.get(filePath))) {
-        return DigestUtils.md5Hex(IOUtils.toByteArray(is));
-    } catch (IOException e) {
-        throw new RuntimeException("Failed to compute MD5 hash for file: " + filePath, e);
+        try (InputStream is = Files.newInputStream(Paths.get(filePath))) {
+            return DigestUtils.md5Hex(IOUtils.toByteArray(is));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to compute MD5 hash for file: " + filePath, e);
+        }
     }
-}
+
+    private static String fetchEtag(String fileUrl) {
+        try {
+            Connection.Response response = Jsoup
+                    .connect(fileUrl)
+                    .cookie("PHPSESSID", getCookie())
+                    .ignoreContentType(true)
+                    .method(Connection.Method.HEAD)
+                    .execute();
+            return response.header("ETag"); // Might be null if server doesn't provide it
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to fetch ETag for: " + fileUrl, e);
+        }
+    }
+
+    private static String extractFileName(String fileUrl) {
+        String fileName = fileUrl.substring(fileUrl.lastIndexOf('/') + 1);
+        try {
+            fileName = URLDecoder.decode(fileName, "UTF-8");
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException("Failed to decode filename: " + fileName, e);
+        }
+        return fileName;
+    }
+
+    private static String previousHashIfAvailable(Node root, String fileUrl) {
+        return root.fileHashes.getOrDefault(fileUrl, "");
+    }
 
     public static void main(String[] args) {
-        Map<Integer, String> courses = new HashMap<>();
-        Map<Integer, String> downloadFolders = new HashMap<>();
+        scheduleChangeChecker();
 
-        try (BufferedReader br = new BufferedReader(new FileReader("courses.csv"))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                String[] values = line.split(",");
-                int courseNum = Integer.parseInt(values[0]);
-                String courseName = values[1];
-                String downloadFolder = values[2];
-                courses.put(courseNum, courseName);
-                downloadFolders.put(courseNum, downloadFolder);
+        Timer eclassTimer = new Timer();
+        eclassTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+
+                Map<Integer, String> courses = new HashMap<>();
+                Map<Integer, String> downloadFolders = new HashMap<>();
+
+                try (BufferedReader br = new BufferedReader(new FileReader("courses.csv"))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        String[] values = line.split(",");
+                        int courseNum = Integer.parseInt(values[0]);
+                        String courseName = values[1];
+                        String downloadFolder = values[2];
+                        courses.put(courseNum, courseName);
+                        downloadFolders.put(courseNum, downloadFolder);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                for (int CourseNum : courses.keySet()) {
+                    String url = "https://eclass.aueb.gr/modules/document/index.php?course=INF" + CourseNum;
+                    String downloadFolder = downloadFolders.get(CourseNum);
+                    try {
+                        FileUtils.deleteDirectory(new File(downloadFolder));
+                    } catch (IOException ex) {
+                        System.out.println("Failed to delete directory: " + downloadFolder);
+                    }
+                    Node oldRoot = load(CourseNum + ".ser");
+                    Node newRoot = gen(url, downloadFolder);
+                    diff(oldRoot, newRoot);
+                    print(newRoot, "");
+                    save(newRoot, CourseNum);
+                }
+
             }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        }, 0, 60*60*1000);
 
-        for (int CourseNum : courses.keySet()) {
-            String url = "https://eclass.aueb.gr/modules/document/index.php?course=INF" + CourseNum;
-            String downloadFolder = downloadFolders.get(CourseNum);
+        while (true) {
             try {
-                FileUtils.deleteDirectory(new File(downloadFolder));
-            } catch (IOException ex) {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                System.out.println("Interrupted");
             }
-            System.out.println(courses.get(CourseNum));
-            Node oldRoot = load(CourseNum + ".ser");
-            Node newRoot = gen(url, downloadFolder);
-            diff(oldRoot, newRoot);
-            print(newRoot, "");
-            save(newRoot, CourseNum);
         }
     }
 }
