@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.ObjectStreamException;
 import java.io.OutputStream;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
@@ -26,6 +27,7 @@ import java.util.Scanner;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.apache.commons.codec.digest.DigestUtils;
@@ -39,42 +41,58 @@ import org.jsoup.select.Elements;
 
 public class Tree {
 
-    private static final List<String> changesBuffer = new CopyOnWriteArrayList<>();
+    private static final Map<String, CopyOnWriteArrayList<String>> changesByCourseBuffer = new ConcurrentHashMap<>();
 
-    private static void scheduleChangeChecker() {
-        Timer timer = new Timer();
-        timer.scheduleAtFixedRate(new TimerTask() {
-            @Override
-            public void run() {
-                synchronized (changesBuffer) {
-                    if (!changesBuffer.isEmpty()) {
-                        sendEmail(changesBuffer);
-                        changesBuffer.clear();
-                    }
-                }
+    private static void sendEmail(Map<String, List<String>> changesByCourse) {
+        StringBuilder emailContent = new StringBuilder("File system changes detected:\n\n");
+
+        for (Map.Entry<String, List<String>> entry : changesByCourse.entrySet()) {
+            String courseName = entry.getKey();
+            List<String> changes = entry.getValue();
+
+            if (changes.isEmpty()) continue;
+
+            emailContent.append("=== Course: ").append(courseName).append(" ===\n");
+            for (String change : changes) {
+                emailContent.append("- ").append(change).append("\n");
             }
-        }, 0, 60*60*1000); // Every hour
-    }
-
-    private static void sendEmail(List<String> changes) {
-        StringBuilder emailContent = new StringBuilder("Changes detected:\n");
-        for (String change : changes) {
-            emailContent.append(change).append("\n");
+            emailContent.append("\n");
         }
+
+        System.out.println("\n=== Email Content ===");
+        System.out.println("To: p3220150@aueb.gr");
+        System.out.println("From: tree-eclass <tree-eclass@ppdms.gr>");
+        System.out.println("Subject: File Changes");
+        System.out.println(emailContent.toString());
+        System.out.println("===================\n");
+
         try {
-            Process sendmail = Runtime.getRuntime().exec("sendmail -f \"basilpapadimas@gmail.com\" -t");
+            ProcessBuilder processBuilder = new ProcessBuilder("sendmail", "-f", "basilpapadimas@gmail.com", "-t");
+            processBuilder.redirectErrorStream(true);
+            Process sendmail = processBuilder.start();
+
             try (OutputStream os = sendmail.getOutputStream()) {
                 os.write(("To: p3220150@aueb.gr\r\n").getBytes());
                 os.write(("From: tree-eclass <tree-eclass@ppdms.gr>\r\n").getBytes());
                 os.write(("Subject: File Changes\r\n\r\n").getBytes());
                 os.write((emailContent.toString()).getBytes());
             }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to send email", e);
+            int exitCode = sendmail.waitFor();
+            if (exitCode != 0) {
+                System.err.println("sendmail process exited with code: " + exitCode);
+            }
+        } catch (IOException | InterruptedException e) {
+            System.err.println("Failed to send email: " + e.getMessage());
+            e.printStackTrace();
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
     public static class Node implements Serializable {
+        private static final long serialVersionUID = 1L;
+
         public String parent = "";
         public String name = "";
         public List<Node> directoryChildren = new ArrayList<>();
@@ -118,24 +136,28 @@ public class Tree {
             in.defaultReadObject();
 
             int numDirectoryChildren = in.readInt();
+            directoryChildren = new ArrayList<>(numDirectoryChildren);
             for (int i = 0; i < numDirectoryChildren; i++) {
                 Node child = (Node) in.readObject();
                 directoryChildren.add(child);
             }
 
             int numFileChildren = in.readInt();
+            fileChildren = new ArrayList<>(numFileChildren);
             for (int i = 0; i < numFileChildren; i++) {
                 String file = in.readUTF();
                 fileChildren.add(file);
             }
 
             int numFileNames = in.readInt();
+            fileNames = new ArrayList<>(numFileNames);
             for (int i = 0; i < numFileNames; i++) {
                 String fileName = in.readUTF();
                 fileNames.add(fileName);
             }
 
             int numFileHashes = in.readInt();
+            fileHashes = new HashMap<>(numFileHashes);
             for (int i = 0; i < numFileHashes; i++) {
                 String key = in.readUTF();
                 String value = in.readUTF();
@@ -143,11 +165,16 @@ public class Tree {
             }
 
             int numFileEtags = in.readInt();
+            fileEtags = new HashMap<>(numFileEtags);
             for (int i = 0; i < numFileEtags; i++) {
                 String key = in.readUTF();
                 String value = in.readUTF();
                 fileEtags.put(key, value);
             }
+        }
+
+        private Object readResolve() throws ObjectStreamException {
+            return this;
         }
     }
 
@@ -261,19 +288,44 @@ public class Tree {
         return root;
     }
 
-    public static void print(Node root, String prefix) {
-        System.out.println(prefix + "\u001B]8;;" + root.parent + "\u0007" + root.name + "\u001B]8;;\u0007");
-        String branch_prefix = prefix + "\t";
+    public static void print(Node rootNode, String courseName) {
+        // Root node: Hyperlink to course URL (rootNode.name), Text is courseName
+        System.out.println("\u001B]8;;" + rootNode.name + "\u0007" + courseName + "\u001B]8;;\u0007");
+        printChildrenRecursive(rootNode, "");
+    }
 
-        for (int i = 0; i < root.directoryChildren.size(); i++) {
-            Node child = root.directoryChildren.get(i);
-            print(child, branch_prefix);
+    private static void printChildrenRecursive(Node parentNode, String indent) {
+        List<Node> directories = parentNode.directoryChildren;
+        List<String> fileNames = parentNode.fileNames;
+        List<String> fileUrls = parentNode.fileChildren;
+
+        int dirCount = directories.size();
+        int fileCount = fileNames.size(); // Assuming fileNames and fileUrls are parallel and same size
+        int totalChildren = dirCount + fileCount;
+        int childrenProcessed = 0;
+
+        // Print directory children
+        for (int i = 0; i < dirCount; i++) {
+            Node dir = directories.get(i);
+            childrenProcessed++;
+            boolean isLast = (childrenProcessed == totalChildren);
+            String connector = isLast ? "└── " : "├── ";
+            // Directory entry: Hyperlink to disk path (dir.parent), Text is directory name (dir.name)
+            System.out.println(indent + connector + "\u001B]8;;" + dir.parent + "\u0007" + dir.name + "\u001B]8;;\u0007");
+
+            String nextIndent = indent + (isLast ? "    " : "│   ");
+            printChildrenRecursive(dir, nextIndent);
         }
 
-        for (int i = 0; i < root.fileChildren.size(); i++) {
-            String filename = root.fileNames.get(i);
-            String fileUrl = root.fileChildren.get(i);
-            System.out.println(branch_prefix + "\u001B]8;;" + fileUrl + "\u0007" + filename + "\u001B]8;;\u0007");
+        // Print file children
+        for (int i = 0; i < fileCount; i++) {
+            String fileName = fileNames.get(i);
+            String fileUrl = fileUrls.get(i);
+            childrenProcessed++;
+            boolean isLast = (childrenProcessed == totalChildren);
+            String connector = isLast ? "└── " : "├── ";
+            // File entry: Hyperlink to file URL (fileUrl), Text is file name (fileName)
+            System.out.println(indent + connector + "\u001B]8;;" + fileUrl + "\u0007" + fileName + "\u001B]8;;\u0007");
         }
     }
 
@@ -295,7 +347,7 @@ public class Tree {
         return root;
     }
 
-    public static void diff(Node previous, Node latest) {
+    public static void diff(Node previous, Node latest, String courseName) {
         HashMap<String, Node> oldDirectoryChildren = new HashMap<>();
         HashMap<String, Node> newDirectoryChildren = new HashMap<>();
 
@@ -312,45 +364,40 @@ public class Tree {
 
         for (String directory : oldDirectoryChildren.keySet()) {
             if (!newDirectoryChildren.keySet().contains(directory)) {
-                System.out.println(directory + " deleted!");
-                synchronized (changesBuffer) {
-                    changesBuffer.add("Deleted directory: " + directory);
-                }
+                String changeMessage = "Deleted directory: " + directory;
+                System.out.println(changeMessage + " (Course: " + courseName + ")");
+                changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(changeMessage);
                 allDirectories.remove(directory);
             }
         }
         for (String directory : newDirectoryChildren.keySet()) {
             if (!oldDirectoryChildren.keySet().contains(directory)) {
-                System.out.println(directory + " added!");
-                synchronized (changesBuffer) {
-                    changesBuffer.add("Added directory: " + directory);
-                }
+                String changeMessage = "Added directory: " + directory;
+                System.out.println(changeMessage + " (Course: " + courseName + ")");
+                changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(changeMessage);
                 allDirectories.remove(directory);
             }
         }
         for (String directory : allDirectories) {
-            diff(oldDirectoryChildren.get(directory), newDirectoryChildren.get(directory));
+            diff(oldDirectoryChildren.get(directory), newDirectoryChildren.get(directory), courseName);
         }
 
         for (String file : previous.fileChildren) {
             if (!latest.fileChildren.contains(file)) {
-                System.out.println(file + " deleted!");
-                synchronized (changesBuffer) {
-                    changesBuffer.add("Deleted: " + file);
-                }
+                String changeMessage = "Deleted file: " + file;
+                System.out.println(changeMessage + " (Course: " + courseName + ")");
+                changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(changeMessage);
             } else if (!previous.fileHashes.get(file).equals(latest.fileHashes.get(file))) {
-                System.out.println(file + " updated!");
-                synchronized (changesBuffer) {
-                    changesBuffer.add("Updated: " + file);
-                }
+                String changeMessage = "Updated file: " + file;
+                System.out.println(changeMessage + " (Course: " + courseName + ")");
+                changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(changeMessage);
             }
         }
         for (String file : latest.fileChildren) {
             if (!previous.fileChildren.contains(file)) {
-                System.out.println(file + " added!");
-                synchronized (changesBuffer) {
-                    changesBuffer.add("Added: " + file);
-                }
+                String changeMessage = "Added file: " + file;
+                System.out.println(changeMessage + " (Course: " + courseName + ")");
+                changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(changeMessage);
             }
         }
     }
@@ -360,8 +407,14 @@ public class Tree {
         try (FileInputStream fileInputStream = new FileInputStream("cookie.ser"); ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream)) {
             cookie = (String) objectInputStream.readObject();
         } catch (IOException | ClassNotFoundException e) {
-            updateCookie();
-            cookie = getCookie();
+            System.err.println("Failed to load cookie, attempting update: " + e.getMessage());
+            try {
+                updateCookie();
+                cookie = getCookie();
+            } catch (RuntimeException updateEx) {
+                System.err.println("Failed to update cookie: " + updateEx.getMessage());
+                throw updateEx;
+            }
         }
         return cookie;
     }
@@ -408,37 +461,48 @@ public class Tree {
             try {
                 return GoogleDriveDownloader.downloadFile(fileUrl, destination);
             } catch (IOException e) {
+                System.err.println("Failed to download Google Drive file: " + fileUrl + " - " + e.getMessage());
                 throw new RuntimeException("Failed to download file: " + fileUrl, e);
             }
         }
         try {
-            Connection.Response response = Jsoup.connect(fileUrl)
+            Connection connection = Jsoup.connect(fileUrl)
                     .cookie("PHPSESSID", getCookie())
                     .ignoreContentType(true)
-                    .execute();
+                    .maxBodySize(0);
 
-            if (response.statusCode() == 200) {
-                // Create parent directories if they do not exist
-                File destinationFile = new File(destination);
-                destinationFile.getParentFile().mkdirs();
+            Connection.Response response = connection.execute();
 
-                try (InputStream in = response.bodyStream()) {
-                    Files.copy(in, destinationFile.toPath());
-                }
-            } else if (response.statusCode() == 403) {
+            if (response.statusCode() == 403) {
+                System.err.println("Access denied (403) for " + fileUrl + ", attempting cookie update and retry.");
                 updateCookie();
                 response = Jsoup.connect(fileUrl)
                         .cookie("PHPSESSID", getCookie())
                         .ignoreContentType(true)
+                        .maxBodySize(0)
                         .execute();
+            }
 
-                try (InputStream in = response.bodyStream()) {
-                    Files.copy(in, Paths.get(destination));
+            if (response.statusCode() == 200) {
+                File destinationFile = new File(destination);
+                File parentDir = destinationFile.getParentFile();
+                if (parentDir != null && !parentDir.exists()) {
+                    if (!parentDir.mkdirs()) {
+                        throw new IOException("Failed to create parent directories for: " + destination);
+                    }
+                }
+
+                try (InputStream in = response.bodyStream();
+                     FileOutputStream out = new FileOutputStream(destinationFile)) {
+                    IOUtils.copy(in, out);
                 }
             } else {
-                throw new RuntimeException("Failed to download file: " + fileUrl + " with status code: " + response.statusCode());
+                throw new IOException("Failed to download file: " + fileUrl + " - Status code: " + response.statusCode());
             }
+
         } catch (IOException e) {
+            System.err.println("Error downloading file " + fileUrl + " to " + destination + ": " + e.getMessage());
+            e.printStackTrace();
             throw new RuntimeException("Failed to download file: " + fileUrl, e);
         }
         return destination;
@@ -481,13 +545,10 @@ public class Tree {
     }
 
     public static void main(String[] args) {
-        scheduleChangeChecker();
-
         Timer eclassTimer = new Timer();
         eclassTimer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
-
                 Map<Integer, String> courses = new HashMap<>();
                 Map<Integer, String> downloadFolders = new HashMap<>();
 
@@ -502,33 +563,65 @@ public class Tree {
                         downloadFolders.put(courseNum, downloadFolder);
                     }
                 } catch (IOException e) {
+                    System.err.println("FATAL: Could not read courses.csv. Exiting TimerTask run. " + e.getMessage());
                     e.printStackTrace();
+                    return;
                 }
 
-                for (int CourseNum : courses.keySet()) {
-                    String url = "https://eclass.aueb.gr/modules/document/index.php?course=INF" + CourseNum;
-                    String downloadFolder = downloadFolders.get(CourseNum);
+                for (int courseNumKey : courses.keySet()) {
+                    String courseName = courses.get(courseNumKey);
+                    String url = "https://eclass.aueb.gr/modules/document/index.php?course=INF" + courseNumKey;
+                    String downloadFolder = downloadFolders.get(courseNumKey);
+
                     try {
-                        FileUtils.deleteDirectory(new File(downloadFolder));
-                    } catch (IOException ex) {
-                        System.out.println("Failed to delete directory: " + downloadFolder);
+                        System.out.println("");
+                        
+                        File dirToDelete = new File(downloadFolder);
+                        if (dirToDelete.exists()) {
+                            try {
+                                FileUtils.deleteDirectory(dirToDelete);
+                            } catch (IOException ex) {
+                                System.err.println("Warning: Failed to delete old directory before processing: " + downloadFolder + " - " + ex.getMessage());
+                            }
+                        }
+
+                        Node oldRoot = load(courseNumKey + ".ser");
+                        Node newRoot = gen(url, downloadFolder + "/");
+                        diff(oldRoot, newRoot, courseName);
+                        print(newRoot, courseName);
+                        save(newRoot, courseNumKey);
+
+                    } catch (Exception e) {
+                        System.err.println("ERROR processing course " + courseName + " (ID: " + courseNumKey + "): " + e.getMessage());
+                        e.printStackTrace();
                     }
-                    Node oldRoot = load(CourseNum + ".ser");
-                    Node newRoot = gen(url, downloadFolder);
-                    diff(oldRoot, newRoot);
-                    print(newRoot, "");
-                    save(newRoot, CourseNum);
                 }
 
+                Map<String, List<String>> changesToSend = new HashMap<>();
+                if (!changesByCourseBuffer.isEmpty()) {
+                    synchronized (changesByCourseBuffer) {
+                        for (Map.Entry<String, CopyOnWriteArrayList<String>> entry : changesByCourseBuffer.entrySet()) {
+                            if (!entry.getValue().isEmpty()) {
+                                changesToSend.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+                            }
+                        }
+                        changesByCourseBuffer.clear();
+                    }
+                }
+
+                if (!changesToSend.isEmpty()) {
+                    try {
+                        System.out.println("Attempting to send email with changes from " + changesToSend.size() + " course(s).");
+                        sendEmail(changesToSend);
+                    } catch (Exception e) {
+                        System.err.println("Error sending email notification after download cycle: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                }
+                System.out.println("");
             }
         }, 0, 60*60*1000);
 
-        while (true) {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                System.out.println("Interrupted");
-            }
-        }
+        System.out.println("tree-eclass checker started. Scheduled tasks running in background.");
     }
 }
