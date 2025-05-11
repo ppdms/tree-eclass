@@ -20,11 +20,9 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
-import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
@@ -347,57 +345,129 @@ public class Tree {
         return root;
     }
 
-    public static void diff(Node previous, Node latest, String courseName) {
-        HashMap<String, Node> oldDirectoryChildren = new HashMap<>();
-        HashMap<String, Node> newDirectoryChildren = new HashMap<>();
+    private static void addChange(String courseName, String message) {
 
-        for (Node directory : previous.directoryChildren) {
-            oldDirectoryChildren.put(directory.parent, directory);
+        System.out.println(message + " (Course: " + courseName + ")");
+        changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(message);
+    }
+
+    private static void reportAllAddedRecursive(Node dirNode, String dirEclassPath, String courseName) {
+        // dirNode is the newly added directory. dirEclassPath is its full eClass path.
+
+        // Report all files in this newly added directory
+        for (int i = 0; i < dirNode.fileNames.size(); i++) {
+            String fileName = dirNode.fileNames.get(i); // Assuming fileNames and fileChildren are parallel
+            String fileEclassPath = dirEclassPath + "/" + fileName;
+            addChange(courseName, "Added file: " + fileEclassPath);
         }
 
-        for (Node directory : latest.directoryChildren) {
-            newDirectoryChildren.put(directory.parent, directory);
+        // Report all subdirectories and recurse
+        for (Node subDir : dirNode.directoryChildren) {
+            String subDirName = subDir.name;
+            String subDirEclassPath = dirEclassPath + "/" + subDirName;
+            addChange(courseName, "Added directory: " + subDirEclassPath);
+            reportAllAddedRecursive(subDir, subDirEclassPath, courseName); // Recurse
         }
+    }
 
-        Set<String> allDirectories = new LinkedHashSet<>(oldDirectoryChildren.keySet());
-        allDirectories.addAll(newDirectoryChildren.keySet());
+    public static void diff(Node previous, Node latest, String courseName, String currentDirectoryEclassPath) {
+        // currentDirectoryEclassPath is the eClass path of the directory node whose contents are being compared.
+        // e.g., "CourseName", "CourseName/FolderA", "CourseName/FolderA/Labs"
 
-        for (String directory : oldDirectoryChildren.keySet()) {
-            if (!newDirectoryChildren.keySet().contains(directory)) {
-                String changeMessage = "Deleted directory: " + directory;
-                System.out.println(changeMessage + " (Course: " + courseName + ")");
-                changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(changeMessage);
-                allDirectories.remove(directory);
+        // Populate directory maps using Node.name as key
+        Map<String, Node> oldDirs = new HashMap<>();
+        if (previous != null) {
+            for (Node dir : previous.directoryChildren) {
+                oldDirs.put(dir.name, dir);
             }
         }
-        for (String directory : newDirectoryChildren.keySet()) {
-            if (!oldDirectoryChildren.keySet().contains(directory)) {
-                String changeMessage = "Added directory: " + directory;
-                System.out.println(changeMessage + " (Course: " + courseName + ")");
-                changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(changeMessage);
-                allDirectories.remove(directory);
-            }
-        }
-        for (String directory : allDirectories) {
-            diff(oldDirectoryChildren.get(directory), newDirectoryChildren.get(directory), courseName);
+        Map<String, Node> newDirs = new HashMap<>();
+        for (Node dir : latest.directoryChildren) {
+            newDirs.put(dir.name, dir);
         }
 
-        for (String file : previous.fileChildren) {
-            if (!latest.fileChildren.contains(file)) {
-                String changeMessage = "Deleted file: " + file;
-                System.out.println(changeMessage + " (Course: " + courseName + ")");
-                changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(changeMessage);
-            } else if (!previous.fileHashes.get(file).equals(latest.fileHashes.get(file))) {
-                String changeMessage = "Updated file: " + file;
-                System.out.println(changeMessage + " (Course: " + courseName + ")");
-                changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(changeMessage);
+        // 1. Identify deleted directories
+        if (previous != null) {
+            for (String dirName : oldDirs.keySet()) {
+                if (!newDirs.containsKey(dirName)) {
+                    String deletedDirPath = currentDirectoryEclassPath + "/" + dirName;
+                    addChange(courseName, "Deleted directory: " + deletedDirPath);
+                }
             }
         }
-        for (String file : latest.fileChildren) {
-            if (!previous.fileChildren.contains(file)) {
-                String changeMessage = "Added file: " + file;
-                System.out.println(changeMessage + " (Course: " + courseName + ")");
-                changesByCourseBuffer.computeIfAbsent(courseName, k -> new CopyOnWriteArrayList<>()).add(changeMessage);
+
+        // 2. Identify added or common directories
+        for (String dirName : newDirs.keySet()) {
+            Node newDirNode = newDirs.get(dirName);
+            String currentSubDirPath = currentDirectoryEclassPath + "/" + dirName;
+            if (previous == null || !oldDirs.containsKey(dirName)) {
+                addChange(courseName, "Added directory: " + currentSubDirPath);
+                reportAllAddedRecursive(newDirNode, currentSubDirPath, courseName);
+            } else {
+                // Directory exists in both old and new state: recurse
+                Node oldDirNode = oldDirs.get(dirName);
+                diff(oldDirNode, newDirNode, courseName, currentSubDirPath);
+            }
+        }
+
+        // 3. File comparison (for files directly within currentDirectoryEclassPath)
+        // This section only runs if 'currentDirectoryEclassPath' itself persisted (i.e., 'previous' is not null).
+        // If 'previous' is null, it implies 'currentDirectoryEclassPath' (represented by 'latest') is entirely new,
+        // and its files were already handled by reportAllAddedRecursive.
+        if (previous != null) {
+            Map<String, String> oldFileUrlToName = new HashMap<>();
+            Map<String, String> oldFileHashes = previous.fileHashes; // Map<URL, Hash>
+            for (int i = 0; i < previous.fileChildren.size(); i++) { // fileChildren are URLs
+                oldFileUrlToName.put(previous.fileChildren.get(i), previous.fileNames.get(i));
+            }
+
+            Map<String, String> newFileUrlToName = new HashMap<>();
+            Map<String, String> newFileHashes = latest.fileHashes; // Map<URL, Hash>
+            for (int i = 0; i < latest.fileChildren.size(); i++) { // fileChildren are URLs
+                newFileUrlToName.put(latest.fileChildren.get(i), latest.fileNames.get(i));
+            }
+
+            // Check for deleted or updated files
+            for (String fileUrl : oldFileUrlToName.keySet()) {
+                String fileName = oldFileUrlToName.get(fileUrl);
+                String fullFilePath = currentDirectoryEclassPath + "/" + fileName;
+
+                if (!newFileUrlToName.containsKey(fileUrl)) {
+                    addChange(courseName, "Deleted file: " + fullFilePath);
+                } else {
+                    // File exists in both, check for update based on hash
+                    String oldHash = oldFileHashes.get(fileUrl); // Can be null if URL not in map, or value was null
+                    String newHash = newFileHashes.get(fileUrl); // Can be null
+
+                    boolean updated = false;
+                    String updateReason = "";
+
+                    if (oldHash != null && newHash != null) {
+                        if (!oldHash.equals(newHash)) {
+                            updated = true;
+                        }
+                    } else if (oldHash == null && newHash != null) {
+                        updated = true;
+                        updateReason = " (hash appeared)";
+                    } else if (oldHash != null && newHash == null) {
+                        updated = true;
+                        updateReason = " (hash removed)";
+                    }
+                    // If both oldHash and newHash are null, it's not considered an update.
+
+                    if (updated) {
+                        addChange(courseName, "Updated file: " + fullFilePath + updateReason);
+                    }
+                }
+            }
+
+            // Check for added files (to this existing directory)
+            for (String fileUrl : newFileUrlToName.keySet()) {
+                if (!oldFileUrlToName.containsKey(fileUrl)) {
+                    String fileName = newFileUrlToName.get(fileUrl);
+                    String fullFilePath = currentDirectoryEclassPath + "/" + fileName;
+                    addChange(courseName, "Added file: " + fullFilePath);
+                }
             }
         }
     }
@@ -587,7 +657,7 @@ public class Tree {
 
                         Node oldRoot = load(courseNumKey + ".ser");
                         Node newRoot = gen(url, downloadFolder + "/");
-                        diff(oldRoot, newRoot, courseName);
+                        diff(oldRoot, newRoot, courseName, courseName);
                         print(newRoot, courseName);
                         save(newRoot, courseNumKey);
 
