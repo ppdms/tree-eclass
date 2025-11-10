@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.name }} - tree-eclass{% endblock %}
+
+{% macro render_tree_children(children, level=1) %}
+{% for child in children %}
+<div class="tree-node" style="margin-left: {{ level * 20 }}px;">
+	<span class="tree-icon">📁</span>
+	<span class="tree-name">{{ child.name }}</span>
+
+	{% if child.files %}
+	<div class="tree-children">
+		{% for file in child.files %}
+		<div class="tree-file" style="margin-left: {{ (level + 1) * 20 }}px;">
+			<span class="tree-icon">📄</span>
+			<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
+		</div>
+		{% endfor %}
+	</div>
+	{% endif %}
+
+	{% if child.children %}
+	{{ render_tree_children(child.children, level + 1) }}
+	{% endif %}
+</div>
+{% endfor %}
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+	<h1>{{ course.name }}</h1>
+	<div>
+		<a href="/courses" class="btn btn-secondary">← Back to Courses</a>
+		<a href="/history?course_id={{ course.id }}" class="btn btn-secondary">View History</a>
+		<form method="POST" action="/courses/{{ course.id }}/reset" style="display: inline;"
+			onsubmit="return handleConfirm(event, 'Reset Course Data', 'Reset all data for this course? This will clear the file tree and change history but keep the course configuration.');">
+			<button type="submit" class="btn btn-warning">🔄 Reset Data</button>
+		</form>
+	</div>
+</div>
+
+<div class="info-card">
+	<h3>Course Information</h3>
+	<dl>
+		<dt>Course ID:</dt>
+		<dd>{{ course.id }}</dd>
+		<dt>Name:</dt>
+		<dd>{{ course.name }}</dd>
+		<dt>Download Folder:</dt>
+		<dd><code>{{ course.download_folder }}</code></dd>
+		<dt>URL:</dt>
+		<dd><a href="https://eclass.aueb.gr/modules/document/index.php?course=INF{{ course.id }}" target="_blank">View
+				on e-class</a></dd>
+	</dl>
+</div>
+
+<div class="section">
+	<h2>File Tree</h2>
+	{% if tree %}
+	<div class="tree-view">
+		<div class="tree-node">
+			<span class="tree-icon">📁</span>
+			<span class="tree-name">{{ tree.name }}</span>
+			<div class="tree-children">
+				{% if tree.files %}
+				{% for file in tree.files %}
+				<div class="tree-file">
+					<span class="tree-icon">📄</span>
+					<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
+				</div>
+				{% endfor %}
+				{% endif %}
+
+				{% if tree.children %}
+				{{ render_tree_children(tree.children) }}
+				{% endif %}
+			</div>
+		</div>
+	</div>
+	{% else %}
+	<p class="empty-state">No file tree available. Run a check to build the tree.</p>
+	{% endif %}
+</div>
+
+<div class="form-card">
+	<h3>Update Course</h3>
+	<form method="POST" action="/courses/{{ course.id }}/update">
+		<div class="form-group">
+			<label for="name">Course Name</label>
+			<input type="text" id="name" name="name" value="{{ course.name }}" required>
+		</div>
+		<div class="form-group">
+			<label for="download_folder">Download Folder</label>
+			<input type="text" id="download_folder" name="download_folder" value="{{ course.download_folder }}"
+				required>
+		</div>
+		<button type="submit" class="btn btn-primary">Update Course</button>
+	</form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+	async function handleConfirm(event, title, message) {
+		event.preventDefault();
+		const confirmed = await showModal(title, message);
+		if (confirmed) {
+			event.target.submit();
+		}
+		return false;
+	}
+</script>
+{% endblock %}

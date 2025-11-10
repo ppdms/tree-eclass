@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Courses - tree-eclass{% endblock %}
+
+{% block content %}
+<div class="page-header">
+	<h1>Courses</h1>
+	<button onclick="toggleAddForm()" class="btn btn-primary">+ Add Course</button>
+</div>
+
+<div id="addCourseForm" class="form-card" style="display: none;">
+	<h2>Add New Course</h2>
+	<form method="POST" action="/courses/add">
+		<div class="form-group">
+			<label for="course_id">Course ID</label>
+			<input type="number" id="course_id" name="course_id" required placeholder="e.g., 161">
+			<small>The numeric ID from the e-class URL (INF...)</small>
+		</div>
+		<div class="form-group">
+			<label for="name">Course Name</label>
+			<input type="text" id="name" name="name" required placeholder="e.g., Algorithms">
+		</div>
+		<div class="form-group">
+			<label for="download_folder">Download Folder</label>
+			<input type="text" id="download_folder" name="download_folder" required
+				placeholder="e.g., /Downloads/Algorithms">
+		</div>
+		<div class="form-actions">
+			<button type="submit" class="btn btn-primary">Add Course</button>
+			<button type="button" onclick="toggleAddForm()" class="btn btn-secondary">Cancel</button>
+		</div>
+	</form>
+</div>
+
+<div class="section">
+	{% if courses %}
+	<table class="data-table">
+		<thead>
+			<tr>
+				<th>ID</th>
+				<th>Name</th>
+				<th>Download Folder</th>
+				<th>Actions</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% for course in courses %}
+			<tr>
+				<td>{{ course.id }}</td>
+				<td>{{ course.name }}</td>
+				<td><code>{{ course.download_folder }}</code></td>
+				<td>
+					<a href="/courses/{{ course.id }}" class="btn btn-sm">View</a>
+					<a href="/history?course_id={{ course.id }}" class="btn btn-sm">History</a>
+					<button onclick="checkCourse({{ course.id }})" class="btn btn-sm btn-primary">Check</button>
+					<form method="POST" action="/courses/{{ course.id }}/reset" style="display: inline;"
+						onsubmit="return handleConfirm(event, 'Reset Course Data', 'Reset all data for this course? This will clear the file tree and change history but keep the course configuration.');">
+						<button type="submit" class="btn btn-sm btn-warning">Reset</button>
+					</form>
+					<form method="POST" action="/courses/{{ course.id }}/delete" style="display: inline;"
+						onsubmit="return handleConfirm(event, 'Delete Course', 'Delete this course completely? This action cannot be undone.');">
+						<button type="submit" class="btn btn-sm btn-danger">Delete</button>
+					</form>
+				</td>
+			</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+	{% else %}
+	<p class="empty-state">No courses configured. Add your first course above.</p>
+	{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+	function toggleAddForm() {
+		const form = document.getElementById('addCourseForm');
+		form.style.display = form.style.display === 'none' ? 'block' : 'none';
+	}
+
+	async function handleConfirm(event, title, message) {
+		event.preventDefault();
+		const confirmed = await showModal(title, message);
+		if (confirmed) {
+			event.target.submit();
+		}
+		return false;
+	}
+
+	async function checkCourse(courseId) {
+		try {
+			const response = await fetch(`/courses/${courseId}/check`, {
+				method: 'POST'
+			});
+
+			if (response.ok) {
+				const result = await response.json();
+				window.treeEclass.showNotification(result.message || 'Check started', 'success');
+				// Trigger status update immediately to show "Checking..." in navbar
+				if (typeof updateCheckStatus === 'function') {
+					updateCheckStatus();
+				}
+			} else if (response.status === 409) {
+				// Check already in progress
+				const error = await response.json();
+				window.treeEclass.showNotification('A check is already in progress. Please wait.', 'warning');
+			} else {
+				const error = await response.json();
+				window.treeEclass.showNotification(error.detail || 'Failed to check course', 'error');
+			}
+		} catch (error) {
+			window.treeEclass.showNotification('Error checking course: ' + error.message, 'error');
+		}
+	}
+</script>
+{% endblock %}

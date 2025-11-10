@@ -1,5 +1,7 @@
 target/
 *.ser
 credentials.txt
+data/
+Downloads/
 **.DS_Store
 .vscode/settings.json

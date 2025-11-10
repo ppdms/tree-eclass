@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Change History - tree-eclass{% endblock %}
+
+{% block content %}
+<div class="page-header">
+	<h1>📜 Change History</h1>
+</div>
+
+<div class="filters">
+	<form method="GET" action="/history" id="historyFilterForm">
+		<div class="filter-group">
+			<label for="course_filter">Course:</label>
+			<select id="course_filter" name="course_id">
+				<option value="">All Courses</option>
+				{% for course in courses %}
+				<option value="{{ course.id }}" {% if selected_course and selected_course.id==course.id %}selected{%
+					endif %}>
+					{{ course.name }}
+				</option>
+				{% endfor %}
+			</select>
+		</div>
+
+		<div class="filter-group">
+			<label for="start_date">From:</label>
+			<input type="date" id="start_date" name="start_date" value="{{ start_date }}">
+		</div>
+
+		<div class="filter-group">
+			<label for="end_date">To:</label>
+			<input type="date" id="end_date" name="end_date" value="{{ end_date }}">
+		</div>
+
+		<div class="filter-actions">
+			<button type="submit" class="btn btn-primary">Apply Filters</button>
+			<button type="button" class="btn btn-secondary" onclick="clearFilters()">Clear</button>
+		</div>
+	</form>
+</div>
+
+<script>
+	function clearFilters() {
+		document.getElementById('course_filter').value = '';
+		document.getElementById('start_date').value = '';
+		document.getElementById('end_date').value = '';
+		document.getElementById('historyFilterForm').submit();
+	}
+</script>
+
+<div class="section">
+	{% if change_records %}
+	<table class="change-table">
+		<thead>
+			<tr>
+				<th>Course</th>
+				<th>Date</th>
+				<th>Changes</th>
+				<th>Actions</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% for change_record in change_records %}
+			<tr>
+				<td>{{ change_record.course_name }}</td>
+				<td>{{ change_record.timestamp|athens_time }}</td>
+				<td>{{ change_record.message|change_counts|safe }}</td>
+				<td>
+					<a href="/courses/{{ change_record.course_id }}/changes/{{ change_record.change_no }}"
+						class="btn btn-sm">View Details →</a>
+				</td>
+			</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+	{% else %}
+	<p class="empty-state">No changes yet. Change history will appear here after running checks that detect changes.</p>
+	{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>{% block title %}tree-eclass Manager{% endblock %}</title>
+
+	<!-- Favicons -->
+	<link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
+	<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png">
+	<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
+	<link rel="manifest" href="/static/favicon/site.webmanifest">
+
+	<link rel="stylesheet" href="/static/style.css">
+	{% block extra_head %}{% endblock %}
+</head>
+
+<body>
+	<nav class="navbar">
+		<div class="container">
+			<a href="/" class="logo-link">
+				<h1 class="logo">🌲 tree-eclass</h1>
+			</a>
+			<ul class="nav-links">
+				<li><a href="/">History</a></li>
+				<li><a href="/courses">Courses</a></li>
+				<li><a href="/logs">Logs</a></li>
+				<li><a href="/settings">Settings</a></li>
+				<li><button id="runCheckBtn" onclick="runCheck()" class="btn btn-primary" style="margin-left: auto;">🔄
+						Run
+						Check</button></li>
+			</ul>
+		</div>
+	</nav>
+
+	<main class="container">
+		{% block content %}{% endblock %}
+	</main>
+
+	<!-- Custom Modal Dialog -->
+	<div id="customModal" class="modal">
+		<div class="modal-content">
+			<h3 id="modalTitle">Confirm Action</h3>
+			<p id="modalMessage">Are you sure?</p>
+			<div class="modal-actions">
+				<button id="modalCancel" class="btn btn-secondary">Cancel</button>
+				<button id="modalConfirm" class="btn btn-primary">Confirm</button>
+			</div>
+		</div>
+	</div>
+
+	<script src="/static/script.js"></script>
+	<script>
+		// Poll check status and update button
+		let checkStatusInterval = null;
+
+		async function updateCheckStatus() {
+			try {
+				const response = await fetch('/api/check-status');
+				const status = await response.json();
+				const btn = document.getElementById('runCheckBtn');
+
+				if (status.is_checking) {
+					btn.textContent = '⏳ Checking...';
+					btn.disabled = true;
+					// Start polling if not already polling
+					if (!checkStatusInterval) {
+						checkStatusInterval = setInterval(updateCheckStatus, 2000);
+					}
+				} else {
+					btn.textContent = '🔄 Run Check';
+					btn.disabled = false;
+					// Stop polling
+					if (checkStatusInterval) {
+						clearInterval(checkStatusInterval);
+						checkStatusInterval = null;
+					}
+				}
+			} catch (error) {
+				console.error('Error checking status:', error);
+			}
+		}
+
+		// Check status on page load
+		updateCheckStatus();
+
+		async function runCheck() {
+			const confirmed = await showModal('Run Check', 'Run check for all courses now?');
+			if (!confirmed) return;
+
+			try {
+				const response = await fetch('/run-check', { method: 'POST' });
+
+				if (response.status === 409) {
+					// Check already in progress
+					const data = await response.json();
+					window.treeEclass.showNotification('A check is already in progress. Please wait.', 'warning');
+					updateCheckStatus();
+					return;
+				}
+
+				const data = await response.json();
+				window.treeEclass.showNotification(data.message || 'Check started', 'success');
+				// Start checking status
+				updateCheckStatus();
+			} catch (error) {
+				window.treeEclass.showNotification('Error running check: ' + error.message, 'error');
+			}
+		}
+	</script>
+	{% block extra_scripts %}{% endblock %}
+</body>
+
+</html>

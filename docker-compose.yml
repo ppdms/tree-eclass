@@ -1,0 +1,20 @@
+services:
+  tree-eclass:
+    build: .
+    container_name: tree-eclass
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist database and downloads
+      - ./data:/data
+      # Mount download directories
+      - ./Downloads:/Downloads
+    environment:
+      - DB_FILE=/data/eclass.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

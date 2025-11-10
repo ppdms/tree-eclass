@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Logs - tree-eclass{% endblock %}
+
+{% block content %}
+<div class="page-header">
+	<h1>Activity Logs</h1>
+	<p class="subtitle">History of checks, emails, and system events</p>
+</div>
+
+<div class="section">
+	{% if logs %}
+	<table class="data-table">
+		<thead>
+			<tr>
+				<th>Time</th>
+				<th>Event Type</th>
+				<th>Course</th>
+				<th>Message</th>
+				<th>Status</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% for log in logs %}
+			<tr>
+				<td>{{ log.timestamp|athens_time }}</td>
+				<td>
+					<span class="log-type log-type-{{ log.log_type }}">
+						{% if log.log_type == 'check_start' %}
+						🔄 Check Start
+						{% elif log.log_type == 'check_end' %}
+						✅ Check End
+						{% elif log.log_type == 'course_check_start' %}
+						📚 Course Check Start
+						{% elif log.log_type == 'course_check_complete' %}
+						✔️ Course Check Complete
+						{% elif log.log_type == 'course_check_error' %}
+						❌ Course Error
+						{% elif log.log_type == 'email_sent' %}
+						📧 Email Sent
+						{% elif log.log_type == 'email_failed' %}
+						⚠️ Email Failed
+						{% elif log.log_type == 'check_error' %}
+						💥 Check Error
+						{% else %}
+						{{ log.log_type }}
+						{% endif %}
+					</span>
+				</td>
+				<td>
+					{% if log.course_id %}
+					<a href="/courses/{{ log.course_id }}">{{ log.course_name }}</a>
+					{% else %}
+					<span style="color: #888;">—</span>
+					{% endif %}
+				</td>
+				<td>{{ log.message }}</td>
+				<td>
+					<span class="status-badge status-{{ log.status }}">
+						{{ log.status }}
+					</span>
+				</td>
+			</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+	{% else %}
+	<p class="empty-state">No activity logs yet.</p>
+	{% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+	.subtitle {
+		color: #666;
+		margin-top: 0.5rem;
+		font-size: 0.9rem;
+	}
+
+	.log-type {
+		display: inline-block;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		font-size: 0.85rem;
+		white-space: nowrap;
+	}
+
+	.status-badge {
+		display: inline-block;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		font-size: 0.85rem;
+		text-transform: uppercase;
+		font-weight: 600;
+	}
+
+	.status-info {
+		background-color: #e3f2fd;
+		color: #1976d2;
+	}
+
+	.status-success {
+		background-color: #e8f5e9;
+		color: #388e3c;
+	}
+
+	.status-warning {
+		background-color: #fff3e0;
+		color: #f57c00;
+	}
+
+	.status-error {
+		background-color: #ffebee;
+		color: #d32f2f;
+	}
+</style>
+{% endblock %}

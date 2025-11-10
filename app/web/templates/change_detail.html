@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Change @ {{ change_record.change_no }} - tree-eclass{% endblock %}
+
+{% block content %}
+<div class="page-header">
+	<h1>📝 Change @ {{ change_record.change_no }}</h1>
+	<a href="/history?course_id={{ change_record.course_id }}" class="btn btn-secondary">← Back to History</a>
+</div>
+
+<div class="change-detail-card">
+	<div class="change-meta">
+		<div class="meta-row">
+			<span class="meta-label">Course:</span>
+			<span class="meta-value">
+				<a href="/courses/{{ change_record.course_id }}">{{ change_record.course_name }}</a>
+			</span>
+		</div>
+		<div class="meta-row">
+			<span class="meta-label">Date:</span>
+			<span class="meta-value">{{ change_record.change_no|change_no_date }}</span>
+		</div>
+		<div class="meta-row">
+			<span class="meta-label">Changes:</span>
+			<span class="meta-value">{{ change_record.message|change_counts|safe }}</span>
+		</div>
+	</div>
+</div>
+
+<div class="section">
+	<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);">
+		<h2 style="margin-bottom: 0;">Changes</h2>
+		<div class="diff-legend">
+			<span class="diff-legend-item" style="color: var(--success-color);"><strong>+</strong> Added</span>
+			<span class="diff-legend-item" style="color: var(--danger-color);"><strong>−</strong> Deleted</span>
+			<span class="diff-legend-item" style="color: var(--warning-color);"><strong>~</strong> Modified</span>
+			<span class="diff-legend-item" style="color: var(--primary-color);"><strong>±</strong> Mixed</span>
+		</div>
+	</div>
+	{% if changes %}
+	<div class="diff-tree-view" id="diff-tree-container">
+		<!-- Tree will be rendered here by JavaScript -->
+	</div>
+	{% else %}
+	<p class="empty-state">No changes detected.</p>
+	{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+	// Pass changes data to JavaScript
+	const changesData = {{ changes | tojson | safe }};
+
+	// Initialize tree view when DOM is ready
+	document.addEventListener('DOMContentLoaded', () => {
+		if (window.treeEclass && window.treeEclass.initDiffTreeView) {
+			window.treeEclass.initDiffTreeView(changesData);
+		}
+	});
+</script>
+{% endblock %}
