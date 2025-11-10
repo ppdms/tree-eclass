@@ -1,7 +1,6 @@
 target/
 __pycache__/
-*.ser
-credentials.txt
+**.pyc
 data/
 Downloads/
 **.DS_Store
