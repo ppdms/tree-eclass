@@ -137,13 +137,29 @@ class Scraper:
                     continue
 
                 if "google" in href:
-                    files.append(href)
-                    file_names.append(link_text)
+                    # Only accept actual Google Drive file links, skip folders and other Google URLs
+                    if "/drive/folders/" in href or "accounts.google.com" in href or "support.google.com" in href:
+                        logging.warning(f"Skipping non-file Google link: {href}")
+                    elif "drive.google.com/file/" in href or "drive.google.com/open" in href:
+                        # Valid Google Drive file link
+                        files.append(href)
+                        file_names.append(link_text)
+                    else:
+                        # Log other Google links for debugging
+                        logging.info(f"Skipping unrecognized Google link: {href}")
                 elif '.' in href[-6:]:
-                    files.append(href)
+                    # Check if href is already a full URL before prepending base URL
+                    if href.startswith('http://') or href.startswith('https://'):
+                        files.append(href)
+                    else:
+                        files.append(ECLASS_BASE_URL + href)
                     file_names.append(link_text)
                 elif "&download=/" not in href:
-                    directories.append(ECLASS_BASE_URL + href)
+                    # Check if href is already a full URL
+                    if href.startswith('http://') or href.startswith('https://'):
+                        directories.append(href)
+                    else:
+                        directories.append(ECLASS_BASE_URL + href)
                     directory_names.append(link_text)
 
         except requests.exceptions.RequestException as e:

@@ -4,6 +4,7 @@ Provides UI for viewing and managing courses, credentials, and file history.
 """
 import logging
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
@@ -30,6 +31,9 @@ app = FastAPI(title="tree-eclass Manager", version="1.0.0")
 
 # Global lock to prevent parallel checks
 check_lock = asyncio.Lock()
+
+# Thread pool executor for running blocking operations
+executor = ThreadPoolExecutor(max_workers=1)
 
 # Setup templates and static files
 BASE_DIR = Path(__file__).resolve().parent
@@ -455,25 +459,34 @@ async def view_change_record(request: Request, course_id: int, change_no: str):
 
 # ===== CHECKER ROUTES =====
 
+def run_checker_in_thread():
+    """Wrapper function to run checker in a thread with its own DB connection."""
+    # Create database manager in this thread
+    thread_db_manager = DatabaseManager()
+    try:
+        run_checker(thread_db_manager)
+    except Exception as e:
+        logging.error(f"Error in checker thread: {e}", exc_info=True)
+        # Make sure status is cleared on error
+        try:
+            thread_db_manager.set_check_status(False)
+        except:
+            pass
+    finally:
+        thread_db_manager.close()
+
 async def run_checker_task_async():
-    """Run checker with lock to prevent parallel execution."""
-    # Create a new database manager instance for this task
-    task_db_manager = DatabaseManager()
+    """Background task to run the checker asynchronously."""
     try:
         # Acquire the lock
         async with check_lock:
             logging.info("Starting manual check task")
-            run_checker(task_db_manager)
+            # Run the blocking checker in a thread pool to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(executor, run_checker_in_thread)
             logging.info("Manual check task completed")
     except Exception as e:
         logging.error(f"Error in background checker task: {e}", exc_info=True)
-        # Make sure status is cleared on error
-        try:
-            task_db_manager.set_check_status(False)
-        except:
-            pass
-    finally:
-        task_db_manager.close()
 
 @app.post("/run-check")
 async def run_check(background_tasks: BackgroundTasks):
@@ -491,6 +504,9 @@ async def run_check(background_tasks: BackgroundTasks):
         )
     
     try:
+        # Set the status immediately so the UI can reflect it
+        db_manager.set_check_status(True)
+        
         # Schedule the check task
         background_tasks.add_task(run_checker_task_async)
         logging.info("Manual check triggered via web interface")
@@ -500,6 +516,8 @@ async def run_check(background_tasks: BackgroundTasks):
         })
     except Exception as e:
         logging.error(f"Error triggering manual check: {e}", exc_info=True)
+        # Clear status on error
+        db_manager.set_check_status(False)
         raise HTTPException(status_code=500, detail=str(e))
 
 
