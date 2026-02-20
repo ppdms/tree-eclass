@@ -30,9 +30,9 @@ def diff_trees(previous: Optional[Node], latest: Node) -> List[str]:
     if previous is None:
         # The root itself is not reported as "added", just its contents.
         for file in latest.files:
-            changes.append(f"Added file: {os.path.join(latest.name, file.name)}")
+            changes.append(f"Added file: {os.path.join(latest.local_path, file.name)}")
         for child in latest.children:
-            changes.extend(_report_all_added(child, latest.name))
+            changes.extend(_report_all_added(child, latest.local_path))
         return changes
 
     # --- Directory Diffing ---

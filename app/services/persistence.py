@@ -1,9 +1,9 @@
 """
 Handles all database interactions for the e-class checker application.
 """
+import json
 import logging
 import sqlite3
-import pickle
 import os
 from typing import List, Dict, Tuple, Optional
 from datetime import datetime, timezone, timedelta
@@ -19,6 +19,7 @@ class DatabaseManager:
     def __init__(self, db_file=DB_FILE):
         try:
             self.conn = sqlite3.connect(db_file)
+            self.conn.execute("PRAGMA foreign_keys = ON")
             self._create_tables()
             logging.debug(f"Database connection established: {db_file}")
         except Exception as e:
@@ -103,15 +104,9 @@ class DatabaseManager:
             )
         """)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS email_config (
+            CREATE TABLE IF NOT EXISTS webhook_config (
                 id INTEGER PRIMARY KEY,
-                smtp_server TEXT,
-                smtp_port INTEGER,
-                smtp_username TEXT,
-                smtp_password TEXT,
-                from_email TEXT,
-                to_email TEXT,
-                use_tls INTEGER DEFAULT 1
+                webhook_url TEXT NOT NULL
             )
         """)
         cursor.execute("""
@@ -168,43 +163,29 @@ class DatabaseManager:
             logging.error(f"Failed to get credentials: {e}", exc_info=True)
             raise
 
-    # --- Email configuration methods ---
-    def save_email_config(self, smtp_server: str, smtp_port: int, smtp_username: str, 
-                         smtp_password: str, from_email: str, to_email: str, use_tls: bool = True):
+    # --- Webhook configuration methods ---
+    def save_webhook_config(self, webhook_url: str):
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT OR REPLACE INTO email_config 
-                (id, smtp_server, smtp_port, smtp_username, smtp_password, from_email, to_email, use_tls) 
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?)
-            """, (smtp_server, smtp_port, smtp_username, smtp_password, from_email, to_email, int(use_tls)))
+                INSERT OR REPLACE INTO webhook_config (id, webhook_url) VALUES (1, ?)
+            """, (webhook_url,))
             self.conn.commit()
-            logging.debug("Email configuration saved successfully")
+            logging.debug("Webhook configuration saved successfully")
         except Exception as e:
-            logging.error(f"Failed to save email configuration: {e}", exc_info=True)
+            logging.error(f"Failed to save webhook configuration: {e}", exc_info=True)
             raise
 
-    def get_email_config(self) -> Optional[Dict[str, any]]:
+    def get_webhook_config(self) -> Optional[Dict[str, any]]:
         try:
             cursor = self.conn.cursor()
-            cursor.execute("""
-                SELECT smtp_server, smtp_port, smtp_username, smtp_password, from_email, to_email, use_tls 
-                FROM email_config WHERE id = 1
-            """)
+            cursor.execute("SELECT webhook_url FROM webhook_config WHERE id = 1")
             row = cursor.fetchone()
             if row:
-                return {
-                    'smtp_server': row[0],
-                    'smtp_port': row[1],
-                    'smtp_username': row[2],
-                    'smtp_password': row[3],
-                    'from_email': row[4],
-                    'to_email': row[5],
-                    'use_tls': bool(row[6])
-                }
+                return {'webhook_url': row[0]}
             return None
         except Exception as e:
-            logging.error(f"Failed to get email configuration: {e}", exc_info=True)
+            logging.error(f"Failed to get webhook configuration: {e}", exc_info=True)
             raise
 
     # --- Preferences methods ---
@@ -262,17 +243,57 @@ class DatabaseManager:
 
     # --- Cookie methods ---
     def save_cookie_jar(self, cookie_jar):
-        pickled_jar = pickle.dumps(cookie_jar)
+        """Serializes cookies with all their attributes for persistent storage."""
+        cookies_list = []
+        for cookie in cookie_jar:
+            cookie_dict = {
+                'name': cookie.name,
+                'value': cookie.value,
+                'domain': cookie.domain,
+                'path': cookie.path,
+                'secure': cookie.secure,
+                'expires': cookie.expires,
+                'rest': getattr(cookie, 'rest', {}),
+            }
+            cookies_list.append(cookie_dict)
+        
+        cookie_json = json.dumps(cookies_list)
         cursor = self.conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO app_data (key, value) VALUES ('session_cookie', ?)", (pickled_jar,))
+        cursor.execute("INSERT OR REPLACE INTO app_data (key, value) VALUES ('session_cookie', ?)", (cookie_json,))
         self.conn.commit()
 
     def load_cookie_jar(self):
+        """Loads and deserializes cookies from database."""
+        from requests.cookies import RequestsCookieJar, create_cookie
+        
         cursor = self.conn.cursor()
         cursor.execute("SELECT value FROM app_data WHERE key = 'session_cookie'")
         row = cursor.fetchone()
         if row and row[0]:
-            return pickle.loads(row[0])
+            try:
+                cookies_data = json.loads(row[0])
+                if not isinstance(cookies_data, list):
+                    return None
+                
+                cookie_jar = RequestsCookieJar()
+                for cookie_dict in cookies_data:
+                    try:
+                        cookie = create_cookie(
+                            name=cookie_dict['name'],
+                            value=cookie_dict['value'],
+                            domain=cookie_dict.get('domain', ''),
+                            path=cookie_dict.get('path', '/'),
+                            secure=cookie_dict.get('secure', False),
+                            expires=cookie_dict.get('expires'),
+                            rest=cookie_dict.get('rest', {})
+                        )
+                        cookie_jar.set_cookie(cookie)
+                    except Exception:
+                        pass
+                
+                return cookie_jar if len(cookie_jar) > 0 else None
+            except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+                return None
         return None
 
     # --- Course methods ---
@@ -300,9 +321,13 @@ class DatabaseManager:
         """Delete a course and all its associated data."""
         try:
             cursor = self.conn.cursor()
-            # Explicitly delete check logs for this course
+            # Explicitly delete all child rows (in case foreign keys are not enforced)
+            cursor.execute("DELETE FROM files WHERE node_id IN (SELECT id FROM nodes WHERE course_id = ?)", (course_id,))
+            cursor.execute("DELETE FROM nodes WHERE course_id = ?", (course_id,))
+            cursor.execute("DELETE FROM change_record_items WHERE change_record_id IN (SELECT id FROM change_records WHERE course_id = ?)", (course_id,))
+            cursor.execute("DELETE FROM change_records WHERE course_id = ?", (course_id,))
+            cursor.execute("DELETE FROM change_history WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM check_logs WHERE course_id = ?", (course_id,))
-            # Delete the course (this will cascade delete nodes, files, change_history, change_records, etc.)
             cursor.execute("DELETE FROM courses WHERE id = ?", (course_id,))
             self.conn.commit()
             logging.debug(f"Deleted course ID: {course_id} and all associated data")
@@ -314,11 +339,15 @@ class DatabaseManager:
         """Reset all data for a course (tree and change history) without deleting the course itself."""
         try:
             cursor = self.conn.cursor()
+            # Delete files belonging to nodes of this course
+            cursor.execute("DELETE FROM files WHERE node_id IN (SELECT id FROM nodes WHERE course_id = ?)", (course_id,))
             # Delete the file tree
             cursor.execute("DELETE FROM nodes WHERE course_id = ?", (course_id,))
             # Delete change history
             cursor.execute("DELETE FROM change_history WHERE course_id = ?", (course_id,))
-            # Delete change records (this will cascade delete change_record_items)
+            # Delete change record items before change records
+            cursor.execute("DELETE FROM change_record_items WHERE change_record_id IN (SELECT id FROM change_records WHERE course_id = ?)", (course_id,))
+            # Delete change records
             cursor.execute("DELETE FROM change_records WHERE course_id = ?", (course_id,))
             # Delete check logs for this course
             cursor.execute("DELETE FROM check_logs WHERE course_id = ?", (course_id,))
@@ -471,6 +500,7 @@ class DatabaseManager:
                     (change_record_id, change_type, file_path)
                 )
 
+            self.conn.commit()
             logging.debug(f"Created change record {change_record_id} (change_no={change_no}) for course {course_id} with {len(changes)} changes")
             return change_record_id
         except Exception as e:

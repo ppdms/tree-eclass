@@ -2,6 +2,7 @@
 Shared tree rendering logic for both email and web interface.
 Builds hierarchical tree structures from flat file change lists.
 """
+import html as html_module
 from typing import List, Dict, Any
 
 
@@ -100,7 +101,8 @@ def _infer_change_types(node: Dict[str, Any]) -> str:
     
     # Set change type if not already set
     if not node.get('_change_type'):
-        if has_added and has_deleted:
+        type_count = sum([has_added, has_deleted, has_modified])
+        if type_count > 1:
             node['_change_type'] = 'mixed'
         elif has_added:
             node['_change_type'] = 'added_directory'
@@ -181,47 +183,44 @@ def render_tree_html(node: Dict[str, Any], indent_level: int = 0, for_email: boo
         change_type = child.get('_change_type', 'unchanged')
         icon = get_change_icon(change_type, False)
         symbol = get_change_symbol(change_type)
-        
+        safe_name = html_module.escape(name)
+
         if for_email:
-            # Email style with inline CSS (use inline colors so email clients without external CSS still show colors)
             color = get_change_color(change_type)
             html += f'<li class="tree-item {change_type}" style="margin-left: {indent_px}px; padding: 4px 0; display: flex; align-items: center; gap: 8px;">'
             html += f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>'
             html += f'<span class="icon" style="font-size: 16px; color: {color};">{icon}&nbsp;</span>'
-            html += f'<span class="path" style="flex: 1; color: {color};">{name}</span>'
+            html += f'<span class="path" style="flex: 1; color: {color};">{safe_name}</span>'
             html += '</li>\n'
         else:
-            # Web app style (uses external CSS)
             html += f'<div class="diff-tree-node diff-tree-directory {change_type}" style="margin-left: {indent_px}px;">'
             html += f'<span class="diff-tree-icon">{icon}</span>'
             html += f'<span class="diff-tree-symbol">{symbol}</span>'
-            html += f'<span class="diff-tree-name">{name}</span>'
+            html += f'<span class="diff-tree-name">{safe_name}</span>'
             html += '</div>\n'
-        
+
         # Recursively render children
         html += render_tree_html(child, indent_level + 1, for_email)
-    
+
     # Render files
     for file in sorted_files:
         change_type = file.get('_change_type', 'unchanged')
         icon = get_change_icon(change_type, True)
         symbol = get_change_symbol(change_type)
-        name = file.get('_name', '')
-        
+        safe_name = html_module.escape(file.get('_name', ''))
+
         if for_email:
-            # Email style with inline CSS (use inline colors so email clients without external CSS still show colors)
             color = get_change_color(change_type)
             html += f'<li class="tree-item {change_type}" style="margin-left: {indent_px}px; padding: 4px 0; display: flex; align-items: center; gap: 8px;">'
             html += f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>'
             html += f'<span class="icon" style="font-size: 16px; color: {color};">{icon}&nbsp;</span>'
-            html += f'<span class="path" style="flex: 1; color: {color};">{name}</span>'
+            html += f'<span class="path" style="flex: 1; color: {color};">{safe_name}</span>'
             html += '</li>\n'
         else:
-            # Web app style (uses external CSS)
             html += f'<div class="diff-tree-node diff-tree-file {change_type}" style="margin-left: {indent_px}px;">'
             html += f'<span class="diff-tree-icon">{icon}</span>'
             html += f'<span class="diff-tree-symbol">{symbol}</span>'
-            html += f'<span class="diff-tree-name">{name}</span>'
+            html += f'<span class="diff-tree-name">{safe_name}</span>'
             html += '</div>\n'
     
     return html
@@ -247,29 +246,30 @@ def render_tree_for_email(changes: List[Dict[str, str]]) -> str:
         change_type = child.get('_change_type', 'unchanged')
         icon = get_change_icon(change_type, False)
         symbol = get_change_symbol(change_type)
-        
+        safe_name = html_module.escape(name)
+
         color = get_change_color(change_type)
         html += f'<li class="tree-item {change_type}" style="padding: 4px 0; display: flex; align-items: center; gap: 8px;">'
         html += f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>'
         html += f'<span class="icon" style="font-size: 16px; color: {color};">{icon}&nbsp;</span>'
-        html += f'<span class="path" style="flex: 1; color: {color};">{name}</span>'
+        html += f'<span class="path" style="flex: 1; color: {color};">{safe_name}</span>'
         html += '</li>\n'
-        
+
         # Render children
         html += render_tree_html(child, 1, for_email=True)
-    
+
     # Render top-level files
     for file in sorted(tree.get('_files', []), key=lambda x: x['_name']):
         change_type = file.get('_change_type', 'unchanged')
         icon = get_change_icon(change_type, True)
         symbol = get_change_symbol(change_type)
-        name = file.get('_name', '')
-        
+        safe_name = html_module.escape(file.get('_name', ''))
+
         color = get_change_color(change_type)
         html += f'<li class="tree-item {change_type}" style="padding: 4px 0; display: flex; align-items: center; gap: 8px;">'
         html += f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>'
         html += f'<span class="icon" style="font-size: 16px; color: {color};">{icon}&nbsp;</span>'
-        html += f'<span class="path" style="flex: 1; color: {color};">{name}</span>'
+        html += f'<span class="path" style="flex: 1; color: {color};">{safe_name}</span>'
         html += '</li>\n'
     
     html += '</ul>\n'

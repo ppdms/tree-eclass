@@ -4,6 +4,8 @@ Provides UI for viewing and managing courses, credentials, and file history.
 """
 import logging
 import asyncio
+import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import List, Optional
@@ -29,8 +31,8 @@ logging.basicConfig(
 
 app = FastAPI(title="tree-eclass Manager", version="1.0.0")
 
-# Global lock to prevent parallel checks
-check_lock = asyncio.Lock()
+# Global lock to prevent parallel checks (threading.Lock works across threads and event loops)
+check_lock = threading.Lock()
 
 # Thread pool executor for running blocking operations
 executor = ThreadPoolExecutor(max_workers=1)
@@ -60,7 +62,6 @@ def format_datetime_athens(timestamp_str: str) -> str:
 
 def format_change_counts(message: str) -> str:
     """Format change counts with colors: + N − N ~ N"""
-    import re
     # Parse the message format: "+ 3 − 1 ~ 2"
     match = re.match(r'\+\s*(\d+)\s*−\s*(\d+)\s*~\s*(\d+)', message)
     if not match:
@@ -244,33 +245,29 @@ async def check_course(course_id: int, background_tasks: BackgroundTasks):
                 "current_course": check_status.get('course_name')
             }
         )
-    
+
     try:
         # Get course info first to validate it exists
         courses = db_manager.get_courses()
         course = next((c for c in courses if c['id'] == course_id), None)
-        
+
         if not course:
             return JSONResponse(
                 status_code=404,
                 content={"detail": f"Course ID {course_id} not found"}
             )
-        
+
         # Run the check in a background task
         def check_task():
             task_db_manager = DatabaseManager()
             try:
-                async def run_with_lock():
-                    async with check_lock:
-                        check_single_course(task_db_manager, course_id)
-                
-                import asyncio
-                asyncio.run(run_with_lock())
+                with check_lock:
+                    check_single_course(task_db_manager, course_id)
             except Exception as e:
                 logging.error(f"Error in background course check task: {e}", exc_info=True)
             finally:
                 task_db_manager.close()
-        
+
         background_tasks.add_task(check_task)
         
         return JSONResponse(content={
@@ -309,12 +306,12 @@ async def view_settings(request: Request):
     """View and edit settings (credentials, email, and preferences)."""
     try:
         credentials = db_manager.get_credentials()
-        email_config = db_manager.get_email_config()
+        webhook_config = db_manager.get_webhook_config()
         preferences = db_manager.get_preferences()
         return templates.TemplateResponse("settings.html", {
             "request": request,
             "credentials": credentials,
-            "email_config": email_config,
+            "webhook_config": webhook_config,
             "preferences": preferences
         })
     except Exception as e:
@@ -337,31 +334,17 @@ async def update_credentials(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/settings/email")
-async def update_email_config(
-    smtp_server: str = Form(...),
-    smtp_port: int = Form(...),
-    smtp_username: str = Form(""),
-    smtp_password: str = Form(""),
-    from_email: str = Form(...),
-    to_email: str = Form(...),
-    use_tls: bool = Form(True)
+@app.post("/settings/webhook")
+async def update_webhook_config(
+    webhook_url: str = Form(...)
 ):
-    """Update email configuration."""
+    """Update webhook configuration."""
     try:
-        db_manager.save_email_config(
-            smtp_server=smtp_server,
-            smtp_port=smtp_port,
-            smtp_username=smtp_username,
-            smtp_password=smtp_password,
-            from_email=from_email,
-            to_email=to_email,
-            use_tls=use_tls
-        )
-        logging.info("Updated email configuration")
+        db_manager.save_webhook_config(webhook_url=webhook_url)
+        logging.info("Updated webhook configuration")
         return RedirectResponse(url="/settings", status_code=303)
     except Exception as e:
-        logging.error(f"Error updating email configuration: {e}", exc_info=True)
+        logging.error(f"Error updating webhook configuration: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -371,8 +354,8 @@ async def update_preferences(
     max_concurrent_downloads: int = Form(3),
     request_timeout_seconds: int = Form(30),
     retry_attempts: int = Form(3),
-    notification_enabled: bool = Form(True),
-    notification_on_error: bool = Form(True)
+    notification_enabled: Optional[bool] = Form(False),
+    notification_on_error: Optional[bool] = Form(False)
 ):
     """Update application preferences."""
     try:
@@ -475,15 +458,12 @@ def run_checker_in_thread():
     finally:
         thread_db_manager.close()
 
-async def run_checker_task_async():
-    """Background task to run the checker asynchronously."""
+def run_checker_task():
+    """Background task to run the checker in a thread with lock protection."""
     try:
-        # Acquire the lock
-        async with check_lock:
+        with check_lock:
             logging.info("Starting manual check task")
-            # Run the blocking checker in a thread pool to avoid blocking the event loop
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(executor, run_checker_in_thread)
+            run_checker_in_thread()
             logging.info("Manual check task completed")
     except Exception as e:
         logging.error(f"Error in background checker task: {e}", exc_info=True)
@@ -508,7 +488,7 @@ async def run_check(background_tasks: BackgroundTasks):
         db_manager.set_check_status(True)
         
         # Schedule the check task
-        background_tasks.add_task(run_checker_task_async)
+        background_tasks.add_task(run_checker_task)
         logging.info("Manual check triggered via web interface")
         return JSONResponse({
             "status": "success",
@@ -577,7 +557,7 @@ async def api_check_status():
 
 if __name__ == "__main__":
     uvicorn.run(
-        "webapp:app",
+        "app.web.app:app",
         host="0.0.0.0",
         port=8000,
         reload=True,

@@ -48,13 +48,16 @@ class Scraper:
     def __init__(self, db_manager):
         self.db_manager = db_manager
         self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        })
         self._get_cookie()
 
     def _get_cookie(self):
         """Loads the session cookie from the database or updates it if necessary."""
         cookie_jar = self.db_manager.load_cookie_jar()
         if cookie_jar:
-            self.session.cookies.update(cookie_jar)
+            self.session.cookies = cookie_jar
         else:
             logging.info("No cookie found in database, attempting to log in.")
             self._update_cookie()
@@ -73,8 +76,26 @@ class Scraper:
             'submit': 'Είσοδος'  # "Login" in Greek
         }
         try:
-            response = self.session.post(LOGIN_URL, data=payload)
+            response = self.session.post(LOGIN_URL, data=payload, allow_redirects=True)
             response.raise_for_status()
+            
+            # Filter out cookies with empty domain
+            from requests.cookies import RequestsCookieJar
+            filtered_cookies = RequestsCookieJar()
+            for cookie in self.session.cookies:
+                if cookie.domain and cookie.domain.strip():
+                    filtered_cookies.set_cookie(cookie)
+            
+            self.session.cookies = filtered_cookies
+            
+            # Verify login was successful
+            phpsessid_found = any(cookie.name == 'PHPSESSID' for cookie in self.session.cookies)
+            if not phpsessid_found:
+                raise RuntimeError("Login failed: No PHPSESSID cookie received")
+            
+            if "login_page=1" in response.text and "uname" in response.text:
+                raise RuntimeError("Login failed: Invalid credentials or login unsuccessful")
+            
             self.db_manager.save_cookie_jar(self.session.cookies)
             logging.info("Successfully updated cookie and saved to database.")
         except requests.exceptions.RequestException as e:
@@ -92,28 +113,26 @@ class Scraper:
             response.raise_for_status()
             page_text = response.text
 
-            # 1. Check for login page
-            if "Σύνδεση" in page_text:
+            # Check for login page and re-authenticate if needed
+            if "login_page=1" in page_text and "uname" in page_text:
                 logging.info(f"Page at {url} identified as: Login Page. Re-authenticating.")
                 self._update_cookie()
-                response = self.session.get(url) # Retry once
+                response = self.session.get(url)
                 response.raise_for_status()
                 page_text = response.text
 
-                if "Σύνδεση" in page_text:
+                if "login_page=1" in page_text and "uname" in page_text:
                     logging.error(f"Authentication failed after retry for {url}.")
                     raise RuntimeError(f"Authentication failed, still on login page for URL: {url}")
 
-            # 2. Check for registration page
+            # Check for registration page
             if "Εγγραφή και είσοδος στο μάθημα" in page_text:
                 logging.warning(f"Page at {url} identified as: Course Registration Page.")
                 raise RuntimeError(f"User not registered for course at URL: {url}. Please register for the course on e-class.")
             
             soup = BeautifulSoup(page_text, 'html.parser')
 
-            # 3. Check for a valid documents page
-            # We assume it's a documents page if it contains the text "Έγγραφα" (Documents) 
-            # and does not contain the registration text.
+            # Check for a valid documents page
             if "Έγγραφα" in page_text:
                 logging.info(f"Page at {url} identified as: Documents Page.")
             else:
@@ -183,13 +202,13 @@ class Scraper:
 
         try:
             response = self.session.get(file_url, stream=True)
-            response.raise_for_status()
 
             if response.status_code == 403:
                 print(f"Access denied (403) for {file_url}, attempting cookie update and retry.", file=sys.stderr)
                 self._update_cookie()
                 response = self.session.get(file_url, stream=True)
-                response.raise_for_status()
+
+            response.raise_for_status()
 
             file_name = extract_file_name(file_url)
             destination_file = os.path.join(destination, file_name)

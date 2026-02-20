@@ -80,12 +80,12 @@ function toggleAutoRefresh() {
 // Fetch recent logs via API
 async function fetchRecentLogs() {
 	try {
-		const response = await fetch('/api/logs/recent?limit=5');
-		const logs = await response.json();
-		return logs;
+		const response = await fetch('/api/check-status');
+		const status = await response.json();
+		return status;
 	} catch (error) {
-		console.error('Error fetching logs:', error);
-		return [];
+		console.error('Error fetching status:', error);
+		return null;
 	}
 }
 

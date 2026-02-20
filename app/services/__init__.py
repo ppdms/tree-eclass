@@ -7,14 +7,14 @@ from .scraper import Scraper
 from .tree_builder import build_tree, Node, File
 from .differ import diff_trees
 from .persistence import DatabaseManager
-from .checker import run_checker, print_tree, send_email
+from .checker import run_checker, print_tree, send_webhook
 
 __all__ = [
     'Scraper',
     'build_tree',
     'diff_trees',
     'print_tree',
-    'send_email',
+    'send_webhook',
     'DatabaseManager',
     'run_checker',
     'Node',
