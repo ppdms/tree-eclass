@@ -1,15 +1,25 @@
 
 import requests
 import re
-import os
 import sys
+from typing import Optional
 from urllib.parse import unquote
 from bs4 import BeautifulSoup
 
-def download_file(file_url, destination_path):
+def download_file(file_url, destination_path, webdav_uploader=None):
     """
-    Downloads a file from a Google Drive URL.
+    Downloads a file from a Google Drive URL and uploads to WebDAV.
+    
+    Args:
+        file_url: The Google Drive URL
+        destination_path: The destination WebDAV path
+        webdav_uploader: WebDAV uploader instance (required)
+        
+    Returns:
+        Tuple of (webdav_path, md5_hash)
     """
+    from app.services.scraper import compute_md5, compute_md5_from_bytes
+    
     file_id = extract_file_id(file_url)
     resource_key = extract_resource_key(file_url)
     auth_user = extract_auth_user(file_url)
@@ -24,15 +34,20 @@ def download_file(file_url, destination_path):
         r.raise_for_status()
         
         file_name = get_file_name(r, file_url)
-        destination_file_path = os.path.join(destination_path, file_name)
-
-        os.makedirs(destination_path, exist_ok=True)
-
-        with open(destination_file_path, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-    
-    return destination_file_path
+        
+        # WebDAV is required
+        if not webdav_uploader or not webdav_uploader.is_configured():
+            raise RuntimeError("WebDAV must be configured to download files")
+        
+        # Download to memory first, compute MD5, then upload
+        file_data = b''
+        for chunk in r.iter_content(chunk_size=8192):
+            file_data += chunk
+        
+        md5_hash = compute_md5_from_bytes(file_data)
+        webdav_path = webdav_uploader.upload_file(file_data, destination_path, file_name)
+        
+        return webdav_path, md5_hash
 
 def extract_file_id(url):
     """

@@ -3,9 +3,7 @@ Main entry point for the tree-eclass checker application.
 Orchestrates the scraping, diffing, and notification process.
 """
 import logging
-import os
 import re
-import shutil
 import sys
 import time
 from datetime import datetime
@@ -16,6 +14,7 @@ import requests
 from app.services import differ, tree_builder
 from app.services.persistence import DatabaseManager
 from app.services.scraper import Scraper, COURSE_URL_TEMPLATE
+from app.services.webdav_uploader import WebDAVUploader
 
 
 # Tree printing functions
@@ -165,18 +164,12 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
     """
     course_id = course['id']
     course_name = course['name']
-    download_folder = course['download_folder']
+    webdav_folder = course['webdav_folder']
     url = COURSE_URL_TEMPLATE.format(course_id)
     
     try:
         logging.info(f"Processing course '{course_name}' (ID: {course_id}) at URL: {url}")
-        
-        # Clean download folder
-        if os.path.exists(download_folder):
-            try:
-                shutil.rmtree(download_folder)
-            except Exception as e:
-                logging.error(f"Failed to clean download folder {download_folder}: {e}", exc_info=True)
+        logging.info(f"Using WebDAV folder: {webdav_folder}")
         
         # Load previous tree from database
         try:
@@ -187,7 +180,7 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
         
         # Build new tree
         try:
-            new_root = tree_builder.build_tree(scraper_instance, url, download_folder, course_name, old_root)
+            new_root = tree_builder.build_tree(scraper_instance, url, webdav_folder, course_name, old_root)
         except Exception as e:
             logging.error(f"Failed to build tree for course {course_name}: {e}", exc_info=True)
             return [], False
@@ -242,7 +235,21 @@ def run_checker(db_manager: DatabaseManager):
             db_manager.set_check_status(False)
             return
 
-        scraper_instance = Scraper(db_manager)
+        # Initialize WebDAV uploader (required)
+        webdav_config = db_manager.get_webdav_config()
+        if not webdav_config:
+            raise RuntimeError("WebDAV must be configured to check courses")
+        
+        try:
+            webdav_uploader = WebDAVUploader(webdav_config)
+            if not webdav_uploader.test_connection():
+                raise RuntimeError("WebDAV connection test failed")
+            logging.info("WebDAV connection established")
+        except Exception as e:
+            logging.error(f"Failed to initialize WebDAV uploader: {e}", exc_info=True)
+            raise RuntimeError(f"WebDAV is required but not available: {e}")
+
+        scraper_instance = Scraper(db_manager, webdav_uploader)
         all_changes = {}
 
         for course in courses:
@@ -296,7 +303,25 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
         logging.info(f"Checking course '{course_name}' (ID: {course_id})")
         db_manager.log_check_event("course_check_start", f"Checking course: {course_name}", course_id=course_id, status="info")
         
-        scraper_instance = Scraper(db_manager)
+        # Initialize WebDAV uploader (required)
+        webdav_config = db_manager.get_webdav_config()
+        if not webdav_config:
+            db_manager.log_check_event("course_check_error", "WebDAV must be configured", course_id=course_id, status="error")
+            db_manager.set_check_status(False)
+            return {"success": False, "error": "WebDAV must be configured to check courses"}
+        
+        try:
+            webdav_uploader = WebDAVUploader(webdav_config)
+            if not webdav_uploader.test_connection():
+                raise RuntimeError("WebDAV connection test failed")
+            logging.info("WebDAV connection established")
+        except Exception as e:
+            logging.error(f"Failed to initialize WebDAV uploader: {e}", exc_info=True)
+            db_manager.log_check_event("course_check_error", f"WebDAV connection failed: {e}", course_id=course_id, status="error")
+            db_manager.set_check_status(False)
+            return {"success": False, "error": f"WebDAV is required but not available: {e}"}
+        
+        scraper_instance = Scraper(db_manager, webdav_uploader)
         
         # Process the course using shared logic
         changes, success = process_course(db_manager, course, scraper_instance)

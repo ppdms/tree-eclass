@@ -32,6 +32,7 @@
 	<div>
 		<a href="/courses" class="btn btn-secondary">← Back to Courses</a>
 		<a href="/history?course_id={{ course.id }}" class="btn btn-secondary">View History</a>
+		<button onclick="toggleEditForm()" class="btn btn-secondary">✏️ Edit Details</button>
 		<form method="POST" action="/courses/{{ course.id }}/reset" style="display: inline;"
 			onsubmit="return handleConfirm(event, 'Reset Course Data', 'Reset all data for this course? This will clear the file tree and change history but keep the course configuration.');">
 			<button type="submit" class="btn btn-warning">🔄 Reset Data</button>
@@ -46,12 +47,40 @@
 		<dd>{{ course.id }}</dd>
 		<dt>Name:</dt>
 		<dd>{{ course.name }}</dd>
-		<dt>Download Folder:</dt>
-		<dd><code>{{ course.download_folder }}</code></dd>
+		<dt>WebDAV Folder:</dt>
+		<dd>
+			{% if course.webdav_folder %}
+			<code>{{ course.webdav_folder }}</code>
+			{% else %}
+			<span class="text-muted">Not configured</span>
+			{% endif %}
+		</dd>
 		<dt>URL:</dt>
 		<dd><a href="https://eclass.aueb.gr/modules/document/index.php?course=INF{{ course.id }}" target="_blank">View
 				on e-class</a></dd>
 	</dl>
+</div>
+
+<div id="editCourseForm" class="form-card" style="display: none; margin-top: 1rem;">
+	<h3>Edit Course Settings</h3>
+	<form method="POST" action="/courses/{{ course.id }}/update">
+		<div class="form-group">
+			<label for="name">Course Name</label>
+			<input type="text" id="name" name="name" required value="{{ course.name }}">
+		</div>
+		<div class="form-group">
+			<label for="webdav_folder">WebDAV Folder</label>
+			<input type="text" id="webdav_folder" name="webdav_folder" required
+				value="{% if course.webdav_folder %}{{ course.webdav_folder }}{% endif %}"
+				placeholder="e.g., ~/Algorithms or /courses/Algorithms">
+			<small>Use ~ for base path from settings, / for WebDAV root. Examples: ~/Algorithms,
+				/courses/Algorithms</small>
+		</div>
+		<div class="form-actions">
+			<button type="submit" class="btn btn-primary">Save Changes</button>
+			<button type="button" onclick="toggleEditForm()" class="btn btn-secondary">Cancel</button>
+		</div>
+	</form>
 </div>
 
 <div class="section">
@@ -81,26 +110,15 @@
 	<p class="empty-state">No file tree available. Run a check to build the tree.</p>
 	{% endif %}
 </div>
-
-<div class="form-card">
-	<h3>Update Course</h3>
-	<form method="POST" action="/courses/{{ course.id }}/update">
-		<div class="form-group">
-			<label for="name">Course Name</label>
-			<input type="text" id="name" name="name" value="{{ course.name }}" required>
-		</div>
-		<div class="form-group">
-			<label for="download_folder">Download Folder</label>
-			<input type="text" id="download_folder" name="download_folder" value="{{ course.download_folder }}"
-				required>
-		</div>
-		<button type="submit" class="btn btn-primary">Update Course</button>
-	</form>
-</div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
+	function toggleEditForm() {
+		const form = document.getElementById('editCourseForm');
+		form.style.display = form.style.display === 'none' ? 'block' : 'none';
+	}
+
 	async function handleConfirm(event, title, message) {
 		event.preventDefault();
 		const confirmed = await showModal(title, message);

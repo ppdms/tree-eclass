@@ -25,17 +25,31 @@ class Node:
     """Represents a directory (a node) in the course content tree."""
     name: str
     url: str
-    local_path: str
+    local_path: str  # Note: This is actually the WebDAV path, kept as local_path for DB compatibility
     children: List['Node'] = field(default_factory=list)
     files: List[File] = field(default_factory=list)
 
-def build_tree(scraper: Scraper, url: str, local_path: str, name: str, old_root: Optional[Node]) -> Node:
-    """Recursively builds the Node tree for a given course URL using the new data model."""
+def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str, old_root: Optional[Node]) -> Node:
+    """Recursively builds the Node tree for a given course URL.
+    
+    Args:
+        scraper: The scraper instance with WebDAV configured
+        url: The course URL to scrape
+        webdav_path: The WebDAV destination path for this node
+        name: The name of this node
+        old_root: Previous tree state for comparison
+        
+    Returns:
+        Root Node of the built tree
+    """
     logging.info(f"Building tree for URL: {url}")
-    os.makedirs(local_path, exist_ok=True)
+    
+    # WebDAV is required
+    if not scraper.webdav_uploader or not scraper.webdav_uploader.is_configured():
+        raise RuntimeError("WebDAV must be configured to build tree")
 
     # Create the node for the current directory
-    current_node = Node(name=name, url=url, local_path=local_path)
+    current_node = Node(name=name, url=url, local_path=webdav_path)
 
     # Get links from the scraper
     file_urls, dir_urls, file_names, dir_names = scraper.get_links(url)
@@ -52,16 +66,13 @@ def build_tree(scraper: Scraper, url: str, local_path: str, name: str, old_root:
         etag = None
 
         if "google" in file_url:
-            downloaded_path = scraper.download_file(file_url, local_path)
-            if downloaded_path:
-                file_hash = compute_md5(downloaded_path)
+            # Google Drive files: always download and compute hash
+            downloaded_path, file_hash = scraper.download_file(file_url, local_path)
         else:
             etag = scraper.fetch_etag(file_url)
             # Download if new, or etag has changed
             if not old_file or not etag or old_file.etag != etag:
-                downloaded_path = scraper.download_file(file_url, local_path)
-                if downloaded_path:
-                    file_hash = compute_md5(downloaded_path)
+                downloaded_path, file_hash = scraper.download_file(file_url, local_path)
             else:
                 # Keep old hash and etag if file is not re-downloaded
                 file_hash = old_file.md5_hash

@@ -182,11 +182,11 @@ async def view_course(request: Request, course_id: int):
 async def add_course(
     course_id: int = Form(...),
     name: str = Form(...),
-    download_folder: str = Form(...)
+    webdav_folder: str = Form(...)
 ):
     """Add a new course."""
     try:
-        db_manager.save_course(course_id, name, download_folder)
+        db_manager.save_course(course_id, name, webdav_folder)
         logging.info(f"Added course: {name} (ID: {course_id})")
         return RedirectResponse(url="/courses", status_code=303)
     except Exception as e:
@@ -222,11 +222,11 @@ async def reset_course(course_id: int):
 async def update_course(
     course_id: int,
     name: str = Form(...),
-    download_folder: str = Form(...)
+    webdav_folder: str = Form(...)
 ):
     """Update a course."""
     try:
-        db_manager.save_course(course_id, name, download_folder)
+        db_manager.save_course(course_id, name, webdav_folder)
         logging.info(f"Updated course: {name} (ID: {course_id})")
         return RedirectResponse(url=f"/courses/{course_id}", status_code=303)
     except Exception as e:
@@ -310,11 +310,13 @@ async def view_settings(request: Request):
     try:
         credentials = db_manager.get_credentials()
         webhook_config = db_manager.get_webhook_config()
+        webdav_config = db_manager.get_webdav_config()
         preferences = db_manager.get_preferences()
         return templates.TemplateResponse("settings.html", {
             "request": request,
             "credentials": credentials,
             "webhook_config": webhook_config,
+            "webdav_config": webdav_config,
             "preferences": preferences
         })
     except Exception as e:
@@ -348,6 +350,31 @@ async def update_webhook_config(
         return RedirectResponse(url="/settings", status_code=303)
     except Exception as e:
         logging.error(f"Error updating webhook configuration: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/settings/webdav")
+async def update_webdav_config(
+    webdav_hostname: str = Form(...),
+    webdav_username: str = Form(...),
+    webdav_password: str = Form(...),
+    webdav_base_path: str = Form(""),
+    webdav_disable_check: Optional[bool] = Form(False)
+):
+    """Update WebDAV configuration."""
+    try:
+        db_manager.save_webdav_config(
+            hostname=webdav_hostname,
+            username=webdav_username,
+            password=webdav_password,
+            base_path=webdav_base_path,
+            disable_check=webdav_disable_check,
+            timeout=30
+        )
+        logging.info("Updated WebDAV configuration")
+        return RedirectResponse(url="/settings", status_code=303)
+    except Exception as e:
+        logging.error(f"Error updating WebDAV configuration: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

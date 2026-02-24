@@ -5,6 +5,7 @@ import hashlib
 import logging
 import os
 import sys
+from typing import Optional
 from urllib.parse import urlparse, unquote
 import requests
 from bs4 import BeautifulSoup
@@ -28,26 +29,39 @@ def compute_md5(file_path: str) -> str:
         raise RuntimeError(f"Failed to compute MD5 hash for file: {file_path}")
 
 
+def compute_md5_from_bytes(data: bytes) -> str:
+    """Computes the MD5 hash from bytes."""
+    hash_md5 = hashlib.md5()
+    hash_md5.update(data)
+    return hash_md5.hexdigest()
+
+
 def extract_file_name(file_url: str) -> str:
     """Extracts a filename from a URL."""
     path = urlparse(file_url).path
     return unquote(os.path.basename(path))
 
 
-def download_google_drive_file(file_url: str, destination: str) -> str:
-    """Downloads a file from Google Drive."""
+def download_google_drive_file(file_url: str, destination: str, webdav_uploader=None) -> tuple[str, Optional[str]]:
+    """
+    Downloads a file from Google Drive and uploads to WebDAV.
+    
+    Returns:
+        Tuple of (webdav_path, md5_hash)
+    """
     from app.services import google_drive_downloader
     try:
-        return google_drive_downloader.download_file(file_url, destination)
+        return google_drive_downloader.download_file(file_url, destination, webdav_uploader)
     except Exception as e:
         raise RuntimeError(f"Failed to download Google Drive file: {file_url} - {e}")
 
 class Scraper:
     """Manages a session and scrapes content from the e-class website."""
 
-    def __init__(self, db_manager):
+    def __init__(self, db_manager, webdav_uploader=None):
         self.db_manager = db_manager
         self.session = requests.Session()
+        self.webdav_uploader = webdav_uploader
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         })
@@ -195,10 +209,19 @@ class Scraper:
         except requests.exceptions.RequestException:
             return None
 
-    def download_file(self, file_url: str, destination: str) -> str:
-        """Downloads a file from a URL to a destination path."""
+    def download_file(self, file_url: str, destination: str) -> tuple[str, Optional[str]]:
+        """
+        Downloads a file from a URL and uploads to WebDAV.
+        
+        Args:
+            file_url: The URL of the file to download
+            destination: The destination WebDAV path
+        
+        Returns:
+            Tuple of (webdav_path, md5_hash)
+        """
         if "google" in file_url:
-            return download_google_drive_file(file_url, destination)
+            return download_google_drive_file(file_url, destination, self.webdav_uploader)
 
         try:
             response = self.session.get(file_url, stream=True)
@@ -211,14 +234,20 @@ class Scraper:
             response.raise_for_status()
 
             file_name = extract_file_name(file_url)
-            destination_file = os.path.join(destination, file_name)
-            os.makedirs(destination, exist_ok=True)
-
-            with open(destination_file, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
             
-            return destination_file
+            # WebDAV is required
+            if not self.webdav_uploader or not self.webdav_uploader.is_configured():
+                raise RuntimeError("WebDAV must be configured to download files")
+            
+            # Download to memory first, compute MD5, then upload
+            file_data = b''
+            for chunk in response.iter_content(chunk_size=8192):
+                file_data += chunk
+            
+            md5_hash = compute_md5_from_bytes(file_data)
+            webdav_path = self.webdav_uploader.upload_file(file_data, destination, file_name)
+            
+            return webdav_path, md5_hash
 
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Failed to download file: {file_url} - {e}")

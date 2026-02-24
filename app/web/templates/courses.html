@@ -21,9 +21,11 @@
 			<input type="text" id="name" name="name" required placeholder="e.g., Algorithms">
 		</div>
 		<div class="form-group">
-			<label for="download_folder">Download Folder</label>
-			<input type="text" id="download_folder" name="download_folder" required
-				placeholder="e.g., /Downloads/Algorithms">
+			<label for="webdav_folder">WebDAV Folder</label>
+			<input type="text" id="webdav_folder" name="webdav_folder" required
+				placeholder="e.g., ~/Algorithms or /courses/Algorithms">
+			<small>Use ~ for base path from settings, / for WebDAV root. Examples: ~/Algorithms,
+				/courses/Algorithms</small>
 		</div>
 		<div class="form-actions">
 			<button type="submit" class="btn btn-primary">Add Course</button>
@@ -34,12 +36,11 @@
 
 <div class="section">
 	{% if courses %}
-	<table class="data-table">
+	<table class="data-table courses-table">
 		<thead>
 			<tr>
 				<th>ID</th>
 				<th>Name</th>
-				<th>Download Folder</th>
 				<th>Actions</th>
 			</tr>
 		</thead>
@@ -48,7 +49,6 @@
 			<tr>
 				<td>{{ course.id }}</td>
 				<td>{{ course.name }}</td>
-				<td><code>{{ course.download_folder }}</code></td>
 				<td>
 					<a href="/courses/{{ course.id }}" class="btn btn-sm">View</a>
 					<a href="/history?course_id={{ course.id }}" class="btn btn-sm">History</a>

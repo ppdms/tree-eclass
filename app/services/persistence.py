@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from app.services.tree_builder import Node, File
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
+SCHEMA_VERSION = 3  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -21,6 +22,7 @@ class DatabaseManager:
             self.conn = sqlite3.connect(db_file)
             self.conn.execute("PRAGMA foreign_keys = ON")
             self._create_tables()
+            self._run_migrations()
             logging.debug(f"Database connection established: {db_file}")
         except Exception as e:
             logging.error(f"Failed to initialize database: {e}", exc_info=True)
@@ -29,6 +31,16 @@ class DatabaseManager:
     def _create_tables(self):
         """Creates all necessary tables if they don't already exist."""
         cursor = self.conn.cursor()
+        
+        # Schema version tracking table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                version INTEGER NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS credentials (
                 id INTEGER PRIMARY KEY,
@@ -46,7 +58,7 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS courses (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
-                download_folder TEXT NOT NULL
+                webdav_folder TEXT NOT NULL
             )
         """)
         cursor.execute("""
@@ -56,7 +68,7 @@ class DatabaseManager:
                 parent_id INTEGER,
                 name TEXT NOT NULL,
                 url TEXT NOT NULL,
-                local_path TEXT NOT NULL,
+                local_path TEXT NOT NULL,  -- WebDAV path (kept as local_path for backward compatibility)
                 FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE,
                 FOREIGN KEY (parent_id) REFERENCES nodes (id) ON DELETE CASCADE
             )
@@ -110,6 +122,17 @@ class DatabaseManager:
             )
         """)
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS webdav_config (
+                id INTEGER PRIMARY KEY,
+                hostname TEXT NOT NULL,
+                username TEXT NOT NULL,
+                password TEXT NOT NULL,
+                base_path TEXT DEFAULT '',
+                disable_check INTEGER DEFAULT 0,
+                timeout INTEGER DEFAULT 30
+            )
+        """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS preferences (
                 id INTEGER PRIMARY KEY,
                 check_interval_minutes INTEGER DEFAULT 60,
@@ -141,6 +164,98 @@ class DatabaseManager:
             )
         """)
         self.conn.commit()
+
+    def _get_schema_version(self) -> int:
+        """Get current schema version from database."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT version FROM schema_version WHERE id = 1")
+            result = cursor.fetchone()
+            return result[0] if result else 1  # Default to version 1 if not set
+        except sqlite3.OperationalError:
+            # Table doesn't exist yet, must be version 1
+            return 1
+
+    def _set_schema_version(self, version: int):
+        """Update schema version in database."""
+        cursor = self.conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO schema_version (id, version) VALUES (1, ?)", (version,))
+        self.conn.commit()
+        logging.info(f"Schema version updated to {version}")
+
+    def _run_migrations(self):
+        """Run database migrations to bring schema up to current version."""
+        current_version = self._get_schema_version()
+        
+        if current_version == SCHEMA_VERSION:
+            logging.debug(f"Database schema is up to date (version {SCHEMA_VERSION})")
+            return
+        
+        logging.info(f"Running migrations from version {current_version} to {SCHEMA_VERSION}")
+        
+        # Run migrations sequentially
+        if current_version < 2:
+            self._migration_1_to_2()
+            self._set_schema_version(2)
+        
+        if current_version < 3:
+            self._migration_2_to_3()
+            self._set_schema_version(3)
+        
+        logging.info("All migrations completed successfully")
+
+    def _migration_1_to_2(self):
+        """Migration: Add webdav_folder column to courses table."""
+        logging.info("Running migration 1 -> 2: Adding webdav_folder column")
+        cursor = self.conn.cursor()
+        
+        # Check if column already exists
+        cursor.execute("PRAGMA table_info(courses)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'webdav_folder' not in columns:
+            cursor.execute("ALTER TABLE courses ADD COLUMN webdav_folder TEXT")
+            self.conn.commit()
+            logging.info("Added webdav_folder column to courses table")
+        else:
+            logging.debug("webdav_folder column already exists, skipping")
+
+    def _migration_2_to_3(self):
+        """Migration: Remove download_folder column, make webdav_folder required."""
+        logging.info("Running migration 2 -> 3: Removing download_folder column")
+        cursor = self.conn.cursor()
+        
+        # Check current table structure
+        cursor.execute("PRAGMA table_info(courses)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'download_folder' in columns:
+            # SQLite doesn't support DROP COLUMN, so we need to recreate the table
+            logging.info("Recreating courses table without download_folder")
+            
+            # Copy data to temporary table, using webdav_folder if available, else download_folder
+            cursor.execute("""
+                CREATE TABLE courses_new (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    webdav_folder TEXT NOT NULL
+                )
+            """)
+            
+            cursor.execute("""
+                INSERT INTO courses_new (id, name, webdav_folder)
+                SELECT id, name, COALESCE(webdav_folder, download_folder)
+                FROM courses
+            """)
+            
+            # Drop old table and rename new one
+            cursor.execute("DROP TABLE courses")
+            cursor.execute("ALTER TABLE courses_new RENAME TO courses")
+            
+            self.conn.commit()
+            logging.info("Successfully removed download_folder column from courses table")
+        else:
+            logging.debug("download_folder column does not exist, skipping")
 
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
@@ -186,6 +301,45 @@ class DatabaseManager:
             return None
         except Exception as e:
             logging.error(f"Failed to get webhook configuration: {e}", exc_info=True)
+            raise
+
+    # --- WebDAV configuration methods ---
+    def save_webdav_config(self, hostname: str, username: str, password: str, 
+                           base_path: str = '', disable_check: bool = False, 
+                           timeout: int = 30):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO webdav_config 
+                (id, hostname, username, password, base_path, disable_check, timeout) 
+                VALUES (1, ?, ?, ?, ?, ?, ?)
+            """, (hostname, username, password, base_path, int(disable_check), timeout))
+            self.conn.commit()
+            logging.debug("WebDAV configuration saved successfully")
+        except Exception as e:
+            logging.error(f"Failed to save WebDAV configuration: {e}", exc_info=True)
+            raise
+
+    def get_webdav_config(self) -> Optional[Dict[str, any]]:
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT hostname, username, password, base_path, disable_check, timeout 
+                FROM webdav_config WHERE id = 1
+            """)
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'hostname': row[0],
+                    'username': row[1],
+                    'password': row[2],
+                    'base_path': row[3],
+                    'disable_check': bool(row[4]),
+                    'timeout': row[5]
+                }
+            return None
+        except Exception as e:
+            logging.error(f"Failed to get WebDAV configuration: {e}", exc_info=True)
             raise
 
     # --- Preferences methods ---
@@ -297,10 +451,11 @@ class DatabaseManager:
         return None
 
     # --- Course methods ---
-    def save_course(self, course_id: int, name: str, download_folder: str):
+    def save_course(self, course_id: int, name: str, webdav_folder: str):
         try:
             cursor = self.conn.cursor()
-            cursor.execute("INSERT OR REPLACE INTO courses (id, name, download_folder) VALUES (?, ?, ?)", (course_id, name, download_folder))
+            cursor.execute("INSERT OR REPLACE INTO courses (id, name, webdav_folder) VALUES (?, ?, ?)", 
+                          (course_id, name, webdav_folder))
             self.conn.commit()
             logging.debug(f"Saved course: {name} (ID: {course_id})")
         except Exception as e:
@@ -310,9 +465,9 @@ class DatabaseManager:
     def get_courses(self) -> List[Dict]:
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT id, name, download_folder FROM courses")
+            cursor.execute("SELECT id, name, webdav_folder FROM courses")
             rows = cursor.fetchall()
-            return [{"id": row[0], "name": row[1], "download_folder": row[2]} for row in rows]
+            return [{"id": row[0], "name": row[1], "webdav_folder": row[2]} for row in rows]
         except Exception as e:
             logging.error(f"Failed to get courses: {e}", exc_info=True)
             raise

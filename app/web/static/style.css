@@ -399,6 +399,23 @@ main.container {
 	font-family: 'Roboto Mono', 'Consolas', 'DejaVu Sans Mono', monospace;
 }
 
+/* Courses Table - 3 columns */
+.courses-table th:nth-child(1),
+.courses-table td:nth-child(1) {
+	width: 8%;
+}
+
+.courses-table th:nth-child(2),
+.courses-table td:nth-child(2) {
+	width: 25%;
+}
+
+.courses-table th:nth-child(3),
+.courses-table td:nth-child(3) {
+	width: 67%;
+	text-align: right;
+}
+
 /* Tree View */
 .tree-view {
 	background: var(--surface);
@@ -757,6 +774,10 @@ footer a:hover {
 
 .info-card p:last-child {
 	margin-bottom: 0;
+}
+
+.info-card>.btn {
+	margin-top: var(--spacing-md);
 }
 
 /* Responsive */

@@ -113,9 +113,9 @@ function toggleTreeNode(element) {
 function validateCourseForm(form) {
 	const courseId = form.querySelector('#course_id').value;
 	const name = form.querySelector('#name').value;
-	const downloadFolder = form.querySelector('#download_folder').value;
+	const webdavFolder = form.querySelector('#webdav_folder').value;
 
-	if (!courseId || !name || !downloadFolder) {
+	if (!courseId || !name || !webdavFolder) {
 		alert('Please fill in all fields');
 		return false;
 	}
