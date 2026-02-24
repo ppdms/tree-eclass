@@ -14,6 +14,9 @@
 		<div class="tree-file" style="margin-left: {{ (level + 1) * 20 }}px;">
 			<span class="tree-icon">📄</span>
 			<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
+			{% if file.last_updated %}
+			<span class="file-date" style="color: #64748b; font-size: 0.85em; margin-left: 8px;">{{ file.last_updated|format_timestamp }}</span>
+			{% endif %}
 		</div>
 		{% endfor %}
 	</div>
@@ -96,6 +99,9 @@
 				<div class="tree-file">
 					<span class="tree-icon">📄</span>
 					<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
+					{% if file.last_updated %}
+				<span class="file-date" style="color: #64748b; font-size: 0.85em; margin-left: 8px;">{{ file.last_updated|format_timestamp }}</span>
+					{% endif %}
 				</div>
 				{% endfor %}
 				{% endif %}

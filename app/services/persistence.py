@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from app.services.tree_builder import Node, File
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 3  # Current schema version
+SCHEMA_VERSION = 4  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -202,6 +202,10 @@ class DatabaseManager:
             self._migration_2_to_3()
             self._set_schema_version(3)
         
+        if current_version < 4:
+            self._migration_3_to_4()
+            self._set_schema_version(4)
+        
         logging.info("All migrations completed successfully")
 
     def _migration_1_to_2(self):
@@ -256,6 +260,22 @@ class DatabaseManager:
             logging.info("Successfully removed download_folder column from courses table")
         else:
             logging.debug("download_folder column does not exist, skipping")
+
+    def _migration_3_to_4(self):
+        """Migration: Add last_updated column to files table."""
+        logging.info("Running migration 3 -> 4: Adding last_updated column to files table")
+        cursor = self.conn.cursor()
+        
+        # Check if column already exists
+        cursor.execute("PRAGMA table_info(files)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'last_updated' not in columns:
+            cursor.execute("ALTER TABLE files ADD COLUMN last_updated DATETIME")
+            self.conn.commit()
+            logging.info("Added last_updated column to files table")
+        else:
+            logging.debug("last_updated column already exists, skipping")
 
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
@@ -526,8 +546,8 @@ class DatabaseManager:
 
             for file in node.files:
                 cursor.execute(
-                    "INSERT INTO files (node_id, url, name, md5_hash, etag) VALUES (?, ?, ?, ?, ?)",
-                    (current_db_id, file.url, file.name, file.md5_hash, file.etag)
+                    "INSERT INTO files (node_id, url, name, md5_hash, etag, last_updated) VALUES (?, ?, ?, ?, ?, ?)",
+                    (current_db_id, file.url, file.name, file.md5_hash, file.etag, file.last_updated)
                 )
 
             for child_node in node.children:
@@ -571,12 +591,12 @@ class DatabaseManager:
                 child_node = node_objects[db_id]
                 parent_node.children.append(child_node)
 
-        cursor.execute("SELECT node_id, url, name, md5_hash, etag FROM files WHERE node_id IN ({seq})".format(
+        cursor.execute("SELECT node_id, url, name, md5_hash, etag, last_updated FROM files WHERE node_id IN ({seq})".format(
             seq=','.join(['?']*len(node_objects))), list(node_objects.keys()))
         
-        for node_id, url, name, md5_hash, etag in cursor.fetchall():
+        for node_id, url, name, md5_hash, etag, last_updated in cursor.fetchall():
             if node_id in node_objects:
-                node_objects[node_id].files.append(File(url=url, name=name, md5_hash=md5_hash, etag=etag))
+                node_objects[node_id].files.append(File(url=url, name=name, md5_hash=md5_hash, etag=etag, last_updated=last_updated))
 
         return root_node
 

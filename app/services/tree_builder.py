@@ -6,6 +6,7 @@ import os
 from typing import Optional
 from dataclasses import dataclass, field
 from typing import List
+from datetime import datetime, timezone
 
 from app.services.scraper import Scraper, compute_md5
 
@@ -18,6 +19,7 @@ class File:
     name: str
     md5_hash: Optional[str] = None
     etag: Optional[str] = None
+    last_updated: Optional[str] = None  # ISO 8601 timestamp when file was last added/modified
 
 
 @dataclass
@@ -64,21 +66,25 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str, old_root
         
         file_hash = None
         etag = None
+        last_updated = None
 
         if "google" in file_url:
             # Google Drive files: always download and compute hash
-            downloaded_path, file_hash = scraper.download_file(file_url, local_path)
+            downloaded_path, file_hash = scraper.download_file(file_url, webdav_path)
+            last_updated = datetime.now(timezone.utc).isoformat()
         else:
             etag = scraper.fetch_etag(file_url)
             # Download if new, or etag has changed
             if not old_file or not etag or old_file.etag != etag:
-                downloaded_path, file_hash = scraper.download_file(file_url, local_path)
+                downloaded_path, file_hash = scraper.download_file(file_url, webdav_path)
+                last_updated = datetime.now(timezone.utc).isoformat()
             else:
-                # Keep old hash and etag if file is not re-downloaded
+                # Keep old hash, etag, and timestamp if file is not re-downloaded
                 file_hash = old_file.md5_hash
                 etag = old_file.etag
+                last_updated = old_file.last_updated
         
-        current_node.files.append(File(url=file_url, name=file_name, md5_hash=file_hash, etag=etag))
+        current_node.files.append(File(url=file_url, name=file_name, md5_hash=file_hash, etag=etag, last_updated=last_updated))
 
     # Create a map of old child directories for efficient lookup
     old_children_map = {c.name: c for c in old_root.children} if old_root else {}
@@ -86,7 +92,7 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str, old_root
     # Process directories recursively
     for i, dir_url in enumerate(dir_urls):
         dir_name = dir_names[i]
-        child_local_path = os.path.join(local_path, dir_name)
+        child_local_path = os.path.join(webdav_path, dir_name)
         old_child_node = old_children_map.get(dir_name)
         
         child_node = build_tree(scraper, dir_url, child_local_path, dir_name, old_child_node)

@@ -94,9 +94,28 @@ def format_change_no_date(change_no: str) -> str:
         logging.warning(f"Failed to parse change_no {change_no}: {e}")
         return change_no
 
+def format_timestamp(timestamp_str: str) -> str:
+    """Format ISO timestamp to concise date format for file tree display."""
+    if not timestamp_str:
+        return ""
+    try:
+        # Parse the timestamp (ISO 8601 format)
+        dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        # If no timezone info, assume UTC
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+        # Convert to Athens timezone for display
+        athens_dt = dt.astimezone(ZoneInfo("Europe/Athens"))
+        # Format: "Feb 24, 2026"
+        return athens_dt.strftime("%b %d, %Y")
+    except Exception as e:
+        logging.warning(f"Failed to format timestamp {timestamp_str}: {e}")
+        return ""
+
 templates.env.filters["athens_time"] = format_datetime_athens
 templates.env.filters["change_counts"] = format_change_counts
 templates.env.filters["change_no_date"] = format_change_no_date
+templates.env.filters["format_timestamp"] = format_timestamp
 
 # Create static directory if it doesn't exist
 static_dir = BASE_DIR / "static"
