@@ -7,7 +7,6 @@ import os
 import re
 import shutil
 import sys
-import threading
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -342,29 +341,3 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
         }
 
 
-def main():
-    """Sets up and runs the scheduled checker."""
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[logging.StreamHandler()]
-    )
-    
-    try:
-        db_manager = DatabaseManager()
-        
-        def scheduled_run():
-            run_checker(db_manager)
-            # Schedule the next run
-            threading.Timer(3600, scheduled_run).start()
-
-        print("tree-eclass checker started. Scheduled tasks running in background.")
-        scheduled_run()
-
-    except Exception as e:
-        logging.critical(f"A critical error occurred during setup: {e}", exc_info=True)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()

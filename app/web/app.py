@@ -34,6 +34,9 @@ app = FastAPI(title="tree-eclass Manager", version="1.0.0")
 # Global lock to prevent parallel checks (threading.Lock works across threads and event loops)
 check_lock = threading.Lock()
 
+# Scheduled checker stop event
+_scheduler_stop = threading.Event()
+
 # Thread pool executor for running blocking operations
 executor = ThreadPoolExecutor(max_workers=1)
 
@@ -467,6 +470,53 @@ def run_checker_task():
             logging.info("Manual check task completed")
     except Exception as e:
         logging.error(f"Error in background checker task: {e}", exc_info=True)
+
+
+def _scheduled_checker_loop():
+    """Background thread that runs the checker on a schedule."""
+    while not _scheduler_stop.is_set():
+        # Read interval from preferences each cycle so changes take effect
+        try:
+            sched_db = DatabaseManager()
+            prefs = sched_db.get_preferences()
+            sched_db.close()
+            interval_minutes = prefs.get('check_interval_minutes', 60)
+        except Exception:
+            interval_minutes = 60
+
+        interval_seconds = max(interval_minutes, 1) * 60
+        logging.info(f"Scheduled check will run in {interval_minutes} minute(s)")
+
+        # Wait for the interval, checking the stop event periodically
+        if _scheduler_stop.wait(timeout=interval_seconds):
+            break  # stop event was set
+
+        # Run the check (skip if a manual check is already running)
+        if check_lock.acquire(blocking=False):
+            try:
+                logging.info("Starting scheduled check")
+                run_checker_in_thread()
+                logging.info("Scheduled check completed")
+            finally:
+                check_lock.release()
+        else:
+            logging.info("Scheduled check skipped — a check is already in progress")
+
+
+@app.on_event("startup")
+def start_scheduled_checker():
+    """Start the scheduled checker thread when the app starts."""
+    _scheduler_stop.clear()
+    t = threading.Thread(target=_scheduled_checker_loop, daemon=True, name="scheduled-checker")
+    t.start()
+    logging.info("Scheduled checker started")
+
+
+@app.on_event("shutdown")
+def stop_scheduled_checker():
+    """Stop the scheduled checker thread when the app shuts down."""
+    _scheduler_stop.set()
+    logging.info("Scheduled checker stopped")
 
 @app.post("/run-check")
 async def run_check(background_tasks: BackgroundTasks):
