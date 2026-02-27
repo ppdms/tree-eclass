@@ -4,12 +4,14 @@ Provides UI for viewing and managing courses, credentials, and file history.
 """
 import logging
 import asyncio
+import mimetypes
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request, Form, BackgroundTasks
@@ -279,7 +281,6 @@ async def serve_file(file_path: str):
             raise HTTPException(status_code=404, detail="File not found")
         
         # Determine content type from file extension
-        import mimetypes
         content_type, _ = mimetypes.guess_type(file_path)
         if content_type is None:
             content_type = 'application/octet-stream'
@@ -287,11 +288,21 @@ async def serve_file(file_path: str):
         # Extract filename from path for Content-Disposition
         filename = file_path.split('/')[-1]
         
+        # Encode filename for Content-Disposition header (RFC 2231/5987)
+        # Use filename* parameter for proper UTF-8 encoding of non-ASCII characters
+        if filename.isascii():
+            disposition = f'inline; filename="{filename}"'
+        else:
+            # Use RFC 2231/5987 encoding for non-ASCII filenames
+            encoded_filename = quote(filename)
+            # Provide both parameters: simple ASCII fallback and UTF-8 encoded version
+            disposition = f'inline; filename="{filename.encode("ascii", "ignore").decode("ascii")}"; filename*=UTF-8\'\'\'{encoded_filename}'
+        
         return Response(
             content=file_data,
             media_type=content_type,
             headers={
-                'Content-Disposition': f'inline; filename="{filename}"'
+                'Content-Disposition': disposition
             }
         )
     except HTTPException:
