@@ -16,7 +16,6 @@ class WebDAVUploader:
     def __init__(self, webdav_config: Optional[dict] = None):
         """Initialize WebDAV client with configuration."""
         self.client = None
-        self.base_path = ""
         
         if webdav_config:
             self.configure(webdav_config)
@@ -52,10 +51,7 @@ class WebDAVUploader:
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
                 logging.warning("SSL verification is disabled for WebDAV")
             
-            self.base_path = webdav_config.get('base_path', '').strip('/')
-            
             logging.info(f"WebDAV client configured for {hostname}")
-            logging.debug(f"WebDAV base_path: '{self.base_path}'")
         except Exception as e:
             logging.error(f"Failed to configure WebDAV client: {e}", exc_info=True)
             raise
@@ -65,41 +61,16 @@ class WebDAVUploader:
         return self.client is not None
 
     def _resolve_remote_path(self, remote_path: str) -> str:
-        """Resolve remote path based on prefix rules.
-        
-        Rules:
-        - Paths starting with '/' are absolute (relative to WebDAV root)
-        - Paths starting with '~' use base_path from settings (~ replaced with base_path)
-        - Other paths are treated as absolute (same as starting with '/')
+        """Resolve remote path by normalizing it.
         
         Args:
-            remote_path: The input path with optional ~ or / prefix
+            remote_path: The input path
             
         Returns:
             Normalized absolute path for WebDAV
         """
-        remote_path = remote_path.strip()
-        
-        if remote_path.startswith('~/'):
-            # Replace ~ with base_path
-            relative_part = remote_path[2:]  # Remove '~/'
-            if self.base_path:
-                parts = [self.base_path, relative_part]
-                full_path = '/'.join(p.strip('/') for p in parts if p)
-            else:
-                full_path = relative_part.strip('/')
-        elif remote_path.startswith('~'):
-            # Just ~ means base_path
-            if remote_path == '~' and self.base_path:
-                full_path = self.base_path.strip('/')
-            else:
-                # Treat as literal path (edge case)
-                full_path = remote_path.strip('/')
-        else:
-            # Absolute path or relative path (treat as absolute)
-            full_path = remote_path.strip('/')
-        
-        # Ensure path starts with /
+        # Strip whitespace and slashes, then ensure it starts with /
+        full_path = remote_path.strip().strip('/')
         return '/' + full_path if full_path else '/'
 
     def upload_file(self, file_data: bytes, remote_path: str, file_name: str) -> str:
@@ -108,7 +79,7 @@ class WebDAVUploader:
         
         Args:
             file_data: The file content as bytes
-            remote_path: Path with optional ~ (for base_path) or / (absolute) prefix
+            remote_path: Destination path on WebDAV server
             file_name: The name of the file
             
         Returns:
@@ -153,7 +124,7 @@ class WebDAVUploader:
         
         Args:
             file_stream: File-like object or iterator of chunks
-            remote_path: Path with optional ~ (for base_path) or / (absolute) prefix
+            remote_path: Destination path on WebDAV server
             file_name: The name of the file
             
         Returns:
@@ -233,18 +204,6 @@ class WebDAVUploader:
             # Try to check if root exists (simplest test)
             result = self.client.check('/')
             logging.info(f"WebDAV connection test successful (root check: {result})")
-            
-            # If base_path is set, ensure it exists
-            if self.base_path:
-                try:
-                    if not self.client.check(self.base_path):
-                        logging.info(f"Creating WebDAV base path: {self.base_path}")
-                        self.client.mkdir(self.base_path)
-                    else:
-                        logging.info(f"WebDAV base path exists: {self.base_path}")
-                except WebDavException as e:
-                    logging.warning(f"Could not verify/create base path {self.base_path}: {e}")
-            
             return True
         except WebDavException as e:
             logging.error(f"WebDAV connection test failed: {e}", exc_info=True)

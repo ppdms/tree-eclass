@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from app.services.tree_builder import Node, File
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 4  # Current schema version
+SCHEMA_VERSION = 6  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -127,7 +127,6 @@ class DatabaseManager:
                 hostname TEXT NOT NULL,
                 username TEXT NOT NULL,
                 password TEXT NOT NULL,
-                base_path TEXT DEFAULT '',
                 disable_check INTEGER DEFAULT 0,
                 timeout INTEGER DEFAULT 30
             )
@@ -161,6 +160,20 @@ class DatabaseManager:
                 started_at DATETIME,
                 current_course_id INTEGER,
                 FOREIGN KEY (current_course_id) REFERENCES courses (id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS announcements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id INTEGER NOT NULL,
+                announcement_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                link TEXT NOT NULL,
+                description TEXT,
+                pub_date DATETIME,
+                fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE,
+                UNIQUE(course_id, announcement_id)
             )
         """)
         self.conn.commit()
@@ -205,6 +218,14 @@ class DatabaseManager:
         if current_version < 4:
             self._migration_3_to_4()
             self._set_schema_version(4)
+        
+        if current_version < 5:
+            self._migration_4_to_5()
+            self._set_schema_version(5)
+        
+        if current_version < 6:
+            self._migration_5_to_6()
+            self._set_schema_version(6)
         
         logging.info("All migrations completed successfully")
 
@@ -277,6 +298,73 @@ class DatabaseManager:
         else:
             logging.debug("last_updated column already exists, skipping")
 
+    def _migration_4_to_5(self):
+        """Migration: Add announcements table."""
+        logging.info("Running migration 4 -> 5: Adding announcements table")
+        cursor = self.conn.cursor()
+        
+        # Check if table already exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='announcements'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE announcements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id INTEGER NOT NULL,
+                    announcement_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    link TEXT NOT NULL,
+                    description TEXT,
+                    pub_date DATETIME,
+                    fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE,
+                    UNIQUE(course_id, announcement_id)
+                )
+            """)
+            self.conn.commit()
+            logging.info("Created announcements table")
+        else:
+            logging.debug("announcements table already exists, skipping")
+
+    def _migration_5_to_6(self):
+        """Migration: Remove base_path column from webdav_config table."""
+        logging.info("Running migration 5 -> 6: Removing base_path column from webdav_config")
+        cursor = self.conn.cursor()
+        
+        # Check if base_path column exists
+        cursor.execute("PRAGMA table_info(webdav_config)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'base_path' in columns:
+            # SQLite doesn't support DROP COLUMN, so we need to recreate the table
+            logging.info("Recreating webdav_config table without base_path")
+            
+            # Copy data to temporary table
+            cursor.execute("""
+                CREATE TABLE webdav_config_new (
+                    id INTEGER PRIMARY KEY,
+                    hostname TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    password TEXT NOT NULL,
+                    disable_check INTEGER DEFAULT 0,
+                    timeout INTEGER DEFAULT 30
+                )
+            """)
+            
+            cursor.execute("""
+                INSERT INTO webdav_config_new (id, hostname, username, password, disable_check, timeout)
+                SELECT id, hostname, username, password, disable_check, timeout
+                FROM webdav_config
+            """)
+            
+            # Drop old table and rename new one
+            cursor.execute("DROP TABLE webdav_config")
+            cursor.execute("ALTER TABLE webdav_config_new RENAME TO webdav_config")
+            
+            self.conn.commit()
+            logging.info("Successfully removed base_path column from webdav_config table")
+        else:
+            logging.debug("base_path column does not exist, skipping")
+
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
         try:
@@ -325,15 +413,14 @@ class DatabaseManager:
 
     # --- WebDAV configuration methods ---
     def save_webdav_config(self, hostname: str, username: str, password: str, 
-                           base_path: str = '', disable_check: bool = False, 
-                           timeout: int = 30):
+                           disable_check: bool = False, timeout: int = 30):
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO webdav_config 
-                (id, hostname, username, password, base_path, disable_check, timeout) 
-                VALUES (1, ?, ?, ?, ?, ?, ?)
-            """, (hostname, username, password, base_path, int(disable_check), timeout))
+                (id, hostname, username, password, disable_check, timeout) 
+                VALUES (1, ?, ?, ?, ?, ?)
+            """, (hostname, username, password, int(disable_check), timeout))
             self.conn.commit()
             logging.debug("WebDAV configuration saved successfully")
         except Exception as e:
@@ -344,7 +431,7 @@ class DatabaseManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                SELECT hostname, username, password, base_path, disable_check, timeout 
+                SELECT hostname, username, password, disable_check, timeout 
                 FROM webdav_config WHERE id = 1
             """)
             row = cursor.fetchone()
@@ -353,9 +440,8 @@ class DatabaseManager:
                     'hostname': row[0],
                     'username': row[1],
                     'password': row[2],
-                    'base_path': row[3],
-                    'disable_check': bool(row[4]),
-                    'timeout': row[5]
+                    'disable_check': bool(row[3]),
+                    'timeout': row[4]
                 }
             return None
         except Exception as e:
@@ -511,7 +597,7 @@ class DatabaseManager:
             raise
 
     def reset_course_data(self, course_id: int):
-        """Reset all data for a course (tree and change history) without deleting the course itself."""
+        """Reset all data for a course (tree, change history, and announcements) without deleting the course itself."""
         try:
             cursor = self.conn.cursor()
             # Delete files belonging to nodes of this course
@@ -526,6 +612,8 @@ class DatabaseManager:
             cursor.execute("DELETE FROM change_records WHERE course_id = ?", (course_id,))
             # Delete check logs for this course
             cursor.execute("DELETE FROM check_logs WHERE course_id = ?", (course_id,))
+            # Delete announcements for this course
+            cursor.execute("DELETE FROM announcements WHERE course_id = ?", (course_id,))
             self.conn.commit()
             logging.debug(f"Reset data for course ID: {course_id}")
         except Exception as e:
@@ -885,6 +973,120 @@ class DatabaseManager:
                 }
         except Exception as e:
             logging.error(f"Failed to get check status: {e}", exc_info=True)
+            raise
+
+    # --- Announcements methods ---
+    def save_announcements(self, course_id: int, announcements: List[Dict]):
+        """
+        Save announcements for a course.
+        
+        Args:
+            course_id: The course ID
+            announcements: List of announcement dictionaries with keys:
+                - announcement_id: Unique ID for the announcement
+                - title: Announcement title
+                - link: Link to the announcement
+                - description: HTML description
+                - pub_date: Publication date as datetime object
+        """
+        try:
+            cursor = self.conn.cursor()
+            for announcement in announcements:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO announcements 
+                    (course_id, announcement_id, title, link, description, pub_date, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (
+                    course_id,
+                    announcement['announcement_id'],
+                    announcement['title'],
+                    announcement['link'],
+                    announcement['description'],
+                    announcement['pub_date'].isoformat() if announcement['pub_date'] else None
+                ))
+            self.conn.commit()
+            logging.debug(f"Saved {len(announcements)} announcements for course {course_id}")
+        except Exception as e:
+            logging.error(f"Failed to save announcements for course {course_id}: {e}", exc_info=True)
+            raise
+
+    def get_announcements(self, course_id: Optional[int] = None, limit: int = 50) -> List[Dict]:
+        """
+        Get announcements for a course or all courses.
+        
+        Args:
+            course_id: Optional course ID to filter by
+            limit: Maximum number of announcements to return
+        
+        Returns:
+            List of announcement dictionaries
+        """
+        try:
+            cursor = self.conn.cursor()
+            if course_id:
+                cursor.execute("""
+                    SELECT a.id, a.course_id, c.name as course_name, a.announcement_id,
+                           a.title, a.link, a.description, a.pub_date, a.fetched_at
+                    FROM announcements a
+                    JOIN courses c ON a.course_id = c.id
+                    WHERE a.course_id = ?
+                    ORDER BY a.pub_date DESC
+                    LIMIT ?
+                """, (course_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT a.id, a.course_id, c.name as course_name, a.announcement_id,
+                           a.title, a.link, a.description, a.pub_date, a.fetched_at
+                    FROM announcements a
+                    JOIN courses c ON a.course_id = c.id
+                    ORDER BY a.pub_date DESC
+                    LIMIT ?
+                """, (limit,))
+            
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "course_id": row[1],
+                    "course_name": row[2],
+                    "announcement_id": row[3],
+                    "title": row[4],
+                    "link": row[5],
+                    "description": row[6],
+                    "pub_date": row[7],
+                    "fetched_at": row[8]
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            logging.error(f"Failed to get announcements: {e}", exc_info=True)
+            raise
+
+    def get_latest_announcement_date(self, course_id: int) -> Optional[datetime]:
+        """
+        Get the publication date of the latest announcement for a course.
+        
+        Args:
+            course_id: The course ID
+        
+        Returns:
+            datetime object of the latest announcement, or None if no announcements exist
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT pub_date
+                FROM announcements
+                WHERE course_id = ?
+                ORDER BY pub_date DESC
+                LIMIT 1
+            """, (course_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                return datetime.fromisoformat(row[0])
+            return None
+        except Exception as e:
+            logging.error(f"Failed to get latest announcement date for course {course_id}: {e}", exc_info=True)
             raise
 
     def close(self):

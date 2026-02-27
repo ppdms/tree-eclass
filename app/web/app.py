@@ -227,7 +227,7 @@ async def delete_course(course_id: int):
 
 @app.post("/courses/{course_id}/reset")
 async def reset_course(course_id: int):
-    """Reset all data for a course (tree and change history)."""
+    """Reset all data for a course (tree, change history, and announcements)."""
     try:
         db_manager.reset_course_data(course_id)
         logging.info(f"Reset data for course ID {course_id}")
@@ -299,6 +299,50 @@ async def check_course(course_id: int, background_tasks: BackgroundTasks):
         
     except Exception as e:
         logging.error(f"Error checking course {course_id}: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(e)}
+        )
+
+
+# ===== ANNOUNCEMENTS ROUTES =====
+
+@app.get("/announcements", response_class=HTMLResponse)
+async def list_announcements(request: Request, course_id: Optional[int] = None):
+    """List announcements for all courses or a specific course."""
+    try:
+        courses = db_manager.get_courses()
+        
+        # Get announcements
+        if course_id:
+            announcements = db_manager.get_announcements(course_id=course_id, limit=100)
+            # Find the course name
+            course = next((c for c in courses if c['id'] == course_id), None)
+            course_name = course['name'] if course else f"Course {course_id}"
+        else:
+            announcements = db_manager.get_announcements(limit=100)
+            course_name = None
+        
+        return templates.TemplateResponse("announcements.html", {
+            "request": request,
+            "announcements": announcements,
+            "courses": courses,
+            "selected_course_id": course_id,
+            "course_name": course_name
+        })
+    except Exception as e:
+        logging.error(f"Error listing announcements: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/announcements")
+async def api_announcements(course_id: Optional[int] = None, limit: int = 50):
+    """API endpoint to get announcements as JSON."""
+    try:
+        announcements = db_manager.get_announcements(course_id=course_id, limit=limit)
+        return JSONResponse(content={"announcements": announcements})
+    except Exception as e:
+        logging.error(f"Error getting announcements: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={"detail": str(e)}
@@ -377,7 +421,6 @@ async def update_webdav_config(
     webdav_hostname: str = Form(...),
     webdav_username: str = Form(...),
     webdav_password: str = Form(...),
-    webdav_base_path: str = Form(""),
     webdav_disable_check: Optional[bool] = Form(False)
 ):
     """Update WebDAV configuration."""
@@ -386,7 +429,6 @@ async def update_webdav_config(
             hostname=webdav_hostname,
             username=webdav_username,
             password=webdav_password,
-            base_path=webdav_base_path,
             disable_check=webdav_disable_check,
             timeout=30
         )

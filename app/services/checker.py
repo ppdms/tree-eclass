@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from app.services import differ, tree_builder
+from app.services.announcements_scraper import AnnouncementsScraper
 from app.services.persistence import DatabaseManager
 from app.services.scraper import Scraper, COURSE_URL_TEMPLATE
 from app.services.webdav_uploader import WebDAVUploader
@@ -50,8 +51,8 @@ def _print_children_recursive(parent_node, indent: str):
 
 
 # Webhook notification function
-def send_webhook(changes_by_course: dict, db_manager: DatabaseManager):
-    """Sends a Discord webhook notification with the detected changes."""
+def send_webhook(changes_by_course: dict, announcements_by_course: dict, db_manager: DatabaseManager):
+    """Sends a Discord webhook notification with the detected changes and announcements."""
     webhook_config = db_manager.get_webhook_config()
 
     if not webhook_config:
@@ -64,6 +65,7 @@ def send_webhook(changes_by_course: dict, db_manager: DatabaseManager):
     # Build messages per course, splitting into multiple if over 2000 chars
     messages = []
 
+    # Handle file changes
     for course_name, changes in changes_by_course.items():
         if not changes:
             continue
@@ -130,8 +132,81 @@ def send_webhook(changes_by_course: dict, db_manager: DatabaseManager):
             body = prefix + code_open + "\n".join(batch) + code_close
             messages.append(body)
 
+    # Handle announcements
+    for course_name, announcements in announcements_by_course.items():
+        if not announcements:
+            continue
+
+        # Build announcement message
+        header_lines = [f"**📢 New Announcements \u2014 {course_name}**\n"]
+        header_lines.append(f"**Count:** {len(announcements)} new announcement(s)")
+        header_lines.append("")
+        header = "\n".join(header_lines)
+
+        announcement_lines = []
+        for announcement in announcements:
+            title = announcement['title']
+            link = announcement['link']
+            description = announcement.get('description', '')
+            pub_date = ""
+            if announcement.get('pub_date'):
+                try:
+                    from email.utils import parsedate_to_datetime
+                    dt = parsedate_to_datetime(announcement['pub_date']) if isinstance(announcement['pub_date'], str) else announcement['pub_date']
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=ZoneInfo('UTC'))
+                    dt = dt.astimezone(ZoneInfo('Europe/Athens'))
+                    pub_date = dt.strftime('%b %d, %Y at %H:%M')
+                except Exception:
+                    pass
+            
+            # Convert HTML description to Markdown
+            if description:
+                from markdownify import markdownify as md
+                description_md = md(description, heading_style="ATX", strip=['script', 'style'])
+                # Clean up excessive whitespace
+                description_md = ' '.join(description_md.split())
+            else:
+                description_md = ""
+            
+            # Format: • Title (Date) - Link + Description
+            line = f"\u2022 **{title}**"
+            if pub_date:
+                line += f" ({pub_date})"
+            line += f"\n  {link}"
+            if description_md:
+                line += f"\n  {description_md}"
+            announcement_lines.append(line)
+
+        # Split into messages that fit within 2000 chars
+        current_is_first = True
+        batch = []
+        batch_len = 0
+
+        for line in announcement_lines:
+            prefix = header if current_is_first else ""
+            overhead = len(prefix) + 10  # Some margin
+            line_addition = len(line) + (2 if batch else 0)  # +2 for double newline separator
+
+            if batch and overhead + batch_len + line_addition > 2000:
+                # Flush current batch
+                body = prefix + "\n\n".join(batch)
+                messages.append(body)
+                current_is_first = False
+                batch = [line]
+                batch_len = len(line)
+            else:
+                batch.append(line)
+                batch_len += line_addition
+
+        # Flush remaining
+        if batch:
+            prefix = header if current_is_first else ""
+            body = prefix + "\n\n".join(batch)
+            messages.append(body)
+
     if not messages:
-        logging.info("No changes to send via webhook")
+        logging.info("No changes or announcements to send via webhook")
         return
 
     print(f"\n=== Webhook ===")
@@ -155,12 +230,12 @@ def send_webhook(changes_by_course: dict, db_manager: DatabaseManager):
         print(f"Failed to send webhook: {e}", file=sys.stderr)
 
 
-def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: Scraper) -> tuple[list, bool]:
+def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: Scraper) -> tuple[list, list, bool]:
     """
     Process a single course: check for changes, update tree, and log changes.
     
     Returns:
-        tuple: (list of changes, success flag)
+        tuple: (list of file changes, list of new announcements, success flag)
     """
     course_id = course['id']
     course_name = course['name']
@@ -201,6 +276,46 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
         except Exception as e:
             logging.error(f"Failed to diff trees for course {course_name}: {e}", exc_info=True)
         
+        # Fetch announcements and detect new ones
+        new_announcements = []
+        try:
+            # Get the latest announcement date from database
+            latest_date = db_manager.get_latest_announcement_date(course_id)
+            
+            announcements_scraper = AnnouncementsScraper(scraper_instance.session)
+            announcements = announcements_scraper.fetch_announcements(course_id)
+            
+            if announcements:
+                # Filter for new announcements
+                for announcement in announcements:
+                    if latest_date is None:
+                        # No previous announcements, all are new
+                        new_announcements.append(announcement)
+                    elif announcement.get('pub_date'):
+                        # Compare publication dates
+                        ann_date = announcement['pub_date']
+                        if isinstance(ann_date, str):
+                            from email.utils import parsedate_to_datetime
+                            ann_date = parsedate_to_datetime(ann_date)
+                        
+                        # Check if this announcement is newer
+                        if ann_date and ann_date > latest_date:
+                            new_announcements.append(announcement)
+                
+                # Save all announcements to database
+                db_manager.save_announcements(course_id, announcements)
+                
+                if new_announcements:
+                    logging.info(f"Found {len(new_announcements)} new announcement(s) for course {course_name}")
+                    for announcement in new_announcements:
+                        print(f"📢 New Announcement: {announcement['title']} (Course: {course_name})")
+                else:
+                    logging.info(f"Fetched {len(announcements)} announcements, but none are new for course {course_name}")
+            else:
+                logging.info(f"No announcements found for course {course_name}")
+        except Exception as e:
+            logging.error(f"Failed to fetch announcements for course {course_name}: {e}", exc_info=True)
+        
         # Print and save the new tree
         try:
             print_tree(new_root, course_name)
@@ -212,13 +327,13 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
             logging.info(f"Successfully saved tree for course {course_name}")
         except Exception as e:
             logging.error(f"Failed to save tree for course {course_name}: {e}", exc_info=True)
-            return changes, False
+            return changes, new_announcements, False
         
-        return changes, True
+        return changes, new_announcements, True
         
     except Exception as e:
         logging.error(f"Failed to process course {course_name} (ID: {course_id}): {e}", exc_info=True)
-        return [], False
+        return [], [], False
 
 
 def run_checker(db_manager: DatabaseManager):
@@ -251,23 +366,34 @@ def run_checker(db_manager: DatabaseManager):
 
         scraper_instance = Scraper(db_manager, webdav_uploader)
         all_changes = {}
+        all_announcements = {}
 
         for course in courses:
             print("")
             db_manager.set_check_status(True, course['id'])
             db_manager.log_check_event("course_check_start", f"Checking course: {course['name']}", course_id=course['id'], status="info")
-            changes, success = process_course(db_manager, course, scraper_instance)
-            if success and changes:
-                all_changes[course['name']] = changes
-                db_manager.log_check_event("course_check_complete", f"Found {len(changes)} change(s)", course_id=course['id'], status="success")
+            changes, new_announcements, success = process_course(db_manager, course, scraper_instance)
+            if success:
+                if changes:
+                    all_changes[course['name']] = changes
+                if new_announcements:
+                    all_announcements[course['name']] = new_announcements
+                
+                total_updates = len(changes) + len(new_announcements)
+                if total_updates > 0:
+                    db_manager.log_check_event("course_check_complete", f"Found {len(changes)} file change(s) and {len(new_announcements)} new announcement(s)", course_id=course['id'], status="success")
+                else:
+                    db_manager.log_check_event("course_check_complete", "No changes detected", course_id=course['id'], status="info")
             else:
-                db_manager.log_check_event("course_check_complete", "No changes detected", course_id=course['id'], status="info")
+                db_manager.log_check_event("course_check_complete", "Check failed", course_id=course['id'], status="error")
 
-        if all_changes:
+        if all_changes or all_announcements:
             try:
-                print(f"\nAttempting to send webhook with changes from {len(all_changes)} course(s).")
-                send_webhook(all_changes, db_manager)
-                db_manager.log_check_event("webhook_sent", f"Webhook sent for {len(all_changes)} course(s)", status="success")
+                changes_count = len(all_changes)
+                announcements_count = len(all_announcements)
+                print(f"\nAttempting to send webhook with updates from {max(changes_count, announcements_count)} course(s).")
+                send_webhook(all_changes, all_announcements, db_manager)
+                db_manager.log_check_event("webhook_sent", f"Webhook sent for {changes_count} course(s) with file changes and {announcements_count} course(s) with new announcements", status="success")
             except Exception as e:
                 logging.error(f"Failed to send webhook notification: {e}", exc_info=True)
                 db_manager.log_check_event("webhook_failed", f"Failed to send webhook: {str(e)}", status="error")
@@ -324,7 +450,7 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
         scraper_instance = Scraper(db_manager, webdav_uploader)
         
         # Process the course using shared logic
-        changes, success = process_course(db_manager, course, scraper_instance)
+        changes, new_announcements, success = process_course(db_manager, course, scraper_instance)
         
         if not success:
             db_manager.log_check_event("course_check_error", f"Failed to process course: {course_name}", course_id=course_id, status="error")
@@ -334,26 +460,30 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
                 'error': 'Failed to process course'
             }
         
-        # Send webhook if changes detected
-        if changes:
+        # Send webhook if changes or announcements detected
+        if changes or new_announcements:
             try:
-                send_webhook({course_name: changes}, db_manager)
+                all_changes = {course_name: changes} if changes else {}
+                all_announcements = {course_name: new_announcements} if new_announcements else {}
+                send_webhook(all_changes, all_announcements, db_manager)
                 db_manager.log_check_event("webhook_sent", f"Webhook sent for course: {course_name}", course_id=course_id, status="success")
             except Exception as e:
                 logging.error(f"Failed to send webhook notification: {e}", exc_info=True)
                 db_manager.log_check_event("webhook_failed", f"Failed to send webhook: {str(e)}", course_id=course_id, status="error")
             
-            db_manager.log_check_event("course_check_complete", f"Found {len(changes)} change(s)", course_id=course_id, status="success")
+            db_manager.log_check_event("course_check_complete", f"Found {len(changes)} file change(s) and {len(new_announcements)} new announcement(s)", course_id=course_id, status="success")
         else:
             db_manager.log_check_event("course_check_complete", "No changes detected", course_id=course_id, status="info")
         
         db_manager.set_check_status(False)
         
+        total_updates = len(changes) + len(new_announcements)
         return {
             'success': True,
-            'changes_detected': len(changes) > 0,
+            'changes_detected': total_updates > 0,
             'changes_count': len(changes),
-            'message': f'Detected {len(changes)} change(s)' if changes else 'No changes detected'
+            'announcements_count': len(new_announcements),
+            'message': f'Detected {len(changes)} file change(s) and {len(new_announcements)} new announcement(s)' if total_updates > 0 else 'No changes detected'
         }
         
     except Exception as e:

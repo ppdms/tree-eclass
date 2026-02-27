@@ -15,7 +15,8 @@
 			<span class="tree-icon">📄</span>
 			<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
 			{% if file.last_updated %}
-			<span class="file-date" style="color: #64748b; font-size: 0.85em; margin-left: 8px;">{{ file.last_updated|format_timestamp }}</span>
+			<span class="file-date" style="color: #64748b; font-size: 0.85em; margin-left: 8px;">{{
+				file.last_updated|format_timestamp }}</span>
 			{% endif %}
 		</div>
 		{% endfor %}
@@ -75,9 +76,8 @@
 			<label for="webdav_folder">WebDAV Folder</label>
 			<input type="text" id="webdav_folder" name="webdav_folder" required
 				value="{% if course.webdav_folder %}{{ course.webdav_folder }}{% endif %}"
-				placeholder="e.g., ~/Algorithms or /courses/Algorithms">
-			<small>Use ~ for base path from settings, / for WebDAV root. Examples: ~/Algorithms,
-				/courses/Algorithms</small>
+				placeholder="e.g., /Algorithms or /courses/Algorithms">
+			<small>Destination path on WebDAV server. Examples: /Algorithms, /courses/Algorithms</small>
 		</div>
 		<div class="form-actions">
 			<button type="submit" class="btn btn-primary">Save Changes</button>
@@ -100,7 +100,8 @@
 					<span class="tree-icon">📄</span>
 					<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
 					{% if file.last_updated %}
-				<span class="file-date" style="color: #64748b; font-size: 0.85em; margin-left: 8px;">{{ file.last_updated|format_timestamp }}</span>
+					<span class="file-date" style="color: #64748b; font-size: 0.85em; margin-left: 8px;">{{
+						file.last_updated|format_timestamp }}</span>
 					{% endif %}
 				</div>
 				{% endfor %}

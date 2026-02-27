@@ -108,14 +108,6 @@
 			</div>
 
 			<div class="form-group">
-				<label for="webdav_base_path">Base Path</label>
-				<input type="text" id="webdav_base_path" name="webdav_base_path"
-					value="{% if webdav_config %}{{ webdav_config.base_path }}{% endif %}" placeholder="/eclass">
-				<small>Base path on WebDAV server (use ~ in course paths to refer to this). Leave empty for
-					root.</small>
-			</div>
-
-			<div class="form-group">
 				<label>
 					<input type="checkbox" id="webdav_disable_check" name="webdav_disable_check" {% if webdav_config and
 						webdav_config.disable_check %}checked{% endif %}>

@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Announcements - tree-eclass{% endblock %}
+
+{% block content %}
+<div class="page-header">
+	<h1>📢 Course Announcements</h1>
+	{% if course_name %}
+	<p class="subtitle">{{ course_name }}</p>
+	{% else %}
+	<p class="subtitle">All courses</p>
+	{% endif %}
+</div>
+
+<!-- Course filter -->
+<div class="section">
+	<div class="filter-bar">
+		<label for="courseFilter">Filter by course:</label>
+		<select id="courseFilter" class="filter-select" onchange="filterByCourse(this.value)">
+			<option value="">All courses</option>
+			{% for course in courses %}
+			<option value="{{ course.id }}" {% if selected_course_id==course.id %}selected{% endif %}>
+				{{ course.name }}
+			</option>
+			{% endfor %}
+		</select>
+	</div>
+</div>
+
+<div class="section">
+	{% if announcements %}
+	<div class="announcements-list">
+		{% for announcement in announcements %}
+		<div class="announcement-card">
+			<div class="announcement-header">
+				<div class="announcement-title-row">
+					<h3 class="announcement-title">
+						<a href="{{ announcement.link }}" target="_blank" rel="noopener noreferrer">
+							{{ announcement.title }}
+						</a>
+					</h3>
+					<span class="announcement-course">{{ announcement.course_name }}</span>
+				</div>
+				<div class="announcement-meta">
+					{% if announcement.pub_date %}
+					<span class="announcement-date">
+						📅 {{ announcement.pub_date|athens_time }}
+					</span>
+					{% endif %}
+				</div>
+			</div>
+			{% if announcement.description %}
+			<div class="announcement-body">
+				{{ announcement.description|safe }}
+			</div>
+			{% endif %}
+		</div>
+		{% endfor %}
+	</div>
+	{% else %}
+	<p class="empty-state">No announcements yet. Run a check to fetch course announcements.</p>
+	{% endif %}
+</div>
+
+<script>
+	function filterByCourse(courseId) {
+		if (courseId) {
+			window.location.href = '/announcements?course_id=' + courseId;
+		} else {
+			window.location.href = '/announcements';
+		}
+	}
+</script>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+	.subtitle {
+		color: #666;
+		margin-top: 0.5rem;
+		font-size: 0.9rem;
+	}
+
+	.filter-bar {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		padding: 1rem;
+		background-color: #f5f5f5;
+		border-radius: 8px;
+		margin-bottom: 1.5rem;
+	}
+
+	.filter-bar label {
+		font-weight: 600;
+		color: #333;
+	}
+
+	.filter-select {
+		padding: 0.5rem 1rem;
+		border: 1px solid #ddd;
+		border-radius: 6px;
+		font-size: 0.95rem;
+		background-color: white;
+		cursor: pointer;
+		min-width: 200px;
+	}
+
+	.filter-select:hover {
+		border-color: #007bff;
+	}
+
+	.filter-select:focus {
+		outline: none;
+		border-color: #007bff;
+		box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+	}
+
+	.announcements-list {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	.announcement-card {
+		background: white;
+		border: 1px solid #e1e4e8;
+		border-radius: 8px;
+		padding: 1.5rem;
+		transition: box-shadow 0.2s;
+	}
+
+	.announcement-card:hover {
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	}
+
+	.announcement-header {
+		margin-bottom: 1rem;
+	}
+
+	.announcement-title-row {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.announcement-title {
+		margin: 0;
+		font-size: 1.3rem;
+		font-weight: 600;
+		flex: 1;
+	}
+
+	.announcement-title a {
+		color: #0366d6;
+		text-decoration: none;
+	}
+
+	.announcement-title a:hover {
+		text-decoration: underline;
+	}
+
+	.announcement-course {
+		display: inline-block;
+		padding: 0.25rem 0.75rem;
+		background-color: #e8f0fe;
+		color: #1a73e8;
+		border-radius: 12px;
+		font-size: 0.85rem;
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.announcement-meta {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		color: #666;
+		font-size: 0.9rem;
+	}
+
+	.announcement-date {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.announcement-body {
+		color: #24292e;
+		line-height: 1.6;
+		overflow-wrap: break-word;
+	}
+
+	.announcement-body p {
+		margin: 0.5rem 0;
+	}
+
+	.announcement-body p:first-child {
+		margin-top: 0;
+	}
+
+	.announcement-body p:last-child {
+		margin-bottom: 0;
+	}
+
+	.announcement-body a {
+		color: #0366d6;
+		text-decoration: none;
+	}
+
+	.announcement-body a:hover {
+		text-decoration: underline;
+	}
+
+	.empty-state {
+		text-align: center;
+		color: #666;
+		padding: 3rem;
+		background-color: #f9f9f9;
+		border-radius: 8px;
+		font-size: 1.1rem;
+	}
+</style>
+{% endblock %}
