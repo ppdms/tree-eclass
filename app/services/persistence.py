@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from app.services.tree_builder import Node, File
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 6  # Current schema version
+SCHEMA_VERSION = 7  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -227,6 +227,10 @@ class DatabaseManager:
             self._migration_5_to_6()
             self._set_schema_version(6)
         
+        if current_version < 7:
+            self._migration_6_to_7()
+            self._set_schema_version(7)
+        
         logging.info("All migrations completed successfully")
 
     def _migration_1_to_2(self):
@@ -364,6 +368,22 @@ class DatabaseManager:
             logging.info("Successfully removed base_path column from webdav_config table")
         else:
             logging.debug("base_path column does not exist, skipping")
+
+    def _migration_6_to_7(self):
+        """Migration: Add local_path column to files table."""
+        logging.info("Running migration 6 -> 7: Adding local_path column to files table")
+        cursor = self.conn.cursor()
+        
+        # Check if column already exists
+        cursor.execute("PRAGMA table_info(files)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if 'local_path' not in columns:
+            cursor.execute("ALTER TABLE files ADD COLUMN local_path TEXT")
+            self.conn.commit()
+            logging.info("Added local_path column to files table")
+        else:
+            logging.debug("local_path column already exists, skipping")
 
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
@@ -634,8 +654,8 @@ class DatabaseManager:
 
             for file in node.files:
                 cursor.execute(
-                    "INSERT INTO files (node_id, url, name, md5_hash, etag, last_updated) VALUES (?, ?, ?, ?, ?, ?)",
-                    (current_db_id, file.url, file.name, file.md5_hash, file.etag, file.last_updated)
+                    "INSERT INTO files (node_id, url, name, md5_hash, etag, last_updated, local_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (current_db_id, file.url, file.name, file.md5_hash, file.etag, file.last_updated, file.local_path)
                 )
 
             for child_node in node.children:
@@ -679,12 +699,12 @@ class DatabaseManager:
                 child_node = node_objects[db_id]
                 parent_node.children.append(child_node)
 
-        cursor.execute("SELECT node_id, url, name, md5_hash, etag, last_updated FROM files WHERE node_id IN ({seq})".format(
+        cursor.execute("SELECT node_id, url, name, md5_hash, etag, last_updated, local_path FROM files WHERE node_id IN ({seq})".format(
             seq=','.join(['?']*len(node_objects))), list(node_objects.keys()))
         
-        for node_id, url, name, md5_hash, etag, last_updated in cursor.fetchall():
+        for node_id, url, name, md5_hash, etag, last_updated, local_path in cursor.fetchall():
             if node_id in node_objects:
-                node_objects[node_id].files.append(File(url=url, name=name, md5_hash=md5_hash, etag=etag, last_updated=last_updated))
+                node_objects[node_id].files.append(File(url=url, name=name, md5_hash=md5_hash, etag=etag, last_updated=last_updated, local_path=local_path))
 
         return root_node
 

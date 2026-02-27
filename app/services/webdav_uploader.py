@@ -211,3 +211,48 @@ class WebDAVUploader:
         except Exception as e:
             logging.error(f"WebDAV connection test failed with unexpected error: {e}", exc_info=True)
             return False
+
+    def download_file(self, remote_path: str) -> Optional[bytes]:
+        """
+        Download a file from WebDAV and return its contents.
+        
+        Args:
+            remote_path: The remote path of the file on WebDAV server
+            
+        Returns:
+            File contents as bytes, or None if file doesn't exist or error occurs
+        """
+        if not self.is_configured():
+            logging.error("WebDAV client is not configured")
+            return None
+        
+        try:
+            # Check if file exists
+            if not self.client.check(remote_path):
+                logging.warning(f"File does not exist on WebDAV: {remote_path}")
+                return None
+            
+            # Download to temporary file and read contents
+            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                tmp_file_path = tmp_file.name
+            
+            try:
+                self.client.download_sync(remote_path=remote_path, local_path=tmp_file_path)
+                logging.debug(f"Downloaded file from WebDAV: {remote_path}")
+                
+                # Read the file contents
+                with open(tmp_file_path, 'rb') as f:
+                    file_data = f.read()
+                
+                return file_data
+            finally:
+                # Clean up temporary file
+                if os.path.exists(tmp_file_path):
+                    os.unlink(tmp_file_path)
+                    
+        except WebDavException as e:
+            logging.error(f"WebDAV error downloading file {remote_path}: {e}", exc_info=True)
+            return None
+        except Exception as e:
+            logging.error(f"Failed to download file from WebDAV {remote_path}: {e}", exc_info=True)
+            return None

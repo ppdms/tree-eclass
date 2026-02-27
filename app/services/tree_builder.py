@@ -20,6 +20,7 @@ class File:
     md5_hash: Optional[str] = None
     etag: Optional[str] = None
     last_updated: Optional[str] = None  # ISO 8601 timestamp when file was last added/modified
+    local_path: Optional[str] = None  # WebDAV path where the file is stored
 
 
 @dataclass
@@ -67,24 +68,26 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str, old_root
         file_hash = None
         etag = None
         last_updated = None
+        local_path = None
 
         if "google" in file_url:
             # Google Drive files: always download and compute hash
-            downloaded_path, file_hash = scraper.download_file(file_url, webdav_path)
+            local_path, file_hash = scraper.download_file(file_url, webdav_path)
             last_updated = datetime.now(timezone.utc).isoformat()
         else:
             etag = scraper.fetch_etag(file_url)
             # Download if new, or etag has changed
             if not old_file or not etag or old_file.etag != etag:
-                downloaded_path, file_hash = scraper.download_file(file_url, webdav_path)
+                local_path, file_hash = scraper.download_file(file_url, webdav_path)
                 last_updated = datetime.now(timezone.utc).isoformat()
             else:
-                # Keep old hash, etag, and timestamp if file is not re-downloaded
+                # Keep old hash, etag, timestamp and local_path if file is not re-downloaded
                 file_hash = old_file.md5_hash
                 etag = old_file.etag
                 last_updated = old_file.last_updated
+                local_path = old_file.local_path
         
-        current_node.files.append(File(url=file_url, name=file_name, md5_hash=file_hash, etag=etag, last_updated=last_updated))
+        current_node.files.append(File(url=file_url, name=file_name, md5_hash=file_hash, etag=etag, last_updated=last_updated, local_path=local_path))
 
     # Create a map of old child directories for efficient lookup
     old_children_map = {c.name: c for c in old_root.children} if old_root else {}

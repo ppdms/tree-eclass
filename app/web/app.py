@@ -13,7 +13,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request, Form, BackgroundTasks
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import uvicorn
@@ -21,6 +21,7 @@ import uvicorn
 from app.services.persistence import DatabaseManager
 from app.services.tree_builder import Node, File
 from app.services.checker import run_checker, check_single_course, print_tree
+from app.services.webdav_uploader import WebDAVUploader
 
 # Configure logging for systemd
 logging.basicConfig(
@@ -140,7 +141,8 @@ def node_to_dict(node: Node, parent_path: str = "") -> dict:
                 "name": f.name,
                 "url": f.url,
                 "md5_hash": f.md5_hash,
-                "etag": f.etag
+                "etag": f.etag,
+                "local_path": f.local_path
             }
             for f in node.files
         ],
@@ -251,6 +253,52 @@ async def update_course(
     except Exception as e:
         logging.error(f"Error updating course {course_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/files/{file_path:path}")
+async def serve_file(file_path: str):
+    """Serve a file from WebDAV storage."""
+    try:
+        # Get WebDAV configuration
+        webdav_config = db_manager.get_webdav_config()
+        if not webdav_config:
+            raise HTTPException(status_code=503, detail="WebDAV not configured")
+        
+        # Initialize WebDAV uploader
+        webdav_uploader = WebDAVUploader(webdav_config)
+        if not webdav_uploader.is_configured():
+            raise HTTPException(status_code=503, detail="WebDAV not configured")
+        
+        # Ensure file path starts with /
+        if not file_path.startswith('/'):
+            file_path = '/' + file_path
+        
+        # Download file from WebDAV
+        file_data = webdav_uploader.download_file(file_path)
+        if file_data is None:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Determine content type from file extension
+        import mimetypes
+        content_type, _ = mimetypes.guess_type(file_path)
+        if content_type is None:
+            content_type = 'application/octet-stream'
+        
+        # Extract filename from path for Content-Disposition
+        filename = file_path.split('/')[-1]
+        
+        return Response(
+            content=file_data,
+            media_type=content_type,
+            headers={
+                'Content-Disposition': f'inline; filename="{filename}"'
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error serving file {file_path}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/courses/{course_id}/check")

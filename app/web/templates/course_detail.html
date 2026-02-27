@@ -13,7 +13,14 @@
 		{% for file in child.files %}
 		<div class="tree-file" style="margin-left: {{ (level + 1) * 20 }}px;">
 			<span class="tree-icon">📄</span>
+			{% if file.local_path %}
+			<a href="/files{{ file.local_path }}" target="_blank">{{ file.name }}</a>
+			<a href="{{ file.url }}" target="_blank" title="View original on e-class" style="margin-left: 6px; display: inline-block;">
+				<img src="/static/media/eclass-aueb.jpg" alt="e-class" style="width: 16px; height: 16px; opacity: 0.7; vertical-align: middle;">
+			</a>
+			{% else %}
 			<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
+			{% endif %}
 			{% if file.last_updated %}
 			<span class="file-date" style="color: #64748b; font-size: 0.85em; margin-left: 8px;">{{
 				file.last_updated|format_timestamp }}</span>
@@ -98,11 +105,14 @@
 				{% for file in tree.files %}
 				<div class="tree-file">
 					<span class="tree-icon">📄</span>
-					<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
-					{% if file.last_updated %}
-					<span class="file-date" style="color: #64748b; font-size: 0.85em; margin-left: 8px;">{{
-						file.last_updated|format_timestamp }}</span>
-					{% endif %}
+				{% if file.local_path %}
+				<a href="/files{{ file.local_path }}" target="_blank">{{ file.name }}</a>
+			<a href="{{ file.url }}" target="_blank" title="View original on e-class" style="margin-left: 6px; display: inline-block;">
+				<img src="/static/media/eclass-aueb.jpg" alt="e-class" style="width: 16px; height: 16px; opacity: 0.7; vertical-align: middle;">
+				</a>
+				{% else %}
+				<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
+				{% endif %}
 				</div>
 				{% endfor %}
 				{% endif %}
