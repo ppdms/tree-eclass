@@ -69,16 +69,20 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str, old_root
         etag = None
         last_updated = None
         local_path = None
+        actual_file_name = None
 
         if "google" in file_url:
             # Google Drive files: always download and compute hash
-            local_path, file_hash = scraper.download_file(file_url, webdav_path)
+            local_path, file_hash, actual_file_name = scraper.download_file(file_url, webdav_path)
             last_updated = datetime.now(timezone.utc).isoformat()
+            # Use the actual downloaded file name if the scraped one is empty
+            if not file_name or not file_name.strip():
+                file_name = actual_file_name
         else:
             etag = scraper.fetch_etag(file_url)
             # Download if new, or etag has changed
             if not old_file or not etag or old_file.etag != etag:
-                local_path, file_hash = scraper.download_file(file_url, webdav_path)
+                local_path, file_hash, actual_file_name = scraper.download_file(file_url, webdav_path)
                 last_updated = datetime.now(timezone.utc).isoformat()
             else:
                 # Keep old hash, etag, timestamp and local_path if file is not re-downloaded

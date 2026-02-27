@@ -42,12 +42,12 @@ def extract_file_name(file_url: str) -> str:
     return unquote(os.path.basename(path))
 
 
-def download_google_drive_file(file_url: str, destination: str, webdav_uploader=None) -> tuple[str, Optional[str]]:
+def download_google_drive_file(file_url: str, destination: str, webdav_uploader=None) -> tuple[str, Optional[str], str]:
     """
     Downloads a file from Google Drive and uploads to WebDAV.
     
     Returns:
-        Tuple of (webdav_path, md5_hash)
+        Tuple of (webdav_path, md5_hash, file_name)
     """
     from app.services import google_drive_downloader
     try:
@@ -152,10 +152,55 @@ class Scraper:
             else:
                 logging.warning(f"Page at {url} identified as: Unidentified.")
 
+            # Track which rows have Google Drive downloads to avoid duplicate processing
+            google_drive_rows = set()
+            
+            # First pass: Handle Google Drive links in table rows (they have file names in neighboring cells)
+            for row in soup.select("tr"):
+                # Look for Google Drive download links in this row
+                google_links = row.select('a[href*="drive.google.com"]')
+                for google_link in google_links:
+                    href = google_link.get('href')
+                    
+                    # Only accept actual Google Drive file links
+                    if "/drive/folders/" in href or "accounts.google.com" in href or "support.google.com" in href:
+                        logging.warning(f"Skipping non-file Google link: {href}")
+                        continue
+                    
+                    if "drive.google.com/file/" in href or "drive.google.com/open" in href:
+                        # Find the file name in the same row (look for a.fileURL element)
+                        file_name_link = row.select_one('a.fileURL')
+                        if file_name_link:
+                            file_name = file_name_link.get_text(strip=True)
+                            files.append(href)
+                            file_names.append(file_name)
+                            logging.info(f"Found Google Drive file: {file_name} -> {href}")
+                            # Mark this row as processed to avoid duplicate entries
+                            google_drive_rows.add(id(row))
+                        else:
+                            # Fallback: use any text we can find
+                            files.append(href)
+                            file_names.append("Unknown Google Drive File")
+                            logging.warning(f"Google Drive link found but no file name available: {href}")
+                    else:
+                        logging.info(f"Skipping unrecognized Google link: {href}")
 
+            # Second pass: Handle regular links (non-Google Drive)
             for link in soup.select("a[href]"):
                 href = link.get('href')
                 link_text = link.get_text(strip=True)
+
+                # Skip Google Drive links (already handled above)
+                if "google" in href:
+                    continue
+                
+                # Skip fileURL links that are in rows with Google Drive downloads
+                # (those were already processed with their Google Drive URLs)
+                if 'fileURL' in link.get('class', []):
+                    # Check if this link is in a row that has a Google Drive download
+                    parent_row = link.find_parent('tr')
+                    if parent_row and id(parent_row) in google_drive_rows:
+                        continue
 
                 if (
                     ("https://eclass.aueb.gr" + href) == url or
@@ -163,24 +208,13 @@ class Scraper:
                     "Λήψη" in link_text or  # "Download"
                     "&sort" in href or
                     "modules/document/?course=" in href or
-                    ("google" not in href and "modules/document/" not in href) or
+                    "modules/document/" not in href or
                     (len(href) > 9 and href.endswith("openDir=/")) or
                     ("modules/document/index.php?" in href and ("&openDir=/" not in href or "&openDir=%2F" in href))
                 ):
                     continue
 
-                if "google" in href:
-                    # Only accept actual Google Drive file links, skip folders and other Google URLs
-                    if "/drive/folders/" in href or "accounts.google.com" in href or "support.google.com" in href:
-                        logging.warning(f"Skipping non-file Google link: {href}")
-                    elif "drive.google.com/file/" in href or "drive.google.com/open" in href:
-                        # Valid Google Drive file link
-                        files.append(href)
-                        file_names.append(link_text)
-                    else:
-                        # Log other Google links for debugging
-                        logging.info(f"Skipping unrecognized Google link: {href}")
-                elif '.' in href[-6:]:
+                if '.' in href[-6:]:
                     # Check if href is already a full URL before prepending base URL
                     if href.startswith('http://') or href.startswith('https://'):
                         files.append(href)
@@ -209,7 +243,7 @@ class Scraper:
         except requests.exceptions.RequestException:
             return None
 
-    def download_file(self, file_url: str, destination: str) -> tuple[str, Optional[str]]:
+    def download_file(self, file_url: str, destination: str) -> tuple[str, Optional[str], Optional[str]]:
         """
         Downloads a file from a URL and uploads to WebDAV.
         
@@ -218,10 +252,13 @@ class Scraper:
             destination: The destination WebDAV path
         
         Returns:
-            Tuple of (webdav_path, md5_hash)
+            Tuple of (webdav_path, md5_hash, file_name)
+            For Google Drive files, file_name is the actual downloaded name
+            For regular files, file_name is None (name should be taken from scraping)
         """
         if "google" in file_url:
-            return download_google_drive_file(file_url, destination, self.webdav_uploader)
+            webdav_path, md5_hash, file_name = download_google_drive_file(file_url, destination, self.webdav_uploader)
+            return webdav_path, md5_hash, file_name
 
         try:
             response = self.session.get(file_url, stream=True)
@@ -247,7 +284,7 @@ class Scraper:
             md5_hash = compute_md5_from_bytes(file_data)
             webdav_path = self.webdav_uploader.upload_file(file_data, destination, file_name)
             
-            return webdav_path, md5_hash
+            return webdav_path, md5_hash, None
 
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Failed to download file: {file_url} - {e}")

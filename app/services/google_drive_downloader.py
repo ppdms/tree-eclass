@@ -16,7 +16,7 @@ def download_file(file_url, destination_path, webdav_uploader=None):
         webdav_uploader: WebDAV uploader instance (required)
         
     Returns:
-        Tuple of (webdav_path, md5_hash)
+        Tuple of (webdav_path, md5_hash, file_name)
     """
     from app.services.scraper import compute_md5, compute_md5_from_bytes
     
@@ -47,7 +47,7 @@ def download_file(file_url, destination_path, webdav_uploader=None):
         md5_hash = compute_md5_from_bytes(file_data)
         webdav_path = webdav_uploader.upload_file(file_data, destination_path, file_name)
         
-        return webdav_path, md5_hash
+        return webdav_path, md5_hash, file_name
 
 def extract_file_id(url):
     """
