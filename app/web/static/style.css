@@ -749,20 +749,39 @@ footer a:hover {
 }
 
 /* Info card */
-.info-card dl {
+.info-card dl,
+.info-dl {
 	display: grid;
 	grid-template-columns: 140px 1fr;
 	gap: var(--spacing-sm) var(--spacing-md);
 	font-size: 0.875rem;
 }
 
-.info-card dt {
+.info-card dt,
+.info-dl dt {
 	font-weight: 600;
 	color: var(--text-secondary);
 }
 
-.info-card dd {
+.info-card dd,
+.info-dl dd {
 	color: var(--text-primary);
+}
+
+.info-dl input[type="text"] {
+	background: transparent;
+	border: none;
+	border-bottom: 1px solid var(--border);
+	border-radius: 0;
+	color: var(--text-primary);
+	font-size: 0.875rem;
+	padding: 2px 4px;
+	outline: none;
+	transition: border-color 0.15s;
+}
+
+.info-dl input[type="text"]:focus {
+	border-bottom-color: var(--primary-color);
 }
 
 .info-card p {
@@ -1323,6 +1342,11 @@ a {
 	font-size: 0.875rem;
 }
 
+.diff-tree-name a {
+	color: inherit;
+	text-decoration: none;
+}
+
 /* Directory styling */
 .diff-tree-directory .diff-tree-name {
 	font-weight: 600;
@@ -1422,4 +1446,161 @@ a {
 .diff-legend-item strong {
 	font-size: 1rem;
 	font-weight: 700;
+}
+
+/* ===== Timeline ===== */
+.timeline {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-lg);
+}
+
+.timeline-item {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+	box-shadow: var(--shadow);
+}
+
+/* Coloured left accent per type */
+.timeline-item-change {
+	border-left: 3px solid var(--primary-color);
+}
+
+.timeline-item-announcement {
+	border-left: 3px solid var(--warning-color);
+}
+
+/* Card header */
+.timeline-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--spacing-lg);
+	padding: var(--spacing-sm) var(--spacing-lg);
+	background: var(--background);
+	border-bottom: 1px solid var(--border);
+}
+
+.timeline-header-left {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-md);
+	min-width: 0;
+}
+
+.timeline-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	border-radius: 10px;
+	font-size: 0.75rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.timeline-badge-change {
+	background: rgba(37, 99, 235, 0.1);
+	color: var(--primary-color);
+}
+
+.timeline-badge-announcement {
+	background: rgba(234, 88, 12, 0.1);
+	color: var(--warning-color);
+}
+
+.timeline-course-link {
+	font-weight: 600;
+	font-size: 0.9375rem;
+	color: var(--text-primary);
+	text-decoration: none;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	transition: color 0.15s;
+}
+
+.timeline-course-link:hover {
+	color: var(--primary-color);
+	text-decoration: underline;
+}
+
+.timeline-date {
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+/* Card body */
+.timeline-body {
+	padding: var(--spacing-lg);
+}
+
+/* Diff tree inside timeline – remove inner border/bg since the card provides it */
+.timeline-diff-tree {
+	background: transparent;
+	border: none;
+	padding: 0;
+}
+
+.timeline-loading {
+	font-size: 0.8125rem;
+	color: var(--text-secondary);
+}
+
+/* Footer with "View Details" link */
+.timeline-footer {
+	margin-top: var(--spacing-md);
+	display: flex;
+	justify-content: flex-end;
+}
+
+/* Announcement body */
+.timeline-ann-title {
+	font-size: 1.0625rem;
+	font-weight: 600;
+	margin-bottom: var(--spacing-sm);
+}
+
+.timeline-ann-title a {
+	color: var(--primary-color);
+	text-decoration: none;
+}
+
+.timeline-ann-title a:hover {
+	text-decoration: underline;
+}
+
+.timeline-ann-body {
+	color: var(--text-primary);
+	line-height: 1.6;
+	font-size: 0.9rem;
+	overflow-wrap: break-word;
+}
+
+.timeline-ann-body p {
+	margin: 0.4rem 0;
+}
+
+.timeline-ann-body p:first-child {
+	margin-top: 0;
+}
+
+.timeline-ann-body p:last-child {
+	margin-bottom: 0;
+}
+
+.timeline-ann-body a {
+	color: var(--primary-color);
+	text-decoration: none;
+}
+
+.timeline-ann-body a:hover {
+	text-decoration: underline;
 }

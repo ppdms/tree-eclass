@@ -892,6 +892,98 @@ class DatabaseManager:
             logging.error(f"Failed to get change record items for change record {change_record_id}: {e}", exc_info=True)
             raise
 
+    def get_timeline_data(self, limit: int = 100, course_id: Optional[int] = None) -> List[Dict]:
+        """Return a combined, time-sorted list of change records (with items) and announcements."""
+        try:
+            cursor = self.conn.cursor()
+
+            # --- Change records ---
+            if course_id is not None:
+                cursor.execute("""
+                    SELECT cr.id, cr.course_id, co.name, cr.change_no, cr.timestamp, cr.message
+                    FROM change_records cr
+                    JOIN courses co ON cr.course_id = co.id
+                    WHERE cr.course_id = ?
+                    ORDER BY cr.timestamp DESC
+                    LIMIT ?
+                """, (course_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT cr.id, cr.course_id, co.name, cr.change_no, cr.timestamp, cr.message
+                    FROM change_records cr
+                    JOIN courses co ON cr.course_id = co.id
+                    ORDER BY cr.timestamp DESC
+                    LIMIT ?
+                """, (limit,))
+            change_rows = cursor.fetchall()
+
+            # Bulk-fetch items for all returned change records
+            items_by_cr_id: Dict[int, List[Dict]] = {}
+            if change_rows:
+                cr_ids = [row[0] for row in change_rows]
+                placeholders = ','.join('?' * len(cr_ids))
+                cursor.execute(
+                    f"SELECT change_record_id, change_type, file_path "
+                    f"FROM change_record_items WHERE change_record_id IN ({placeholders}) ORDER BY id",
+                    cr_ids
+                )
+                for cr_id, change_type, file_path in cursor.fetchall():
+                    items_by_cr_id.setdefault(cr_id, []).append(
+                        {"change_type": change_type, "file_path": file_path}
+                    )
+
+            timeline: List[Dict] = []
+            for cr_id, course_id, course_name, change_no, timestamp, message in change_rows:
+                timeline.append({
+                    "type": "change",
+                    "sort_key": timestamp or "",
+                    "timestamp": timestamp,
+                    "course_id": course_id,
+                    "course_name": course_name,
+                    "change_no": change_no,
+                    "message": message,
+                    "id": cr_id,
+                    "changes": items_by_cr_id.get(cr_id, []),
+                })
+
+            # --- Announcements ---
+            if course_id is not None:
+                cursor.execute("""
+                    SELECT a.id, a.course_id, co.name, a.title, a.link, a.description, a.pub_date
+                    FROM announcements a
+                    JOIN courses co ON a.course_id = co.id
+                    WHERE a.course_id = ?
+                    ORDER BY a.pub_date DESC
+                    LIMIT ?
+                """, (course_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT a.id, a.course_id, co.name, a.title, a.link, a.description, a.pub_date
+                    FROM announcements a
+                    JOIN courses co ON a.course_id = co.id
+                    ORDER BY a.pub_date DESC
+                    LIMIT ?
+                """, (limit,))
+            for ann_id, course_id, course_name, title, link, description, pub_date in cursor.fetchall():
+                timeline.append({
+                    "type": "announcement",
+                    "sort_key": pub_date or "",
+                    "timestamp": pub_date,
+                    "course_id": course_id,
+                    "course_name": course_name,
+                    "title": title,
+                    "link": link,
+                    "description": description,
+                    "id": ann_id,
+                })
+
+            # Merge-sort descending by timestamp string (ISO 8601 sorts lexicographically)
+            timeline.sort(key=lambda x: x["sort_key"], reverse=True)
+            return timeline[:limit]
+        except Exception as e:
+            logging.error(f"Failed to get timeline data: {e}", exc_info=True)
+            raise
+
     # --- Check logs and status methods ---
     def log_check_event(self, log_type: str, message: str, course_id: Optional[int] = None, status: str = "info"):
         """Log a check event (check start, check end, email sent, etc.)."""

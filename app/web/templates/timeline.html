@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_timeline.html" import render_timeline %}
+
+{% block title %}Timeline - tree-eclass{% endblock %}
+
+{% block content %}
+<div class="page-header">
+	<h1>Timeline</h1>
+	<div>
+		<a href="/history" class="btn btn-secondary">📜 Full History</a>
+		<a href="/announcements" class="btn btn-secondary">📢 Announcements</a>
+	</div>
+</div>
+
+{{ render_timeline(timeline) }}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+	const changesDataMap = {};
+	{% for item in changes_data %}
+	changesDataMap[{{ item.id }}] = { changes: {{ item.changes | tojson | safe }}, webdavFolder: {{ item.webdav_folder | tojson | safe }} };
+	{% endfor %}
+
+	document.addEventListener('DOMContentLoaded', () => {
+		for (const [id, data] of Object.entries(changesDataMap)) {
+			window.treeEclass.initDiffTreeAt(data.changes, 'diff-tree-' + id, data.webdavFolder);
+		}
+	});
+</script>
+{% endblock %}

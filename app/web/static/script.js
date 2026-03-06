@@ -239,6 +239,7 @@ function buildDiffTree(changes) {
 					// It's a file
 					current.files.push({
 						name: part,
+						path: change.file_path,
 						changeType: change.change_type,
 						type: 'file'
 					});
@@ -302,7 +303,7 @@ function buildDiffTree(changes) {
 }
 
 // Render diff tree as HTML
-function renderDiffTree(node, level = 0) {
+function renderDiffTree(node, level = 0, webdavFolder = '') {
 	let html = '';
 	const indent = level * 20;
 
@@ -325,7 +326,7 @@ function renderDiffTree(node, level = 0) {
 		`;
 
 		// Recursively render children
-		html += renderDiffTree(dir, level + 1);
+		html += renderDiffTree(dir, level + 1, webdavFolder);
 	});
 
 	// Render files
@@ -333,12 +334,17 @@ function renderDiffTree(node, level = 0) {
 		const changeClass = file.changeType || 'unchanged';
 		const icon = getChangeIcon(file.changeType, true);
 		const symbol = getChangeSymbol(file.changeType);
+		const isLinkable = webdavFolder && file.path &&
+			(file.changeType === 'added_file' || file.changeType === 'modified_file');
+		const nameHtml = isLinkable
+			? `<a href="/files${webdavFolder}/${file.path}" target="_blank">${file.name}</a>`
+			: file.name;
 
 		html += `
 			<div class="diff-tree-node diff-tree-file ${changeClass}" style="margin-left: ${indent}px;">
 				<span class="diff-tree-icon">${icon}</span>
 				<span class="diff-tree-symbol">${symbol}</span>
-				<span class="diff-tree-name">${file.name}</span>
+				<span class="diff-tree-name">${nameHtml}</span>
 			</div>
 		`;
 	});
@@ -383,12 +389,25 @@ function getChangeSymbol(changeType) {
 }
 
 // Initialize diff tree view
-function initDiffTreeView(changes) {
+function initDiffTreeView(changes, webdavFolder = '') {
 	const container = document.getElementById('diff-tree-container');
 	if (!container || !changes || changes.length === 0) return;
 
 	const tree = buildDiffTree(changes);
-	const html = renderDiffTree(tree);
+	const html = renderDiffTree(tree, 0, webdavFolder);
+	container.innerHTML = html;
+}
+
+// Initialize diff tree view in a specific container element
+function initDiffTreeAt(changes, containerId, webdavFolder = '') {
+	const container = document.getElementById(containerId);
+	if (!container) return;
+	if (!changes || changes.length === 0) {
+		container.innerHTML = '<em style="color:var(--text-secondary);font-size:0.8125rem">No changes</em>';
+		return;
+	}
+	const tree = buildDiffTree(changes);
+	const html = renderDiffTree(tree, 0, webdavFolder);
 	container.innerHTML = html;
 }
 
@@ -404,5 +423,6 @@ window.treeEclass = {
 	showNotification,
 	buildDiffTree,
 	renderDiffTree,
-	initDiffTreeView
+	initDiffTreeView,
+	initDiffTreeAt,
 };

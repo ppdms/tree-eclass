@@ -1,0 +1,62 @@
+{% macro render_timeline(timeline, show_course_link=true) %}
+{% if timeline %}
+<div class="timeline">
+	{% for item in timeline %}
+	<div class="timeline-item timeline-item-{{ item.type }}">
+
+		<div class="timeline-header">
+			<div class="timeline-header-left">
+				{% if item.type == "change" %}
+				<span class="timeline-badge timeline-badge-change">📝 Changes</span>
+				{% else %}
+				<span class="timeline-badge timeline-badge-announcement">📢 Announcement</span>
+				{% endif %}
+				{% if show_course_link %}
+				<a href="/courses/{{ item.course_id }}" class="timeline-course-link">{{ item.course_name }}</a>
+				{% endif %}
+			</div>
+			<span class="timeline-date">
+				{% if item.timestamp %}
+				{{ item.timestamp|athens_time }}
+				{% else %}
+				<em>Unknown date</em>
+				{% endif %}
+			</span>
+		</div>
+
+		<div class="timeline-body">
+			{% if item.type == "change" %}
+
+			<div class="diff-tree-view timeline-diff-tree" id="diff-tree-{{ item.id }}">
+				<span class="timeline-loading">Loading…</span>
+			</div>
+
+			<div class="timeline-footer">
+				<a href="/courses/{{ item.course_id }}/changes/{{ item.change_no }}"
+					class="btn btn-sm btn-secondary">View Details →</a>
+			</div>
+
+			{% else %}
+
+			{% if item.link %}
+			<div class="timeline-ann-title">
+				<a href="{{ item.link }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+			</div>
+			{% else %}
+			<div class="timeline-ann-title">{{ item.title }}</div>
+			{% endif %}
+
+			{% if item.description %}
+			<div class="timeline-ann-body">{{ item.description|safe }}</div>
+			{% endif %}
+
+			{% endif %}
+		</div>
+
+	</div>
+	{% endfor %}
+</div>
+{% else %}
+<p class="empty-state">No activity yet.</p>
+{% endif %}
+{% endmacro %}

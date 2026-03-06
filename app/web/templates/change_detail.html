@@ -51,11 +51,12 @@
 <script>
 	// Pass changes data to JavaScript
 	const changesData = {{ changes | tojson | safe }};
+	const webdavFolder = {{ webdav_folder | tojson | safe }};
 
 	// Initialize tree view when DOM is ready
 	document.addEventListener('DOMContentLoaded', () => {
 		if (window.treeEclass && window.treeEclass.initDiffTreeView) {
-			window.treeEclass.initDiffTreeView(changesData);
+			window.treeEclass.initDiffTreeView(changesData, webdavFolder);
 		}
 	});
 </script>

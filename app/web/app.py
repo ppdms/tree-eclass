@@ -155,9 +155,31 @@ def node_to_dict(node: Node, parent_path: str = "") -> dict:
 # ===== ROUTES =====
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, course_id: Optional[str] = None):
-    """Main page - shows change history."""
-    return await view_history(request, course_id)
+async def index(request: Request):
+    """Main page - shows unified timeline of changes and announcements."""
+    try:
+        timeline = db_manager.get_timeline_data(limit=100)
+        courses = db_manager.get_courses()
+        # Collect change items data as JSON for JS diff tree rendering
+        courses_by_id = {c['id']: c for c in courses}
+        changes_data = [
+            {
+                "id": item["id"],
+                "changes": item["changes"],
+                "webdav_folder": courses_by_id.get(item["course_id"], {}).get("webdav_folder", ""),
+            }
+            for item in timeline
+            if item["type"] == "change"
+        ]
+        return templates.TemplateResponse("timeline.html", {
+            "request": request,
+            "timeline": timeline,
+            "courses": courses,
+            "changes_data": changes_data,
+        })
+    except Exception as e:
+        logging.error(f"Error loading timeline: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ===== COURSE ROUTES =====
@@ -182,17 +204,29 @@ async def view_course(request: Request, course_id: int):
     try:
         courses = db_manager.get_courses()
         course = next((c for c in courses if c['id'] == course_id), None)
-        
+
         if not course:
             logging.warning(f"Course {course_id} not found")
             raise HTTPException(status_code=404, detail="Course not found")
-        
+
         tree = db_manager.load_tree(course_id)
-        
+        timeline = db_manager.get_timeline_data(limit=50, course_id=course_id)
+        changes_data = [
+            {
+                "id": item["id"],
+                "changes": item["changes"],
+                "webdav_folder": course["webdav_folder"],
+            }
+            for item in timeline
+            if item["type"] == "change"
+        ]
+
         return templates.TemplateResponse("course_detail.html", {
             "request": request,
             "course": course,
-            "tree": tree
+            "tree": tree,
+            "timeline": timeline,
+            "changes_data": changes_data,
         })
     except HTTPException:
         raise
@@ -578,10 +612,14 @@ async def view_change_record(request: Request, course_id: int, change_no: str):
         # Fetch items by change_record id
         changes = db_manager.get_change_record_items(change_record['id'])
 
+        course = next((c for c in db_manager.get_courses() if c['id'] == course_id), None)
+        webdav_folder = course['webdav_folder'] if course else ''
+
         return templates.TemplateResponse("change_detail.html", {
             "request": request,
             "change_record": change_record,
-            "changes": changes
+            "changes": changes,
+            "webdav_folder": webdav_folder,
         })
     except HTTPException:
         raise
