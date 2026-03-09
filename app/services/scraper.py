@@ -7,7 +7,7 @@ import os
 import re
 import sys
 from typing import Optional
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, urljoin
 import requests
 from bs4 import BeautifulSoup
 
@@ -278,7 +278,7 @@ class Scraper:
         except requests.exceptions.RequestException:
             return None
 
-    def download_file(self, file_url: str, destination: str) -> tuple[str, Optional[str], Optional[str]]:
+    def download_file(self, file_url: str, destination: str) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
         """
         Downloads a file from a URL and uploads to WebDAV.
         
@@ -287,13 +287,14 @@ class Scraper:
             destination: The destination WebDAV path
         
         Returns:
-            Tuple of (webdav_path, md5_hash, file_name)
-            For Google Drive files, file_name is the actual downloaded name
-            For regular files, file_name is None (name should be taken from scraping)
+            Tuple of (webdav_path, md5_hash, file_name, redirect_url)
+            For Google Drive files, file_name is the actual downloaded name.
+            For external redirects (e.g. SharePoint), redirect_url is set and the
+            other three values are None (no content is downloaded or uploaded).
         """
         if "google" in file_url:
             webdav_path, md5_hash, file_name = download_google_drive_file(file_url, destination, self.webdav_uploader)
-            return webdav_path, md5_hash, file_name
+            return webdav_path, md5_hash, file_name, None
 
         try:
             response = self.session.get(file_url, stream=True)
@@ -304,6 +305,24 @@ class Scraper:
                 response = self.session.get(file_url, stream=True)
 
             response.raise_for_status()
+
+            # Check if we ended up on an external domain (e.g. SharePoint, OneDrive).
+            # In that case we do NOT download HTML content — we just record the redirect URL.
+            original_netloc = urlparse(file_url).netloc
+            final_netloc = urlparse(response.url).netloc
+            if final_netloc and final_netloc != original_netloc:
+                # Find the first off-site Location header in the redirect chain.
+                redirect_url = response.url  # safe fallback (final URL)
+                for r in response.history:
+                    loc = r.headers.get('Location', '')
+                    if loc:
+                        abs_loc = urljoin(r.url, loc)
+                        if urlparse(abs_loc).netloc != original_netloc:
+                            redirect_url = abs_loc
+                            break
+                response.close()
+                logging.info(f"External redirect detected for {file_url} -> {redirect_url}")
+                return None, None, None, redirect_url
 
             logging.debug(f"download_file headers for {file_url}: { {k: repr(v) for k, v in response.headers.items()} }")
 
@@ -324,7 +343,7 @@ class Scraper:
             md5_hash = compute_md5_from_bytes(file_data)
             webdav_path = self.webdav_uploader.upload_file(file_data, destination, file_name)
 
-            return webdav_path, md5_hash, file_name
+            return webdav_path, md5_hash, file_name, None
 
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Failed to download file: {file_url} - {e}")

@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 9  # Current schema version
+SCHEMA_VERSION = 10  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -82,6 +82,7 @@ class DatabaseManager:
                 name TEXT NOT NULL,
                 md5_hash TEXT,
                 etag TEXT,
+                redirect_url TEXT,
                 FOREIGN KEY (node_id) REFERENCES nodes (id) ON DELETE CASCADE
             )
         """)
@@ -114,6 +115,7 @@ class DatabaseManager:
                 change_type TEXT NOT NULL,
                 file_path TEXT NOT NULL,
                 display_name TEXT,
+                redirect_url TEXT,
                 FOREIGN KEY (change_record_id) REFERENCES change_records (id) ON DELETE CASCADE
             )
         """)
@@ -240,6 +242,10 @@ class DatabaseManager:
         if current_version < 9:
             self._migration_8_to_9()
             self._set_schema_version(9)
+
+        if current_version < 10:
+            self._migration_9_to_10()
+            self._set_schema_version(10)
         
         logging.info("All migrations completed successfully")
 
@@ -461,6 +467,23 @@ class DatabaseManager:
 
         self.conn.commit()
         logging.info(f"Migration 8 -> 9: fixed {fixed} / {len(items)} old change_record_items")
+
+    def _migration_9_to_10(self):
+        """Migration: Add redirect_url column to files and change_record_items tables."""
+        logging.info("Running migration 9 -> 10: Adding redirect_url columns")
+        cursor = self.conn.cursor()
+
+        cursor.execute("PRAGMA table_info(files)")
+        if 'redirect_url' not in [row[1] for row in cursor.fetchall()]:
+            cursor.execute("ALTER TABLE files ADD COLUMN redirect_url TEXT")
+            logging.info("Added redirect_url column to files table")
+
+        cursor.execute("PRAGMA table_info(change_record_items)")
+        if 'redirect_url' not in [row[1] for row in cursor.fetchall()]:
+            cursor.execute("ALTER TABLE change_record_items ADD COLUMN redirect_url TEXT")
+            logging.info("Added redirect_url column to change_record_items table")
+
+        self.conn.commit()
 
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
@@ -731,8 +754,8 @@ class DatabaseManager:
 
             for file in node.files:
                 cursor.execute(
-                    "INSERT INTO files (node_id, url, name, md5_hash, etag, last_updated, local_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (current_db_id, file.url, file.name, file.md5_hash, file.etag, file.last_updated, file.local_path)
+                    "INSERT INTO files (node_id, url, name, md5_hash, etag, last_updated, local_path, redirect_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (current_db_id, file.url, file.name, file.md5_hash, file.etag, file.last_updated, file.local_path, file.redirect_url)
                 )
 
             for child_node in node.children:
@@ -776,12 +799,12 @@ class DatabaseManager:
                 child_node = node_objects[db_id]
                 parent_node.children.append(child_node)
 
-        cursor.execute("SELECT node_id, url, name, md5_hash, etag, last_updated, local_path FROM files WHERE node_id IN ({seq})".format(
+        cursor.execute("SELECT node_id, url, name, md5_hash, etag, last_updated, local_path, redirect_url FROM files WHERE node_id IN ({seq})".format(
             seq=','.join(['?']*len(node_objects))), list(node_objects.keys()))
         
-        for node_id, url, name, md5_hash, etag, last_updated, local_path in cursor.fetchall():
+        for node_id, url, name, md5_hash, etag, last_updated, local_path, redirect_url in cursor.fetchall():
             if node_id in node_objects:
-                node_objects[node_id].files.append(File(url=url, name=name, md5_hash=md5_hash, etag=etag, last_updated=last_updated, local_path=local_path))
+                node_objects[node_id].files.append(File(url=url, name=name, md5_hash=md5_hash, etag=etag, last_updated=last_updated, local_path=local_path, redirect_url=redirect_url))
 
         return root_node
 
@@ -836,8 +859,8 @@ class DatabaseManager:
             # Add each change to the change record
             for change in changes:
                 cursor.execute(
-                    "INSERT INTO change_record_items (change_record_id, change_type, file_path, display_name) VALUES (?, ?, ?, ?)",
-                    (change_record_id, change.change_type, change.file_path, change.display_name)
+                    "INSERT INTO change_record_items (change_record_id, change_type, file_path, display_name, redirect_url) VALUES (?, ?, ?, ?, ?)",
+                    (change_record_id, change.change_type, change.file_path, change.display_name, change.redirect_url)
                 )
 
             self.conn.commit()
@@ -930,7 +953,7 @@ class DatabaseManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                SELECT id, change_type, file_path, display_name
+                SELECT id, change_type, file_path, display_name, redirect_url
                 FROM change_record_items
                 WHERE change_record_id = ?
                 ORDER BY id
@@ -942,7 +965,8 @@ class DatabaseManager:
                     "id": row[0],
                     "change_type": row[1],
                     "file_path": row[2],
-                    "display_name": row[3]
+                    "display_name": row[3],
+                    "redirect_url": row[4],
                 }
                 for row in rows
             ]
@@ -981,13 +1005,13 @@ class DatabaseManager:
                 cr_ids = [row[0] for row in change_rows]
                 placeholders = ','.join('?' * len(cr_ids))
                 cursor.execute(
-                    f"SELECT change_record_id, change_type, file_path, display_name "
+                    f"SELECT change_record_id, change_type, file_path, display_name, redirect_url "
                     f"FROM change_record_items WHERE change_record_id IN ({placeholders}) ORDER BY id",
                     cr_ids
                 )
-                for cr_id, change_type, file_path, display_name in cursor.fetchall():
+                for cr_id, change_type, file_path, display_name, redirect_url in cursor.fetchall():
                     items_by_cr_id.setdefault(cr_id, []).append(
-                        {"change_type": change_type, "file_path": file_path, "display_name": display_name}
+                        {"change_type": change_type, "file_path": file_path, "display_name": display_name, "redirect_url": redirect_url}
                     )
 
             timeline: List[Dict] = []

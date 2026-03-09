@@ -14,6 +14,7 @@ class ChangeItem:
     change_type: str   # "added_file", "deleted_file", "modified_file", "added_directory", "deleted_directory"
     file_path: str     # actual relative path using the real filesystem filename
     display_name: Optional[str] = None  # human-readable display name (if different from filename)
+    redirect_url: Optional[str] = None  # set for external links (e.g. SharePoint recordings)
 
     def __str__(self) -> str:
         prefix_map = {
@@ -62,7 +63,7 @@ def _report_all_added(node: Node, base_path: str, root_path: str) -> List[Change
     for file in node.files:
         actual_path = _get_file_actual_path(file, dir_path)
         relative_file_path = _make_relative_path(actual_path, root_path)
-        changes.append(ChangeItem("added_file", relative_file_path, file.name))
+        changes.append(ChangeItem("added_file", relative_file_path, file.name, file.redirect_url))
 
     for child in node.children:
         changes.extend(_report_all_added(child, dir_path, root_path))
@@ -131,11 +132,11 @@ def diff_trees(previous: Optional[Node], latest: Node, root_path: Optional[str] 
         actual_path = _get_file_actual_path(new_file, latest.local_path)
         relative_path = _make_relative_path(actual_path, root_path)
         if file_url not in old_files:
-            changes.append(ChangeItem("added_file", relative_path, new_file.name))
+            changes.append(ChangeItem("added_file", relative_path, new_file.name, new_file.redirect_url))
         else:
             old_file = old_files[file_url]
             # Check for updates based on MD5 hash
             if old_file.md5_hash != new_file.md5_hash:
-                changes.append(ChangeItem("modified_file", relative_path, new_file.name))
+                changes.append(ChangeItem("modified_file", relative_path, new_file.name, new_file.redirect_url))
     
     return changes

@@ -13,8 +13,15 @@
 	<div class="tree-children">
 		{% for file in child.files %}
 		<div class="tree-file" style="margin-left: {{ (level + 1) * 20 }}px;">
-			<span class="tree-icon">📄</span>
-			{% if file.local_path %}
+			<span class="tree-icon">{% if file.redirect_url %}🔗{% else %}📄{% endif %}</span>
+			{% if file.redirect_url %}
+			<a href="{{ file.redirect_url }}" target="_blank" title="External link (SharePoint / Stream)">{{ file.name }}</a>
+			<a href="{{ file.url }}" target="_blank" title="View original on e-class"
+				style="margin-left: 6px; display: inline-block;">
+				<img src="/static/media/eclass-aueb.jpg" alt="e-class"
+					style="width: 16px; height: 16px; opacity: 0.7; vertical-align: middle;">
+			</a>
+			{% elif file.local_path %}
 			<a href="/files{{ file.local_path }}" target="_blank">{{ file.name }}</a>
 			<a href="{{ file.url }}" target="_blank" title="View original on e-class"
 				style="margin-left: 6px; display: inline-block;">
@@ -96,8 +103,15 @@
 				{% if tree.files %}
 				{% for file in tree.files %}
 				<div class="tree-file">
-					<span class="tree-icon">📄</span>
-					{% if file.local_path %}
+				<span class="tree-icon">{% if file.redirect_url %}🔗{% else %}📄{% endif %}</span>
+				{% if file.redirect_url %}
+				<a href="{{ file.redirect_url }}" target="_blank" title="External link (SharePoint / Stream)">{{ file.name }}</a>
+				<a href="{{ file.url }}" target="_blank" title="View original on e-class"
+					style="margin-left: 6px; display: inline-block;">
+					<img src="/static/media/eclass-aueb.jpg" alt="e-class"
+						style="width: 16px; height: 16px; opacity: 0.7; vertical-align: middle;">
+				</a>
+				{% elif file.local_path %}
 					<a href="/files{{ file.local_path }}" target="_blank">{{ file.name }}</a>
 					<a href="{{ file.url }}" target="_blank" title="View original on e-class"
 						style="margin-left: 6px; display: inline-block;">

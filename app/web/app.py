@@ -145,7 +145,8 @@ def node_to_dict(node: Node, parent_path: str = "") -> dict:
                 "url": f.url,
                 "md5_hash": f.md5_hash,
                 "etag": f.etag,
-                "local_path": f.local_path
+                "local_path": f.local_path,
+                "redirect_url": f.redirect_url,
             }
             for f in node.files
         ],

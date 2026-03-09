@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import List
 from datetime import datetime, timezone
 
-from app.services.scraper import Scraper, compute_md5
+from app.services.scraper import Scraper, compute_md5, compute_md5_from_bytes
 
 
 # Data models
@@ -21,6 +21,7 @@ class File:
     etag: Optional[str] = None
     last_updated: Optional[str] = None  # ISO 8601 timestamp when file was last added/modified
     local_path: Optional[str] = None  # WebDAV path where the file is stored
+    redirect_url: Optional[str] = None  # Set when the file is an external link (e.g. SharePoint)
 
 
 @dataclass
@@ -70,10 +71,11 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str, old_root
         last_updated = None
         local_path = None
         actual_file_name = None
+        redirect_url = None
 
         if "google" in file_url:
             # Google Drive files: always download and compute hash
-            local_path, file_hash, actual_file_name = scraper.download_file(file_url, webdav_path)
+            local_path, file_hash, actual_file_name, redirect_url = scraper.download_file(file_url, webdav_path)
             last_updated = datetime.now(timezone.utc).isoformat()
             # Use the actual downloaded file name if the scraped one is empty
             if not file_name or not file_name.strip():
@@ -82,7 +84,12 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str, old_root
             etag = scraper.fetch_etag(file_url)
             # Download if new, or etag has changed
             if not old_file or not etag or old_file.etag != etag:
-                local_path, file_hash, actual_file_name = scraper.download_file(file_url, webdav_path)
+                local_path, file_hash, actual_file_name, redirect_url = scraper.download_file(file_url, webdav_path)
+                if redirect_url:
+                    # External link (e.g. SharePoint/Stream): use a stable hash derived from
+                    # the redirect URL so change detection is based on the link, not HTML content.
+                    file_hash = compute_md5_from_bytes(redirect_url.encode())
+                    local_path = None
                 last_updated = datetime.now(timezone.utc).isoformat()
             else:
                 # Keep old hash, etag, timestamp and local_path if file is not re-downloaded
@@ -90,8 +97,9 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str, old_root
                 etag = old_file.etag
                 last_updated = old_file.last_updated
                 local_path = old_file.local_path
+                redirect_url = old_file.redirect_url
         
-        current_node.files.append(File(url=file_url, name=file_name, md5_hash=file_hash, etag=etag, last_updated=last_updated, local_path=local_path))
+        current_node.files.append(File(url=file_url, name=file_name, md5_hash=file_hash, etag=etag, last_updated=last_updated, local_path=local_path, redirect_url=redirect_url))
 
     # Create a map of old child directories for efficient lookup
     old_children_map = {c.name: c for c in old_root.children} if old_root else {}

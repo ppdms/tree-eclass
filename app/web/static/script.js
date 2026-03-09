@@ -241,6 +241,7 @@ function buildDiffTree(changes) {
 						name: change.display_name || part,
 						path: change.file_path,
 						changeType: change.change_type,
+						redirectUrl: change.redirect_url || null,
 						type: 'file'
 					});
 				}
@@ -334,11 +335,16 @@ function renderDiffTree(node, level = 0, webdavFolder = '') {
 		const changeClass = file.changeType || 'unchanged';
 		const icon = getChangeIcon(file.changeType, true);
 		const symbol = getChangeSymbol(file.changeType);
-		const isLinkable = webdavFolder && file.path &&
-			(file.changeType === 'added_file' || file.changeType === 'modified_file');
-		const nameHtml = isLinkable
-			? `<a href="/files${webdavFolder}/${file.path}" target="_blank">${file.name}</a>`
-			: file.name;
+		const isAdded = file.changeType === 'added_file' || file.changeType === 'modified_file';
+		let nameHtml;
+		if (file.redirectUrl && isAdded) {
+			// External link (e.g. SharePoint recording) — link directly to the source
+			nameHtml = `<a href="${file.redirectUrl}" target="_blank" title="External link (SharePoint / Stream)">${file.name} 🔗</a>`;
+		} else if (isAdded && webdavFolder && file.path) {
+			nameHtml = `<a href="/files${webdavFolder}/${file.path}" target="_blank">${file.name}</a>`;
+		} else {
+			nameHtml = file.name;
+		}
 
 		html += `
 			<div class="diff-tree-node diff-tree-file ${changeClass}" style="margin-left: ${indent}px;">
