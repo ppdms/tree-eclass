@@ -256,3 +256,39 @@ class WebDAVUploader:
         except Exception as e:
             logging.error(f"Failed to download file from WebDAV {remote_path}: {e}", exc_info=True)
             return None
+
+    def copy_file(self, src_path: str, dst_path: str) -> bool:
+        """Server-side copy a file on WebDAV. Ensures destination directory exists first."""
+        if not self.is_configured():
+            return False
+        try:
+            dst_dir = os.path.dirname(dst_path)
+            if dst_dir:
+                self._ensure_directory(dst_dir)
+            self.client.copy(remote_path_from=src_path, remote_path_to=dst_path)
+            logging.info(f"Copied WebDAV file: {src_path} → {dst_path}")
+            return True
+        except WebDavException as e:
+            logging.warning(f"WebDAV error copying {src_path} → {dst_path}: {e}")
+            return False
+        except Exception as e:
+            logging.warning(f"Error copying WebDAV file {src_path} → {dst_path}: {e}")
+            return False
+
+    def move_file(self, src_path: str, dst_path: str) -> bool:
+        """Server-side move a file on WebDAV. Ensures destination directory exists first."""
+        if not self.is_configured():
+            return False
+        try:
+            dst_dir = os.path.dirname(dst_path)
+            if dst_dir:
+                self._ensure_directory(dst_dir)
+            self.client.move(remote_path_from=src_path, remote_path_to=dst_path)
+            logging.info(f"Moved WebDAV file: {src_path} → {dst_path}")
+            return True
+        except WebDavException as e:
+            logging.warning(f"WebDAV error moving {src_path} → {dst_path}: {e}")
+            return False
+        except Exception as e:
+            logging.warning(f"Error moving WebDAV file {src_path} → {dst_path}: {e}")
+            return False

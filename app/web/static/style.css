@@ -1428,6 +1428,121 @@ a {
 	margin-bottom: var(--spacing-xs);
 }
 
+/* ===== File Version / Deleted-Files Indicators ===== */
+
+.version-indicator {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	margin-left: 6px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 0.85rem;
+	line-height: 1;
+	vertical-align: middle;
+	transition: background 0.15s, opacity 0.15s;
+	opacity: 0.6;
+}
+
+.version-indicator:hover,
+.version-indicator.active {
+	opacity: 1;
+}
+
+.modified-indicator {
+	background: rgba(37, 99, 235, 0.1);
+}
+
+.modified-indicator:hover,
+.modified-indicator.active {
+	background: rgba(37, 99, 235, 0.2);
+}
+
+.deleted-indicator {
+	background: rgba(220, 38, 38, 0.1);
+}
+
+.deleted-indicator:hover,
+.deleted-indicator.active {
+	background: rgba(220, 38, 38, 0.2);
+}
+
+.version-panel {
+	display: block;
+	margin: 4px 0 4px 28px;
+	padding: var(--spacing-sm) var(--spacing-md);
+	background: var(--background);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	font-size: 0.8125rem;
+	color: var(--text-primary);
+}
+
+.version-panel-header {
+	font-weight: 600;
+	color: var(--text-secondary);
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-bottom: var(--spacing-xs);
+}
+
+.version-entry {
+	padding: var(--spacing-xs) 0;
+	border-bottom: 1px solid var(--border);
+	line-height: 1.5;
+}
+
+.version-entry:last-child {
+	border-bottom: none;
+}
+
+.version-entry a {
+	color: var(--primary-color);
+	text-decoration: none;
+}
+
+.version-entry a:hover {
+	text-decoration: underline;
+}
+
+.diff-pdf-btn {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 1px 6px;
+	font-size: 0.75rem;
+	background: var(--bg-secondary, #f1f5f9);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--primary-color);
+	text-decoration: none;
+	vertical-align: middle;
+}
+
+.diff-pdf-btn:hover {
+	background: var(--primary-color);
+	color: #fff;
+	text-decoration: none;
+}
+
+.version-ts {
+	color: var(--text-secondary);
+	font-size: 0.75rem;
+	margin-left: 6px;
+}
+
+.version-path {
+	color: var(--text-secondary);
+	font-size: 0.75rem;
+	font-family: 'Roboto Mono', monospace;
+	margin-left: 6px;
+	opacity: 0.7;
+}
+
 /* Diff Legend */
 .diff-legend {
 	display: flex;

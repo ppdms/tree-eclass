@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 10  # Current schema version
+SCHEMA_VERSION = 12  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -180,6 +180,20 @@ class DatabaseManager:
                 UNIQUE(course_id, announcement_id)
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS file_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id INTEGER NOT NULL,
+                file_path TEXT NOT NULL,
+                version_webdav_path TEXT,
+                change_type TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                display_name TEXT,
+                redirect_url TEXT,
+                diff_webdav_path TEXT,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
         self.conn.commit()
 
     def _get_schema_version(self) -> int:
@@ -246,6 +260,14 @@ class DatabaseManager:
         if current_version < 10:
             self._migration_9_to_10()
             self._set_schema_version(10)
+
+        if current_version < 11:
+            self._migration_10_to_11()
+            self._set_schema_version(11)
+
+        if current_version < 12:
+            self._migration_11_to_12()
+            self._set_schema_version(12)
         
         logging.info("All migrations completed successfully")
 
@@ -485,6 +507,42 @@ class DatabaseManager:
 
         self.conn.commit()
 
+    def _migration_10_to_11(self):
+        """Migration: Add file_versions table for tracking modified/deleted file history."""
+        logging.info("Running migration 10 -> 11: Adding file_versions table")
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='file_versions'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE file_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id INTEGER NOT NULL,
+                    file_path TEXT NOT NULL,
+                    version_webdav_path TEXT,
+                    change_type TEXT NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    display_name TEXT,
+                    redirect_url TEXT,
+                    FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+                )
+            """)
+            self.conn.commit()
+            logging.info("Created file_versions table")
+        else:
+            logging.debug("file_versions table already exists, skipping")
+
+    def _migration_11_to_12(self):
+        """Migration: Add diff_webdav_path column to file_versions table."""
+        logging.info("Running migration 11 -> 12: Adding diff_webdav_path column to file_versions")
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(file_versions)")
+        if 'diff_webdav_path' not in [row[1] for row in cursor.fetchall()]:
+            cursor.execute("ALTER TABLE file_versions ADD COLUMN diff_webdav_path TEXT")
+            self.conn.commit()
+            logging.info("Added diff_webdav_path column to file_versions table")
+        else:
+            logging.debug("diff_webdav_path column already exists, skipping")
+
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
         try:
@@ -709,6 +767,7 @@ class DatabaseManager:
             cursor.execute("DELETE FROM change_records WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM change_history WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM check_logs WHERE course_id = ?", (course_id,))
+            cursor.execute("DELETE FROM file_versions WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM courses WHERE id = ?", (course_id,))
             self.conn.commit()
             logging.debug(f"Deleted course ID: {course_id} and all associated data")
@@ -734,6 +793,8 @@ class DatabaseManager:
             cursor.execute("DELETE FROM check_logs WHERE course_id = ?", (course_id,))
             # Delete announcements for this course
             cursor.execute("DELETE FROM announcements WHERE course_id = ?", (course_id,))
+            # Delete file version history
+            cursor.execute("DELETE FROM file_versions WHERE course_id = ?", (course_id,))
             self.conn.commit()
             logging.debug(f"Reset data for course ID: {course_id}")
         except Exception as e:
@@ -1281,6 +1342,86 @@ class DatabaseManager:
             return None
         except Exception as e:
             logging.error(f"Failed to get latest announcement date for course {course_id}: {e}", exc_info=True)
+            raise
+
+    # --- File version methods ---
+    def save_file_version(self, course_id: int, file_path: str, version_webdav_path: Optional[str],
+                          change_type: str, display_name: Optional[str] = None,
+                          redirect_url: Optional[str] = None, diff_webdav_path: Optional[str] = None):
+        """Record a version of a file (modified or deleted)."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO file_versions (course_id, file_path, version_webdav_path, change_type, display_name, redirect_url, diff_webdav_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (course_id, file_path, version_webdav_path, change_type, display_name, redirect_url, diff_webdav_path))
+            self.conn.commit()
+            logging.debug(f"Saved file version: course={course_id} path={file_path} type={change_type}")
+        except Exception as e:
+            logging.error(f"Failed to save file version: {e}", exc_info=True)
+            raise
+
+    def get_file_versions(self, course_id: int, file_path: Optional[str] = None,
+                          change_type: Optional[str] = None) -> List[Dict]:
+        """Get file versions for a course, optionally filtered by path and/or change type."""
+        try:
+            cursor = self.conn.cursor()
+            query = """
+                SELECT id, course_id, file_path, version_webdav_path, change_type, timestamp, display_name, redirect_url, diff_webdav_path
+                FROM file_versions WHERE course_id = ?
+            """
+            params: list = [course_id]
+            if file_path is not None:
+                query += " AND file_path = ?"
+                params.append(file_path)
+            if change_type is not None:
+                query += " AND change_type = ?"
+                params.append(change_type)
+            query += " ORDER BY timestamp DESC"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": r[0], "course_id": r[1], "file_path": r[2],
+                    "version_webdav_path": r[3], "change_type": r[4],
+                    "timestamp": r[5], "display_name": r[6], "redirect_url": r[7],
+                    "diff_webdav_path": r[8],
+                }
+                for r in rows
+            ]
+        except Exception as e:
+            logging.error(f"Failed to get file versions for course {course_id}: {e}", exc_info=True)
+            raise
+
+    def get_files_with_versions(self, course_id: int) -> set:
+        """Return the set of relative file_paths that have at least one 'modified' version record."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT DISTINCT file_path FROM file_versions WHERE course_id = ? AND change_type = 'modified'",
+                (course_id,)
+            )
+            return {row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Failed to get files with versions for course {course_id}: {e}", exc_info=True)
+            raise
+
+    def get_folders_with_deleted(self, course_id: int) -> set:
+        """Return the set of relative folder paths (including root='') that contain deleted files."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT DISTINCT file_path FROM file_versions WHERE course_id = ? AND change_type = 'deleted'",
+                (course_id,)
+            )
+            folders: set = set()
+            for (file_path,) in cursor.fetchall():
+                parts = file_path.split('/')
+                for i in range(len(parts)):  # i=0 → "", i=1 → first dir, etc.
+                    folders.add('/'.join(parts[:i]))
+            return folders
+        except Exception as e:
+            logging.error(f"Failed to get folders with deleted files for course {course_id}: {e}", exc_info=True)
             raise
 
     def close(self):

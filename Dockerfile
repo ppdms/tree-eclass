@@ -9,6 +9,32 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Build and install diff-pdf from source
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    automake \
+    autoconf \
+    g++ \
+    make \
+    pkg-config \
+    git \
+    libpoppler-glib-dev \
+    libwxgtk3.2-dev \
+    xvfb \
+    xauth \
+    && git clone --depth=1 https://github.com/vslavik/diff-pdf.git /tmp/diff-pdf \
+    && cd /tmp/diff-pdf \
+    && ./bootstrap \
+    && ./configure \
+    && make \
+    && make install \
+    && mv /usr/local/bin/diff-pdf /usr/local/bin/diff-pdf-bin \
+    && printf '#!/bin/sh\nexec xvfb-run -a diff-pdf-bin "$@"\n' > /usr/local/bin/diff-pdf \
+    && chmod +x /usr/local/bin/diff-pdf \
+    && rm -rf /tmp/diff-pdf \
+    && apt-get purge -y automake autoconf g++ make pkg-config git \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy requirements
 COPY requirements.txt .
 

@@ -3,15 +3,23 @@
 
 {% block title %}{{ course.name }} - tree-eclass{% endblock %}
 
-{% macro render_tree_children(children, level=1) %}
+{% macro render_tree_children(children, level, webdav_folder, files_with_versions, folders_with_deleted, course_id) %}
 {% for child in children %}
+{% set rel_folder = child.local_path[(webdav_folder|length + 1):] %}
 <div class="tree-node" style="margin-left: {{ level * 20 }}px;">
 	<span class="tree-icon">📁</span>
 	<span class="tree-name">{{ child.name }}</span>
+	{% if rel_folder in folders_with_deleted %}
+	<button class="version-indicator deleted-indicator"
+		onclick="toggleDeletedFiles(this, {{ course_id }}, {{ rel_folder | tojson }})">
+		🗑
+	</button>
+	{% endif %}
 
 	{% if child.files %}
 	<div class="tree-children">
 		{% for file in child.files %}
+		{% set rel_file = file.local_path[(webdav_folder|length + 1):] if file.local_path else '' %}
 		<div class="tree-file" style="margin-left: {{ (level + 1) * 20 }}px;">
 			<span class="tree-icon">{% if file.redirect_url %}🔗{% else %}📄{% endif %}</span>
 			{% if file.redirect_url %}
@@ -31,6 +39,12 @@
 			{% else %}
 			<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
 			{% endif %}
+			{% if rel_file and rel_file in files_with_versions %}
+			<button class="version-indicator modified-indicator"
+				onclick="toggleFileVersions(this, {{ course_id }}, {{ rel_file | tojson }})">
+				🕐
+			</button>
+			{% endif %}
 			{% if file.last_updated %}
 			<span class="file-date" style="color: #64748b; font-size: 0.85em; margin-left: 8px;">{{
 				file.last_updated|format_timestamp }}</span>
@@ -41,7 +55,7 @@
 	{% endif %}
 
 	{% if child.children %}
-	{{ render_tree_children(child.children, level + 1) }}
+	{{ render_tree_children(child.children, level + 1, webdav_folder, files_with_versions, folders_with_deleted, course_id) }}
 	{% endif %}
 </div>
 {% endfor %}
@@ -99,9 +113,16 @@
 		<div class="tree-node">
 			<span class="tree-icon">📁</span>
 			<span class="tree-name">{{ tree.name }}</span>
+			{% if "" in folders_with_deleted %}
+			<button class="version-indicator deleted-indicator"
+				onclick="toggleDeletedFiles(this, {{ course.id }}, '')">
+				🗑
+			</button>
+			{% endif %}
 			<div class="tree-children">
 				{% if tree.files %}
 				{% for file in tree.files %}
+				{% set rel_file = file.local_path[(course.webdav_folder|length + 1):] if file.local_path else '' %}
 				<div class="tree-file">
 				<span class="tree-icon">{% if file.redirect_url %}🔗{% else %}📄{% endif %}</span>
 				{% if file.redirect_url %}
@@ -121,12 +142,18 @@
 					{% else %}
 					<a href="{{ file.url }}" target="_blank">{{ file.name }}</a>
 					{% endif %}
+				{% if rel_file and rel_file in files_with_versions %}
+				<button class="version-indicator modified-indicator"
+					onclick="toggleFileVersions(this, {{ course.id }}, {{ rel_file | tojson }})">
+					🕐
+				</button>
+				{% endif %}
 				</div>
 				{% endfor %}
 				{% endif %}
 
 				{% if tree.children %}
-				{{ render_tree_children(tree.children) }}
+				{{ render_tree_children(tree.children, 1, course.webdav_folder, files_with_versions, folders_with_deleted, course.id) }}
 				{% endif %}
 			</div>
 		</div>

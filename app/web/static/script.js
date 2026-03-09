@@ -432,3 +432,101 @@ window.treeEclass = {
 	initDiffTreeView,
 	initDiffTreeAt,
 };
+
+// ===== File Version / Deleted Files UI =====
+
+function _insertExpandPanel(btn, html) {
+	// Toggle: if already open, remove and return
+	const existing = btn.parentElement.querySelector('.version-panel');
+	if (existing) {
+		existing.remove();
+		btn.classList.remove('active');
+		return false;
+	}
+	const panel = document.createElement('div');
+	panel.className = 'version-panel';
+	panel.innerHTML = html;
+	btn.insertAdjacentElement('afterend', panel);
+	btn.classList.add('active');
+	return true;
+}
+
+async function toggleFileVersions(btn, courseId, filePath) {
+	const existing = btn.parentElement.querySelector('.version-panel');
+	if (existing) {
+		existing.remove();
+		btn.classList.remove('active');
+		return;
+	}
+	btn.disabled = true;
+	try {
+		const resp = await fetch(`/api/courses/${courseId}/file-versions?file_path=${encodeURIComponent(filePath)}`);
+		const data = await resp.json();
+		const versions = data.versions || [];
+		if (versions.length === 0) {
+			_insertExpandPanel(btn, '<em style="color:var(--text-secondary)">No archived versions found.</em>');
+			return;
+		}
+		const rows = versions.map(v => {
+			const ts = v.timestamp ? new Date(v.timestamp).toLocaleString() : '?';
+			const diffBtn = v.diff_webdav_path
+				? ` <a href="/files${escHtml(v.diff_webdav_path)}" target="_blank" class="diff-pdf-btn" title="Open visual diff PDF">📊 Diff</a>`
+				: '';
+			if (v.redirect_url) {
+				return `<div class="version-entry">🔗 <a href="${escHtml(v.redirect_url)}" target="_blank">Old external link</a> <span class="version-ts">${escHtml(ts)}</span></div>`;
+			} else if (v.version_webdav_path) {
+				return `<div class="version-entry">📄 <a href="/files${escHtml(v.version_webdav_path)}" target="_blank">Version from ${escHtml(ts)}</a>${diffBtn}</div>`;
+			}
+			return `<div class="version-entry">📄 ${escHtml(ts)} (no file)</div>`;
+		}).join('');
+		_insertExpandPanel(btn, `<div class="version-panel-header">Old versions:</div>${rows}`);
+	} catch (e) {
+		_insertExpandPanel(btn, '<em style="color:var(--danger-color)">Failed to load versions.</em>');
+	} finally {
+		btn.disabled = false;
+	}
+}
+
+async function toggleDeletedFiles(btn, courseId, folder) {
+	const existing = btn.parentElement.querySelector('.version-panel');
+	if (existing) {
+		existing.remove();
+		btn.classList.remove('active');
+		return;
+	}
+	btn.disabled = true;
+	try {
+		const url = `/api/courses/${courseId}/deleted-files?folder=${encodeURIComponent(folder)}`;
+		const resp = await fetch(url);
+		const data = await resp.json();
+		const deleted = data.deleted || [];
+		if (deleted.length === 0) {
+			_insertExpandPanel(btn, '<em style="color:var(--text-secondary)">No deleted files found.</em>');
+			return;
+		}
+		const rows = deleted.map(v => {
+			const name = v.display_name || v.file_path.split('/').pop();
+			const ts = v.timestamp ? new Date(v.timestamp).toLocaleString() : '?';
+			const subpath = v.file_path;
+			if (v.redirect_url) {
+				return `<div class="version-entry">🔗 <a href="${escHtml(v.redirect_url)}" target="_blank">${escHtml(name)}</a> <span class="version-ts">(deleted ${escHtml(ts)})</span> <span class="version-path">${escHtml(subpath)}</span></div>`;
+			} else if (v.version_webdav_path) {
+				return `<div class="version-entry">📄 <a href="/files${escHtml(v.version_webdav_path)}" target="_blank">${escHtml(name)}</a> <span class="version-ts">(deleted ${escHtml(ts)})</span> <span class="version-path">${escHtml(subpath)}</span></div>`;
+			}
+			return `<div class="version-entry">📄 ${escHtml(name)} <span class="version-ts">(deleted ${escHtml(ts)}, no archived copy)</span> <span class="version-path">${escHtml(subpath)}</span></div>`;
+		}).join('');
+		_insertExpandPanel(btn, `<div class="version-panel-header">Deleted files:</div>${rows}`);
+	} catch (e) {
+		_insertExpandPanel(btn, '<em style="color:var(--danger-color)">Failed to load deleted files.</em>');
+	} finally {
+		btn.disabled = false;
+	}
+}
+
+function escHtml(str) {
+	return String(str)
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
+}

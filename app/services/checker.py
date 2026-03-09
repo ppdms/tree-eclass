@@ -231,6 +231,17 @@ def send_webhook(changes_by_course: dict, announcements_by_course: dict, db_mana
         print(f"Failed to send webhook: {e}", file=sys.stderr)
 
 
+def _flatten_files(node) -> dict:
+    """Return a flat dict of local_path -> File for all files in the tree."""
+    result = {}
+    for file in node.files:
+        if file.local_path:
+            result['/' + file.local_path.strip('/')] = file
+    for child in node.children:
+        result.update(_flatten_files(child))
+    return result
+
+
 def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: Scraper) -> tuple[list, list, bool]:
     """
     Process a single course: check for changes, update tree, and log changes.
@@ -256,10 +267,10 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
         
         # Build new tree
         try:
-            new_root = tree_builder.build_tree(scraper_instance, url, webdav_folder, course_name, old_root)
+            new_root = tree_builder.build_tree(scraper_instance, url, webdav_folder, course_name, course_id, old_root)
         except Exception as e:
             logging.error(f"Failed to build tree for course {course_name}: {e}", exc_info=True)
-            return [], False
+            return [], [], False
         
         # Compare trees
         changes = []
@@ -271,7 +282,29 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
                     db_manager.log_changes(course_id, changes)
                 except Exception as e:
                     logging.error(f"Failed to log changes for course {course_name}: {e}", exc_info=True)
-                
+
+                # Archive deleted files: move from live WebDAV path to .versions/_deleted/
+                if old_root and scraper_instance.webdav_uploader:
+                    old_files_by_path = _flatten_files(old_root)
+                    wf = '/' + webdav_folder.strip('/')
+                    for change in changes:
+                        if change.change_type == 'deleted_file':
+                            full_path = '/' + (wf.rstrip('/') + '/' + change.file_path.lstrip('/')).strip('/')
+                            dst_path = f"{wf}/.versions/_deleted/{change.file_path.lstrip('/')}"
+                            old_file = old_files_by_path.get(full_path)
+                            moved = scraper_instance.webdav_uploader.move_file(full_path, dst_path)
+                            try:
+                                db_manager.save_file_version(
+                                    course_id=course_id,
+                                    file_path=change.file_path,
+                                    version_webdav_path=dst_path if moved else None,
+                                    change_type='deleted',
+                                    display_name=change.display_name or change.file_path.split('/')[-1],
+                                    redirect_url=old_file.redirect_url if old_file else None,
+                                )
+                            except Exception as e:
+                                logging.warning(f"Failed to save deleted version record for {change.file_path}: {e}")
+
                 for change in changes:
                     print(f"{change} (Course: {course_name})")
         except Exception as e:

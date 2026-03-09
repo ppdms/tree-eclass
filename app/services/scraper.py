@@ -296,19 +296,19 @@ class Scraper:
             webdav_path, md5_hash, file_name = download_google_drive_file(file_url, destination, self.webdav_uploader)
             return webdav_path, md5_hash, file_name, None
 
+        original_netloc = urlparse(file_url).netloc
         try:
-            response = self.session.get(file_url, stream=True)
+            response = self.session.get(file_url, stream=True, timeout=30)
 
             if response.status_code == 403:
                 print(f"Access denied (403) for {file_url}, attempting cookie update and retry.", file=sys.stderr)
                 self._update_cookie()
-                response = self.session.get(file_url, stream=True)
+                response = self.session.get(file_url, stream=True, timeout=30)
 
             response.raise_for_status()
 
             # Check if we ended up on an external domain (e.g. SharePoint, OneDrive).
             # In that case we do NOT download HTML content — we just record the redirect URL.
-            original_netloc = urlparse(file_url).netloc
             final_netloc = urlparse(response.url).netloc
             if final_netloc and final_netloc != original_netloc:
                 # Find the first off-site Location header in the redirect chain.
@@ -345,6 +345,14 @@ class Scraper:
 
             return webdav_path, md5_hash, file_name, None
 
+        except requests.exceptions.ConnectTimeout as e:
+            # Timed out while following a redirect to an external host.
+            # Treat the unreachable URL as an external redirect link rather than a hard failure.
+            if e.request and urlparse(e.request.url).netloc != original_netloc:
+                redirect_url = e.request.url
+                logging.warning(f"Connection timeout for external redirect {file_url} -> {redirect_url}")
+                return None, None, None, redirect_url
+            raise RuntimeError(f"Failed to download file: {file_url} - {e}")
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Failed to download file: {file_url} - {e}")
 

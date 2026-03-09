@@ -223,12 +223,18 @@ async def view_course(request: Request, course_id: int):
             if item["type"] == "change"
         ]
 
+        # Load version metadata for the file tree UI
+        files_with_versions = db_manager.get_files_with_versions(course_id)
+        folders_with_deleted = db_manager.get_folders_with_deleted(course_id)
+
         return templates.TemplateResponse("course_detail.html", {
             "request": request,
             "course": course,
             "tree": tree,
             "timeline": timeline,
             "changes_data": changes_data,
+            "files_with_versions": files_with_versions,
+            "folders_with_deleted": folders_with_deleted,
         })
     except HTTPException:
         raise
@@ -739,6 +745,35 @@ async def run_check(background_tasks: BackgroundTasks):
 
 
 # ===== API ROUTES (for AJAX calls) =====
+
+@app.get("/api/courses/{course_id}/file-versions")
+async def api_file_versions(course_id: int, file_path: str):
+    """Return all archived versions of a specific file (modified history)."""
+    try:
+        versions = db_manager.get_file_versions(course_id, file_path=file_path, change_type='modified')
+        return JSONResponse(content={"versions": versions})
+    except Exception as e:
+        logging.error(f"API error getting file versions for course {course_id} path {file_path}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/courses/{course_id}/deleted-files")
+async def api_deleted_files(course_id: int, folder: Optional[str] = None):
+    """Return all deleted files for a course, optionally filtered to a folder subtree."""
+    try:
+        deleted = db_manager.get_file_versions(course_id, change_type='deleted')
+        if folder is not None:
+            prefix = folder.rstrip('/') + '/' if folder else ''
+            deleted = [
+                d for d in deleted
+                if (folder == '' or d['file_path'].startswith(prefix) or
+                    d['file_path'] == folder)
+            ]
+        return JSONResponse(content={"deleted": deleted})
+    except Exception as e:
+        logging.error(f"API error getting deleted files for course {course_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/courses")
 async def api_list_courses():
