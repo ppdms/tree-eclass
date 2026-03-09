@@ -238,7 +238,7 @@ function buildDiffTree(changes) {
 				} else {
 					// It's a file
 					current.files.push({
-						name: part,
+						name: change.display_name || part,
 						path: change.file_path,
 						changeType: change.change_type,
 						type: 'file'

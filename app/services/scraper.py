@@ -4,6 +4,7 @@ Handles all network interactions with the e-class website.
 import hashlib
 import logging
 import os
+import re
 import sys
 from typing import Optional
 from urllib.parse import urlparse, unquote
@@ -40,6 +41,37 @@ def extract_file_name(file_url: str) -> str:
     """Extracts a filename from a URL."""
     path = urlparse(file_url).path
     return unquote(os.path.basename(path))
+
+
+def extract_file_name_from_response(response) -> Optional[str]:
+    """Extract the actual filename from a Content-Disposition response header.
+    
+    Handles the PHP server quirk where UTF-8 filenames are sent as
+    latin-1 encoded bytes (RFC 6266 filename* parameter takes priority).
+    Returns None if no usable filename is found.
+    """
+    cd = response.headers.get('Content-Disposition', '')
+    if not cd:
+        return None
+
+    # Prefer RFC 5987 encoded filename* (e.g. filename*=UTF-8''foo%20bar.pdf)
+    m = re.search(r"filename\*=UTF-8''([^;\s]+)", cd, re.IGNORECASE)
+    if m:
+        return unquote(m.group(1))
+
+    # Fall back to plain filename="..."
+    m = re.search(r'filename="([^"]+)"', cd)
+    if not m:
+        m = re.search(r"filename=([^;\s]+)", cd)
+    if m:
+        raw = m.group(1)
+        try:
+            # PHP often sends UTF-8 bytes with each byte as a latin-1 character
+            return raw.encode('latin-1').decode('utf-8')
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            return raw
+
+    return None
 
 
 def download_google_drive_file(file_url: str, destination: str, webdav_uploader=None) -> tuple[str, Optional[str], str]:
@@ -214,7 +246,7 @@ class Scraper:
                 ):
                     continue
 
-                if '.' in href[-6:]:
+                if '.' in href[-6:] or '/file.php/' in href or '/modules/document/file.php' in href:
                     # Check if href is already a full URL before prepending base URL
                     if href.startswith('http://') or href.startswith('https://'):
                         files.append(href)
@@ -270,21 +302,24 @@ class Scraper:
 
             response.raise_for_status()
 
-            file_name = extract_file_name(file_url)
-            
+            # Prefer the Content-Disposition filename (includes the real extension)
+            # and fall back to extracting from the URL if unavailable.
+            header_name = extract_file_name_from_response(response)
+            file_name = header_name if header_name else extract_file_name(file_url)
+
             # WebDAV is required
             if not self.webdav_uploader or not self.webdav_uploader.is_configured():
                 raise RuntimeError("WebDAV must be configured to download files")
-            
+
             # Download to memory first, compute MD5, then upload
             file_data = b''
             for chunk in response.iter_content(chunk_size=8192):
                 file_data += chunk
-            
+
             md5_hash = compute_md5_from_bytes(file_data)
             webdav_path = self.webdav_uploader.upload_file(file_data, destination, file_name)
-            
-            return webdav_path, md5_hash, None
+
+            return webdav_path, md5_hash, file_name
 
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Failed to download file: {file_url} - {e}")

@@ -10,9 +10,10 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 from app.services.tree_builder import Node, File
+from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 7  # Current schema version
+SCHEMA_VERSION = 9  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -112,6 +113,7 @@ class DatabaseManager:
                 change_record_id INTEGER NOT NULL,
                 change_type TEXT NOT NULL,
                 file_path TEXT NOT NULL,
+                display_name TEXT,
                 FOREIGN KEY (change_record_id) REFERENCES change_records (id) ON DELETE CASCADE
             )
         """)
@@ -230,6 +232,14 @@ class DatabaseManager:
         if current_version < 7:
             self._migration_6_to_7()
             self._set_schema_version(7)
+
+        if current_version < 8:
+            self._migration_7_to_8()
+            self._set_schema_version(8)
+
+        if current_version < 9:
+            self._migration_8_to_9()
+            self._set_schema_version(9)
         
         logging.info("All migrations completed successfully")
 
@@ -384,6 +394,73 @@ class DatabaseManager:
             logging.info("Added local_path column to files table")
         else:
             logging.debug("local_path column already exists, skipping")
+
+    def _migration_7_to_8(self):
+        """Migration: Add display_name column to change_record_items."""
+        logging.info("Running migration 7 -> 8: Adding display_name column to change_record_items")
+        cursor = self.conn.cursor()
+
+        cursor.execute("PRAGMA table_info(change_record_items)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'display_name' not in columns:
+            cursor.execute("ALTER TABLE change_record_items ADD COLUMN display_name TEXT")
+            self.conn.commit()
+            logging.info("Added display_name column to change_record_items")
+        else:
+            logging.debug("display_name column already exists, skipping")
+
+    def _migration_8_to_9(self):
+        """Migration: Retroactively backfill file_path (actual filename) and display_name for old change_record_items."""
+        logging.info("Running migration 8 -> 9: Backfilling actual file paths in change_record_items")
+        cursor = self.conn.cursor()
+
+        # Fetch old items where display_name was not yet stored (pre-fix records)
+        cursor.execute("""
+            SELECT cri.id, cri.file_path, cr.course_id
+            FROM change_record_items cri
+            JOIN change_records cr ON cri.change_record_id = cr.id
+            WHERE cri.display_name IS NULL
+            AND cri.change_type IN ('added_file', 'modified_file')
+        """)
+        items = cursor.fetchall()
+
+        # Course webdav_folder lookup
+        cursor.execute("SELECT id, webdav_folder FROM courses")
+        courses = {row[0]: (row[1] or '').strip('/') for row in cursor.fetchall()}
+
+        # Build (course_id, display_name) -> actual local_path index from current files table
+        cursor.execute("""
+            SELECT f.name, f.local_path, n.course_id
+            FROM files f
+            JOIN nodes n ON f.node_id = n.id
+            WHERE f.local_path IS NOT NULL
+        """)
+        file_map = {}
+        for name, local_path, course_id in cursor.fetchall():
+            key = (course_id, name)
+            if key not in file_map:
+                file_map[key] = local_path
+
+        fixed = 0
+        for item_id, file_path, course_id in items:
+            # The old file_path was built from display names; last segment is the display name
+            display_name = file_path.split('/')[-1]
+            actual_local_path = file_map.get((course_id, display_name))
+            if actual_local_path:
+                # Make path relative to course webdav_folder
+                webdav_folder = courses.get(course_id, '')
+                rel = actual_local_path.strip('/')
+                if webdav_folder and rel.startswith(webdav_folder + '/'):
+                    rel = rel[len(webdav_folder) + 1:]
+                cursor.execute(
+                    "UPDATE change_record_items SET file_path = ?, display_name = ? WHERE id = ?",
+                    (rel, display_name, item_id)
+                )
+                fixed += 1
+
+        self.conn.commit()
+        logging.info(f"Migration 8 -> 9: fixed {fixed} / {len(items)} old change_record_items")
 
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
@@ -709,7 +786,7 @@ class DatabaseManager:
         return root_node
 
     # --- Change record methods ---
-    def create_change_record(self, course_id: int, changes: List[str]) -> int:
+    def create_change_record(self, course_id: int, changes: List[ChangeItem]) -> int:
         """Create a change record for a course with the given changes.
 
         change_no is computed as an RFC 3339 timestamp and must be unique per course.
@@ -726,11 +803,11 @@ class DatabaseManager:
             modified_count = 0
             
             for change in changes:
-                if change.startswith("Added file:") or change.startswith("Added directory:"):
+                if change.change_type in ("added_file", "added_directory"):
                     added_count += 1
-                elif change.startswith("Deleted file:") or change.startswith("Deleted directory:"):
+                elif change.change_type in ("deleted_file", "deleted_directory"):
                     deleted_count += 1
-                elif change.startswith("Modified file:"):
+                elif change.change_type == "modified_file":
                     modified_count += 1
 
             # Generate change record message with all counts
@@ -758,29 +835,9 @@ class DatabaseManager:
 
             # Add each change to the change record
             for change in changes:
-                # Parse change type and file path
-                if change.startswith("Added file:"):
-                    change_type = "added_file"
-                    file_path = change.replace("Added file:", "").strip()
-                elif change.startswith("Deleted file:"):
-                    change_type = "deleted_file"
-                    file_path = change.replace("Deleted file:", "").strip()
-                elif change.startswith("Modified file:"):
-                    change_type = "modified_file"
-                    file_path = change.replace("Modified file:", "").strip()
-                elif change.startswith("Added directory:"):
-                    change_type = "added_directory"
-                    file_path = change.replace("Added directory:", "").strip()
-                elif change.startswith("Deleted directory:"):
-                    change_type = "deleted_directory"
-                    file_path = change.replace("Deleted directory:", "").strip()
-                else:
-                    change_type = "unknown"
-                    file_path = change
-
                 cursor.execute(
-                    "INSERT INTO change_record_items (change_record_id, change_type, file_path) VALUES (?, ?, ?)",
-                    (change_record_id, change_type, file_path)
+                    "INSERT INTO change_record_items (change_record_id, change_type, file_path, display_name) VALUES (?, ?, ?, ?)",
+                    (change_record_id, change.change_type, change.file_path, change.display_name)
                 )
 
             self.conn.commit()
@@ -816,7 +873,7 @@ class DatabaseManager:
             logging.error(f"Failed to get change record for course {course_id} change_no {change_no}: {e}", exc_info=True)
             raise
 
-    def log_changes(self, course_id: int, changes: List[str]):
+    def log_changes(self, course_id: int, changes: List[ChangeItem]):
         """Log file changes to the database (calls create_change_record)."""
         self.create_change_record(course_id, changes)
 
@@ -873,7 +930,7 @@ class DatabaseManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                SELECT id, change_type, file_path
+                SELECT id, change_type, file_path, display_name
                 FROM change_record_items
                 WHERE change_record_id = ?
                 ORDER BY id
@@ -884,7 +941,8 @@ class DatabaseManager:
                 {
                     "id": row[0],
                     "change_type": row[1],
-                    "file_path": row[2]
+                    "file_path": row[2],
+                    "display_name": row[3]
                 }
                 for row in rows
             ]
@@ -923,13 +981,13 @@ class DatabaseManager:
                 cr_ids = [row[0] for row in change_rows]
                 placeholders = ','.join('?' * len(cr_ids))
                 cursor.execute(
-                    f"SELECT change_record_id, change_type, file_path "
+                    f"SELECT change_record_id, change_type, file_path, display_name "
                     f"FROM change_record_items WHERE change_record_id IN ({placeholders}) ORDER BY id",
                     cr_ids
                 )
-                for cr_id, change_type, file_path in cursor.fetchall():
+                for cr_id, change_type, file_path, display_name in cursor.fetchall():
                     items_by_cr_id.setdefault(cr_id, []).append(
-                        {"change_type": change_type, "file_path": file_path}
+                        {"change_type": change_type, "file_path": file_path, "display_name": display_name}
                     )
 
             timeline: List[Dict] = []

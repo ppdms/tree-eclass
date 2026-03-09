@@ -2,9 +2,29 @@
 Contains the logic for comparing two course content trees and reporting the differences.
 """
 import os
+from dataclasses import dataclass
 from typing import List, Optional
 
 from app.services.tree_builder import Node, File
+
+
+@dataclass
+class ChangeItem:
+    """Represents a single detected change."""
+    change_type: str   # "added_file", "deleted_file", "modified_file", "added_directory", "deleted_directory"
+    file_path: str     # actual relative path using the real filesystem filename
+    display_name: Optional[str] = None  # human-readable display name (if different from filename)
+
+    def __str__(self) -> str:
+        prefix_map = {
+            "added_file": "Added file",
+            "deleted_file": "Deleted file",
+            "modified_file": "Modified file",
+            "added_directory": "Added directory",
+            "deleted_directory": "Deleted directory",
+        }
+        prefix = prefix_map.get(self.change_type, self.change_type)
+        return f"{prefix}: {self.file_path}"
 
 def _make_relative_path(full_path: str, root_path: str) -> str:
     """Remove the root path prefix to create a relative path for display."""
@@ -23,27 +43,34 @@ def _make_relative_path(full_path: str, root_path: str) -> str:
     
     return full_path
 
-def _report_all_added(node: Node, base_path: str, root_path: str) -> List[str]:
-    """Recursively generates change messages for a newly added directory tree."""
+def _get_file_actual_path(file: File, fallback_dir: str) -> str:
+    """Return the file's actual WebDAV path, falling back to dir+name if local_path is unset."""
+    if file.local_path:
+        return file.local_path
+    return os.path.join(fallback_dir, file.name)
+
+
+def _report_all_added(node: Node, base_path: str, root_path: str) -> List[ChangeItem]:
+    """Recursively generates ChangeItems for a newly added directory tree."""
     changes = []
     # The node itself is the directory
     dir_path = os.path.join(base_path, node.name)
     relative_dir_path = _make_relative_path(dir_path, root_path)
     if relative_dir_path:  # Only report if not empty (not the root itself)
-        changes.append(f"Added directory: {relative_dir_path}")
+        changes.append(ChangeItem("added_directory", relative_dir_path))
 
     for file in node.files:
-        file_path = os.path.join(dir_path, file.name)
-        relative_file_path = _make_relative_path(file_path, root_path)
-        changes.append(f"Added file: {relative_file_path}")
+        actual_path = _get_file_actual_path(file, dir_path)
+        relative_file_path = _make_relative_path(actual_path, root_path)
+        changes.append(ChangeItem("added_file", relative_file_path, file.name))
 
     for child in node.children:
         changes.extend(_report_all_added(child, dir_path, root_path))
     
     return changes
 
-def diff_trees(previous: Optional[Node], latest: Node, root_path: Optional[str] = None) -> List[str]:
-    """Compares two Node trees and returns a list of change messages.
+def diff_trees(previous: Optional[Node], latest: Node, root_path: Optional[str] = None) -> List[ChangeItem]:
+    """Compares two Node trees and returns a list of ChangeItems.
     
     Args:
         previous: The previous tree state (can be None for first check)
@@ -60,9 +87,9 @@ def diff_trees(previous: Optional[Node], latest: Node, root_path: Optional[str] 
     if previous is None:
         # The root itself is not reported as "added", just its contents.
         for file in latest.files:
-            file_path = os.path.join(latest.local_path, file.name)
-            relative_path = _make_relative_path(file_path, root_path)
-            changes.append(f"Added file: {relative_path}")
+            actual_path = _get_file_actual_path(file, latest.local_path)
+            relative_path = _make_relative_path(actual_path, root_path)
+            changes.append(ChangeItem("added_file", relative_path, file.name))
         for child in latest.children:
             changes.extend(_report_all_added(child, latest.local_path, root_path))
         return changes
@@ -76,7 +103,7 @@ def diff_trees(previous: Optional[Node], latest: Node, root_path: Optional[str] 
         if dir_name not in new_dirs:
             deleted_dir_path = os.path.join(latest.local_path, dir_name)
             relative_path = _make_relative_path(deleted_dir_path, root_path)
-            changes.append(f"Deleted directory: {relative_path}")
+            changes.append(ChangeItem("deleted_directory", relative_path))
 
     # Check for added and modified directories
     for dir_name, new_dir_node in new_dirs.items():
@@ -95,20 +122,20 @@ def diff_trees(previous: Optional[Node], latest: Node, root_path: Optional[str] 
     # Check for deleted files
     for file_url, old_file in old_files.items():
         if file_url not in new_files:
-            deleted_file_path = os.path.join(latest.local_path, old_file.name)
-            relative_path = _make_relative_path(deleted_file_path, root_path)
-            changes.append(f"Deleted file: {relative_path}")
+            actual_path = _get_file_actual_path(old_file, latest.local_path)
+            relative_path = _make_relative_path(actual_path, root_path)
+            changes.append(ChangeItem("deleted_file", relative_path, old_file.name))
 
     # Check for added and updated files
     for file_url, new_file in new_files.items():
-        full_file_path = os.path.join(latest.local_path, new_file.name)
-        relative_path = _make_relative_path(full_file_path, root_path)
+        actual_path = _get_file_actual_path(new_file, latest.local_path)
+        relative_path = _make_relative_path(actual_path, root_path)
         if file_url not in old_files:
-            changes.append(f"Added file: {relative_path}")
+            changes.append(ChangeItem("added_file", relative_path, new_file.name))
         else:
             old_file = old_files[file_url]
             # Check for updates based on MD5 hash
             if old_file.md5_hash != new_file.md5_hash:
-                changes.append(f"Modified file: {relative_path}")
+                changes.append(ChangeItem("modified_file", relative_path, new_file.name))
     
     return changes
