@@ -5,6 +5,7 @@ Provides UI for viewing and managing courses, credentials, and file history.
 import logging
 import asyncio
 import mimetypes
+import os
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -27,7 +28,7 @@ from app.services.webdav_uploader import WebDAVUploader
 
 # Configure logging for systemd
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler()]
 )

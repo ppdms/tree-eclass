@@ -62,9 +62,12 @@ def extract_file_name_from_response(response) -> Optional[str]:
     # Fall back to plain filename="..."
     m = re.search(r'filename="([^"]+)"', cd)
     if not m:
-        m = re.search(r"filename=([^;\s]+)", cd)
+        # Unquoted filename — stop only at ; or end of string.
+        # Do NOT use \s here: UTF-8 continuation bytes decoded as latin-1
+        # include U+0085/U+0089 etc., which Python's \s treats as whitespace.
+        m = re.search(r"filename=([^;]+)", cd)
     if m:
-        raw = m.group(1)
+        raw = m.group(1).strip()
         try:
             # PHP often sends UTF-8 bytes with each byte as a latin-1 character
             return raw.encode('latin-1').decode('utf-8')
@@ -301,6 +304,8 @@ class Scraper:
                 response = self.session.get(file_url, stream=True)
 
             response.raise_for_status()
+
+            logging.debug(f"download_file headers for {file_url}: { {k: repr(v) for k, v in response.headers.items()} }")
 
             # Prefer the Content-Disposition filename (includes the real extension)
             # and fall back to extracting from the URL if unavailable.
