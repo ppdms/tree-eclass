@@ -41,7 +41,8 @@
 			{% endif %}
 			{% if rel_file and rel_file in files_with_versions %}
 			<button class="version-indicator modified-indicator"
-				onclick="toggleFileVersions(this, {{ course_id }}, {{ rel_file | tojson }})">
+				data-fp="{{ rel_file | e }}"
+				onclick="toggleFileVersions(this, {{ course_id }}, this.dataset.fp)">
 				🕐
 			</button>
 			{% endif %}
@@ -144,7 +145,8 @@
 					{% endif %}
 				{% if rel_file and rel_file in files_with_versions %}
 				<button class="version-indicator modified-indicator"
-					onclick="toggleFileVersions(this, {{ course.id }}, {{ rel_file | tojson }})">
+					data-fp="{{ rel_file | e }}"
+					onclick="toggleFileVersions(this, {{ course.id }}, this.dataset.fp)">
 					🕐
 				</button>
 				{% endif %}

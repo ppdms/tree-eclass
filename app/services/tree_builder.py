@@ -24,6 +24,7 @@ class File:
     last_updated: Optional[str] = None  # ISO 8601 timestamp when file was last added/modified
     local_path: Optional[str] = None  # WebDAV path where the file is stored
     redirect_url: Optional[str] = None  # Set when the file is an external link (e.g. SharePoint)
+    diff_webdav_path: Optional[str] = None  # Transient: WebDAV path of the diff PDF for this update cycle
 
 
 @dataclass
@@ -173,6 +174,7 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str,
         local_path = None
         actual_file_name = None
         redirect_url = None
+        file_diff_webdav_path = None
 
         if "google" in file_url:
             # Google Drive files: always download and compute hash
@@ -217,6 +219,7 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str,
                                 redirect_url=None,
                                 diff_webdav_path=diff_webdav_path,
                             )
+                            file_diff_webdav_path = diff_webdav_path
                         except Exception as e:
                             logging.warning(f"Failed to save file version record for {rel_path}: {e}")
                     elif old_file.redirect_url:
@@ -241,7 +244,7 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str,
                 local_path = old_file.local_path
                 redirect_url = old_file.redirect_url
         
-        current_node.files.append(File(url=file_url, name=file_name, md5_hash=file_hash, etag=etag, last_updated=last_updated, local_path=local_path, redirect_url=redirect_url))
+        current_node.files.append(File(url=file_url, name=file_name, md5_hash=file_hash, etag=etag, last_updated=last_updated, local_path=local_path, redirect_url=redirect_url, diff_webdav_path=file_diff_webdav_path))
 
     # Create a map of old child directories for efficient lookup
     old_children_map = {c.name: c for c in old_root.children} if old_root else {}

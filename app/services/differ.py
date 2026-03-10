@@ -15,6 +15,7 @@ class ChangeItem:
     file_path: str     # actual relative path using the real filesystem filename
     display_name: Optional[str] = None  # human-readable display name (if different from filename)
     redirect_url: Optional[str] = None  # set for external links (e.g. SharePoint recordings)
+    diff_webdav_path: Optional[str] = None  # WebDAV path of the visual PDF diff, if generated
 
     def __str__(self) -> str:
         prefix_map = {
@@ -137,6 +138,6 @@ def diff_trees(previous: Optional[Node], latest: Node, root_path: Optional[str] 
             old_file = old_files[file_url]
             # Check for updates based on MD5 hash
             if old_file.md5_hash != new_file.md5_hash:
-                changes.append(ChangeItem("modified_file", relative_path, new_file.name, new_file.redirect_url))
+                changes.append(ChangeItem("modified_file", relative_path, new_file.name, new_file.redirect_url, new_file.diff_webdav_path))
     
     return changes

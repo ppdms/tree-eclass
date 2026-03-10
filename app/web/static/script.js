@@ -242,6 +242,7 @@ function buildDiffTree(changes) {
 						path: change.file_path,
 						changeType: change.change_type,
 						redirectUrl: change.redirect_url || null,
+						diffWebdavPath: change.diff_webdav_path || null,
 						type: 'file'
 					});
 				}
@@ -345,12 +346,15 @@ function renderDiffTree(node, level = 0, webdavFolder = '') {
 		} else {
 			nameHtml = file.name;
 		}
+		const diffBtn = (file.changeType === 'modified_file' && file.diffWebdavPath)
+			? ` <a href="/files${escHtml(file.diffWebdavPath)}" target="_blank" class="diff-pdf-btn" title="Open visual diff PDF">📊 Diff</a>`
+			: '';
 
 		html += `
 			<div class="diff-tree-node diff-tree-file ${changeClass}" style="margin-left: ${indent}px;">
 				<span class="diff-tree-icon">${icon}</span>
 				<span class="diff-tree-symbol">${symbol}</span>
-				<span class="diff-tree-name">${nameHtml}</span>
+				<span class="diff-tree-name">${nameHtml}${diffBtn}</span>
 			</div>
 		`;
 	});

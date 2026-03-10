@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 12  # Current schema version
+SCHEMA_VERSION = 13  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -116,6 +116,7 @@ class DatabaseManager:
                 file_path TEXT NOT NULL,
                 display_name TEXT,
                 redirect_url TEXT,
+                diff_webdav_path TEXT,
                 FOREIGN KEY (change_record_id) REFERENCES change_records (id) ON DELETE CASCADE
             )
         """)
@@ -268,7 +269,11 @@ class DatabaseManager:
         if current_version < 12:
             self._migration_11_to_12()
             self._set_schema_version(12)
-        
+
+        if current_version < 13:
+            self._migration_12_to_13()
+            self._set_schema_version(13)
+
         logging.info("All migrations completed successfully")
 
     def _migration_1_to_2(self):
@@ -540,6 +545,18 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE file_versions ADD COLUMN diff_webdav_path TEXT")
             self.conn.commit()
             logging.info("Added diff_webdav_path column to file_versions table")
+        else:
+            logging.debug("diff_webdav_path column already exists, skipping")
+
+    def _migration_12_to_13(self):
+        """Migration: Add diff_webdav_path column to change_record_items table."""
+        logging.info("Running migration 12 -> 13: Adding diff_webdav_path column to change_record_items")
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(change_record_items)")
+        if 'diff_webdav_path' not in [row[1] for row in cursor.fetchall()]:
+            cursor.execute("ALTER TABLE change_record_items ADD COLUMN diff_webdav_path TEXT")
+            self.conn.commit()
+            logging.info("Added diff_webdav_path column to change_record_items table")
         else:
             logging.debug("diff_webdav_path column already exists, skipping")
 
@@ -920,8 +937,8 @@ class DatabaseManager:
             # Add each change to the change record
             for change in changes:
                 cursor.execute(
-                    "INSERT INTO change_record_items (change_record_id, change_type, file_path, display_name, redirect_url) VALUES (?, ?, ?, ?, ?)",
-                    (change_record_id, change.change_type, change.file_path, change.display_name, change.redirect_url)
+                    "INSERT INTO change_record_items (change_record_id, change_type, file_path, display_name, redirect_url, diff_webdav_path) VALUES (?, ?, ?, ?, ?, ?)",
+                    (change_record_id, change.change_type, change.file_path, change.display_name, change.redirect_url, getattr(change, 'diff_webdav_path', None))
                 )
 
             self.conn.commit()
@@ -1014,7 +1031,7 @@ class DatabaseManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                SELECT id, change_type, file_path, display_name, redirect_url
+                SELECT id, change_type, file_path, display_name, redirect_url, diff_webdav_path
                 FROM change_record_items
                 WHERE change_record_id = ?
                 ORDER BY id
@@ -1028,6 +1045,7 @@ class DatabaseManager:
                     "file_path": row[2],
                     "display_name": row[3],
                     "redirect_url": row[4],
+                    "diff_webdav_path": row[5],
                 }
                 for row in rows
             ]
@@ -1066,13 +1084,13 @@ class DatabaseManager:
                 cr_ids = [row[0] for row in change_rows]
                 placeholders = ','.join('?' * len(cr_ids))
                 cursor.execute(
-                    f"SELECT change_record_id, change_type, file_path, display_name, redirect_url "
+                    f"SELECT change_record_id, change_type, file_path, display_name, redirect_url, diff_webdav_path "
                     f"FROM change_record_items WHERE change_record_id IN ({placeholders}) ORDER BY id",
                     cr_ids
                 )
-                for cr_id, change_type, file_path, display_name, redirect_url in cursor.fetchall():
+                for cr_id, change_type, file_path, display_name, redirect_url, diff_webdav_path in cursor.fetchall():
                     items_by_cr_id.setdefault(cr_id, []).append(
-                        {"change_type": change_type, "file_path": file_path, "display_name": display_name, "redirect_url": redirect_url}
+                        {"change_type": change_type, "file_path": file_path, "display_name": display_name, "redirect_url": redirect_url, "diff_webdav_path": diff_webdav_path}
                     )
 
             timeline: List[Dict] = []
