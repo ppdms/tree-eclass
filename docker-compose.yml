@@ -5,10 +5,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      # Persist database and downloads
+      # Persist database
       - ./data:/data
-      # Mount download directories
-      - ./Downloads:/Downloads
     environment:
       - DB_FILE=/data/eclass.db
       # - LOG_LEVEL=DEBUG

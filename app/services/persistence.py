@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 13  # Current schema version
+SCHEMA_VERSION = 16  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -195,6 +195,38 @@ class DatabaseManager:
                 FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS file_study (
+                course_id INTEGER NOT NULL,
+                file_path TEXT NOT NULL,
+                level INTEGER NOT NULL DEFAULT 0,
+                last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (course_id, file_path),
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS study_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id INTEGER NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                note TEXT,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS global_announcements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                feed_key TEXT NOT NULL,
+                announcement_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                link TEXT NOT NULL,
+                description TEXT,
+                pub_date DATETIME,
+                fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(feed_key, announcement_id)
+            )
+        """)
         self.conn.commit()
 
     def _get_schema_version(self) -> int:
@@ -273,6 +305,18 @@ class DatabaseManager:
         if current_version < 13:
             self._migration_12_to_13()
             self._set_schema_version(13)
+
+        if current_version < 14:
+            self._migration_13_to_14()
+            self._set_schema_version(14)
+
+        if current_version < 15:
+            self._migration_14_to_15()
+            self._set_schema_version(15)
+
+        if current_version < 16:
+            self._migration_15_to_16()
+            self._set_schema_version(16)
 
         logging.info("All migrations completed successfully")
 
@@ -560,6 +604,84 @@ class DatabaseManager:
         else:
             logging.debug("diff_webdav_path column already exists, skipping")
 
+    def _migration_13_to_14(self):
+        """Migration: Add file_study table for per-file comprehension level tracking."""
+        logging.info("Running migration 13 -> 14: Adding file_study table")
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='file_study'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE file_study (
+                    course_id INTEGER NOT NULL,
+                    file_path TEXT NOT NULL,
+                    level INTEGER NOT NULL DEFAULT 0,
+                    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (course_id, file_path),
+                    FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+                )
+            """)
+            self.conn.commit()
+            logging.info("Created file_study table")
+        else:
+            logging.debug("file_study table already exists, skipping")
+
+    def _migration_14_to_15(self):
+        """Migration: Add study_sessions table for coarse study session logging."""
+        logging.info("Running migration 14 -> 15: Adding study_sessions table")
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='study_sessions'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE study_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id INTEGER NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    note TEXT,
+                    FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+                )
+            """)
+            self.conn.commit()
+            logging.info("Created study_sessions table")
+        else:
+            logging.debug("study_sessions table already exists, skipping")
+
+    def _migration_15_to_16(self):
+        """Migration: Add global_announcements table and global feed toggles in preferences."""
+        logging.info("Running migration 15 -> 16: Adding global_announcements + feed toggles")
+        cursor = self.conn.cursor()
+
+        # Create global_announcements table
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='global_announcements'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE global_announcements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    feed_key TEXT NOT NULL,
+                    announcement_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    link TEXT NOT NULL,
+                    description TEXT,
+                    pub_date DATETIME,
+                    fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(feed_key, announcement_id)
+                )
+            """)
+            logging.info("Created global_announcements table")
+
+        # Add 3 global feed toggle columns to preferences
+        cursor.execute("PRAGMA table_info(preferences)")
+        existing = {row[1] for row in cursor.fetchall()}
+        for col, default in [
+            ('global_feed_dept_enabled', 1),
+            ('global_feed_undergrad_enabled', 0),
+            ('global_feed_rector_enabled', 0),
+        ]:
+            if col not in existing:
+                cursor.execute(f"ALTER TABLE preferences ADD COLUMN {col} INTEGER DEFAULT {default}")
+                logging.info(f"Added {col} column to preferences")
+
+        self.conn.commit()
+
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
         try:
@@ -649,16 +771,21 @@ class DatabaseManager:
                         request_timeout_seconds: int = 30,
                         retry_attempts: int = 3,
                         notification_enabled: bool = True,
-                        notification_on_error: bool = True):
+                        notification_on_error: bool = True,
+                        global_feed_dept_enabled: bool = True,
+                        global_feed_undergrad_enabled: bool = False,
+                        global_feed_rector_enabled: bool = False):
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO preferences 
                 (id, check_interval_minutes, max_concurrent_downloads, request_timeout_seconds, 
-                 retry_attempts, notification_enabled, notification_on_error) 
-                VALUES (1, ?, ?, ?, ?, ?, ?)
+                 retry_attempts, notification_enabled, notification_on_error,
+                 global_feed_dept_enabled, global_feed_undergrad_enabled, global_feed_rector_enabled) 
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (check_interval_minutes, max_concurrent_downloads, request_timeout_seconds, 
-                  retry_attempts, int(notification_enabled), int(notification_on_error)))
+                  retry_attempts, int(notification_enabled), int(notification_on_error),
+                  int(global_feed_dept_enabled), int(global_feed_undergrad_enabled), int(global_feed_rector_enabled)))
             self.conn.commit()
             logging.debug("Preferences saved successfully")
         except Exception as e:
@@ -670,7 +797,8 @@ class DatabaseManager:
             cursor = self.conn.cursor()
             cursor.execute("""
                 SELECT check_interval_minutes, max_concurrent_downloads, request_timeout_seconds,
-                       retry_attempts, notification_enabled, notification_on_error
+                       retry_attempts, notification_enabled, notification_on_error,
+                       global_feed_dept_enabled, global_feed_undergrad_enabled, global_feed_rector_enabled
                 FROM preferences WHERE id = 1
             """)
             row = cursor.fetchone()
@@ -681,7 +809,10 @@ class DatabaseManager:
                     'request_timeout_seconds': row[2],
                     'retry_attempts': row[3],
                     'notification_enabled': bool(row[4]),
-                    'notification_on_error': bool(row[5])
+                    'notification_on_error': bool(row[5]),
+                    'global_feed_dept_enabled': bool(row[6]),
+                    'global_feed_undergrad_enabled': bool(row[7]),
+                    'global_feed_rector_enabled': bool(row[8]),
                 }
             # Return defaults if no preferences set
             return {
@@ -690,7 +821,10 @@ class DatabaseManager:
                 'request_timeout_seconds': 30,
                 'retry_attempts': 3,
                 'notification_enabled': True,
-                'notification_on_error': True
+                'notification_on_error': True,
+                'global_feed_dept_enabled': True,
+                'global_feed_undergrad_enabled': False,
+                'global_feed_rector_enabled': False,
             }
         except Exception as e:
             logging.error(f"Failed to get preferences: {e}", exc_info=True)
@@ -785,6 +919,8 @@ class DatabaseManager:
             cursor.execute("DELETE FROM change_history WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM check_logs WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM file_versions WHERE course_id = ?", (course_id,))
+            cursor.execute("DELETE FROM file_study WHERE course_id = ?", (course_id,))
+            cursor.execute("DELETE FROM study_sessions WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM courses WHERE id = ?", (course_id,))
             self.conn.commit()
             logging.debug(f"Deleted course ID: {course_id} and all associated data")
@@ -1440,6 +1576,262 @@ class DatabaseManager:
             return folders
         except Exception as e:
             logging.error(f"Failed to get folders with deleted files for course {course_id}: {e}", exc_info=True)
+            raise
+
+    # --- Study tracking methods ---
+
+    def set_file_study_level(self, course_id: int, file_path: str, level: int):
+        """Upsert the comprehension level (0-4) for a file."""
+        level = max(0, min(4, level))
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO file_study (course_id, file_path, level, last_updated)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(course_id, file_path) DO UPDATE SET
+                    level = excluded.level,
+                    last_updated = excluded.last_updated
+            """, (course_id, file_path, level))
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to set study level for course {course_id} path {file_path}: {e}", exc_info=True)
+            raise
+
+    def get_file_study_levels(self, course_id: int) -> Dict[str, int]:
+        """Return {file_path: level} for all tracked files in a course."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT file_path, level FROM file_study WHERE course_id = ?", (course_id,))
+            return {row[0]: row[1] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Failed to get study levels for course {course_id}: {e}", exc_info=True)
+            raise
+
+    def get_course_study_summary(self, course_id: int) -> Dict:
+        """Return study level distribution for a course.
+
+        Returns: {total, by_level: {0..4: count}, completion_ratio: 0.0-1.0}
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM files f JOIN nodes n ON f.node_id = n.id WHERE n.course_id = ?",
+                (course_id,)
+            )
+            total = cursor.fetchone()[0]
+
+            cursor.execute(
+                "SELECT level, COUNT(*) FROM file_study WHERE course_id = ? GROUP BY level",
+                (course_id,)
+            )
+            by_level = {row[0]: row[1] for row in cursor.fetchall()}
+
+            # Files not in file_study are implicitly level 0
+            studied_count = sum(by_level.values())
+            by_level[0] = by_level.get(0, 0) + max(0, total - studied_count)
+
+            completion_ratio = (
+                sum(by_level.get(i, 0) * i for i in range(5)) / (4 * total)
+                if total > 0 else 1.0
+            )
+            return {
+                "total": total,
+                "by_level": {str(i): by_level.get(i, 0) for i in range(5)},
+                "completion_ratio": completion_ratio,
+            }
+        except Exception as e:
+            logging.error(f"Failed to get study summary for course {course_id}: {e}", exc_info=True)
+            raise
+
+    def add_study_session(self, course_id: int, note: Optional[str] = None) -> int:
+        """Record a study session for a course. Returns the new session id."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT INTO study_sessions (course_id, note) VALUES (?, ?)",
+                (course_id, note)
+            )
+            self.conn.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            logging.error(f"Failed to add study session for course {course_id}: {e}", exc_info=True)
+            raise
+
+    def get_study_sessions(self, course_id: Optional[int] = None, limit: int = 100) -> List[Dict]:
+        """Get study sessions, optionally filtered by course, newest first."""
+        try:
+            cursor = self.conn.cursor()
+            if course_id is not None:
+                cursor.execute("""
+                    SELECT ss.id, ss.course_id, c.name, ss.timestamp, ss.note
+                    FROM study_sessions ss
+                    JOIN courses c ON ss.course_id = c.id
+                    WHERE ss.course_id = ?
+                    ORDER BY ss.timestamp DESC LIMIT ?
+                """, (course_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT ss.id, ss.course_id, c.name, ss.timestamp, ss.note
+                    FROM study_sessions ss
+                    JOIN courses c ON ss.course_id = c.id
+                    ORDER BY ss.timestamp DESC LIMIT ?
+                """, (limit,))
+            return [
+                {"id": r[0], "course_id": r[1], "course_name": r[2], "timestamp": r[3], "note": r[4]}
+                for r in cursor.fetchall()
+            ]
+        except Exception as e:
+            logging.error(f"Failed to get study sessions: {e}", exc_info=True)
+            raise
+
+    def get_study_inbox(self, limit: int = 50) -> List[Dict]:
+        """Return priority-sorted list of unmastered files across all courses.
+
+        Priority = file_age_days (capped at 90) * (1 - course_completion_ratio)
+        Higher score = study this first.
+        """
+        try:
+            cursor = self.conn.cursor()
+
+            # All non-mastered files with their study levels
+            cursor.execute("""
+                SELECT
+                    f.local_path,
+                    f.name,
+                    f.url,
+                    f.redirect_url,
+                    f.last_updated,
+                    n.course_id,
+                    c.name AS course_name,
+                    c.webdav_folder,
+                    COALESCE(fs.level, 0) AS level,
+                    COALESCE(
+                        (julianday('now') - julianday(f.last_updated)),
+                        30
+                    ) AS age_days
+                FROM files f
+                JOIN nodes n ON f.node_id = n.id
+                JOIN courses c ON n.course_id = c.id
+                LEFT JOIN file_study fs
+                    ON fs.course_id = n.course_id AND fs.file_path = f.local_path
+                WHERE COALESCE(fs.level, 0) < 4
+                AND f.local_path IS NOT NULL
+            """)
+            rows = cursor.fetchall()
+
+            # Completion ratio per course
+            cursor.execute("""
+                SELECT n.course_id,
+                       COUNT(*) AS total_files,
+                       SUM(COALESCE(fs.level, 0)) AS total_level_sum
+                FROM files f
+                JOIN nodes n ON f.node_id = n.id
+                LEFT JOIN file_study fs
+                    ON fs.course_id = n.course_id AND fs.file_path = f.local_path
+                GROUP BY n.course_id
+            """)
+            course_stats: Dict[int, float] = {}
+            for cid, total_files, total_level_sum in cursor.fetchall():
+                course_stats[cid] = (
+                    (total_level_sum or 0) / (4 * total_files)
+                    if total_files > 0 else 1.0
+                )
+
+            results = []
+            for row in rows:
+                local_path, name, url, redirect_url, last_updated, course_id, \
+                    course_name, webdav_folder, level, age_days = row
+                completion_ratio = course_stats.get(course_id, 0.0)
+                age_capped = min(float(age_days), 90.0)
+                priority = age_capped * (1.0 - completion_ratio)
+                results.append({
+                    "file_path": local_path,
+                    "file_name": name,
+                    "url": url,
+                    "redirect_url": redirect_url,
+                    "last_updated": last_updated,
+                    "course_id": course_id,
+                    "course_name": course_name,
+                    "webdav_folder": webdav_folder,
+                    "level": level,
+                    "priority": priority,
+                })
+
+            results.sort(key=lambda x: x["priority"], reverse=True)
+            return results[:limit]
+        except Exception as e:
+            logging.error(f"Failed to get study inbox: {e}", exc_info=True)
+            raise
+
+    # --- Global feed announcement methods ---
+
+    def save_global_announcements(self, feed_key: str, announcements: List[Dict]):
+        """Save announcements from a global feed (upsert by feed_key + announcement_id)."""
+        try:
+            cursor = self.conn.cursor()
+            for ann in announcements:
+                if not ann.get('announcement_id'):
+                    continue
+                cursor.execute("""
+                    INSERT OR REPLACE INTO global_announcements
+                    (feed_key, announcement_id, title, link, description, pub_date, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (
+                    feed_key,
+                    ann['announcement_id'],
+                    ann['title'],
+                    ann['link'],
+                    ann.get('description', ''),
+                    ann['pub_date'].isoformat() if ann.get('pub_date') else None,
+                ))
+            self.conn.commit()
+            logging.debug(f"Saved {len(announcements)} global announcements for feed '{feed_key}'")
+        except Exception as e:
+            logging.error(f"Failed to save global announcements for feed {feed_key}: {e}", exc_info=True)
+            raise
+
+    def get_global_announcements(self, feed_key: Optional[str] = None, limit: int = 100) -> List[Dict]:
+        """Get global feed announcements, optionally filtered by feed_key, newest first."""
+        try:
+            cursor = self.conn.cursor()
+            if feed_key:
+                cursor.execute("""
+                    SELECT id, feed_key, announcement_id, title, link, description, pub_date, fetched_at
+                    FROM global_announcements WHERE feed_key = ?
+                    ORDER BY pub_date DESC LIMIT ?
+                """, (feed_key, limit))
+            else:
+                cursor.execute("""
+                    SELECT id, feed_key, announcement_id, title, link, description, pub_date, fetched_at
+                    FROM global_announcements
+                    ORDER BY pub_date DESC LIMIT ?
+                """, (limit,))
+            return [
+                {
+                    "id": r[0], "feed_key": r[1], "announcement_id": r[2],
+                    "title": r[3], "link": r[4], "description": r[5],
+                    "pub_date": r[6], "fetched_at": r[7],
+                }
+                for r in cursor.fetchall()
+            ]
+        except Exception as e:
+            logging.error(f"Failed to get global announcements: {e}", exc_info=True)
+            raise
+
+    def get_latest_global_announcement_date(self, feed_key: str) -> Optional[datetime]:
+        """Return the pub_date of the newest stored announcement for a feed, or None."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT pub_date FROM global_announcements
+                WHERE feed_key = ? ORDER BY pub_date DESC LIMIT 1
+            """, (feed_key,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                return datetime.fromisoformat(row[0])
+            return None
+        except Exception as e:
+            logging.error(f"Failed to get latest global announcement date for {feed_key}: {e}", exc_info=True)
             raise
 
     def close(self):

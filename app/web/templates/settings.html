@@ -128,7 +128,7 @@
 <div class="section">
 	<h2>Application Preferences</h2>
 	<div class="info-card">
-		<p>Configure scan intervals, timeouts, and notification preferences.</p>
+		<p>Configure scan intervals, timeouts, notification preferences, and global announcement feeds.</p>
 	</div>
 
 	<div class="form-card">
@@ -162,22 +162,45 @@
 			</div>
 
 			<div class="form-group">
-				<label for="notification_enabled">
-					<input type="checkbox" id="notification_enabled" name="notification_enabled" value="true" {% if
-						preferences.notification_enabled %}checked{% endif %}>
+				<label>
+					<input type="checkbox" id="notification_enabled" name="notification_enabled" value="true" {% if preferences.notification_enabled %}checked{% endif %}>
 					Enable Notifications
 				</label>
 				<small>Send webhook notifications when changes are detected</small>
 			</div>
 
 			<div class="form-group">
-				<label for="notification_on_error">
-					<input type="checkbox" id="notification_on_error" name="notification_on_error" value="true" {% if
-						preferences.notification_on_error %}checked{% endif %}>
+				<label>
+					<input type="checkbox" id="notification_on_error" name="notification_on_error" value="true" {% if preferences.notification_on_error %}checked{% endif %}>
 					Notify on Errors
 				</label>
 				<small>Send webhook notifications when errors occur during checks</small>
 			</div>
+
+			<hr style="border: none; border-top: 1px solid var(--border); margin: var(--spacing-lg) 0;">
+			<h3 style="font-size: 0.9375rem; font-weight: 600; margin-bottom: var(--spacing-md);">🏛️ Global Announcement Feeds</h3>
+			<p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+				Checked every time a regular check runs; new items appear on the <a href="/announcements">Announcements</a> page.
+			</p>
+
+			{% for key, feed in global_feeds.items() %}
+			<div class="form-group">
+				<label>
+					<input type="checkbox" name="global_feed_{{ key }}_enabled" value="true"
+						{% if preferences['global_feed_' ~ key ~ '_enabled'] %}checked{% endif %}>
+					{{ feed.name }}
+				</label>
+				<small>
+					{% if feed.page_url %}
+					Public e-class page: <code>{{ feed.page_url }}</code>
+					{% elif feed.eclass_course_id %}
+					e-class course INF{{ feed.eclass_course_id }} — requires valid e-class credentials
+					{% else %}
+					Public RSS: <code>{{ feed.url }}</code>
+					{% endif %}
+				</small>
+			</div>
+			{% endfor %}
 
 			<button type="submit" class="btn btn-primary">Save Preferences</button>
 		</form>

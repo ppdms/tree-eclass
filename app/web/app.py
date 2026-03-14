@@ -25,6 +25,7 @@ from app.services.persistence import DatabaseManager
 from app.services.tree_builder import Node, File
 from app.services.checker import run_checker, check_single_course, print_tree
 from app.services.webdav_uploader import WebDAVUploader
+from app.services.announcements_scraper import GLOBAL_FEEDS
 
 # Configure logging for systemd
 logging.basicConfig(
@@ -191,9 +192,11 @@ async def list_courses(request: Request):
     """List all courses."""
     try:
         courses = db_manager.get_courses()
+        study_summaries = {c['id']: db_manager.get_course_study_summary(c['id']) for c in courses}
         return templates.TemplateResponse("courses.html", {
             "request": request,
-            "courses": courses
+            "courses": courses,
+            "study_summaries": study_summaries,
         })
     except Exception as e:
         logging.error(f"Error listing courses: {e}", exc_info=True)
@@ -226,6 +229,7 @@ async def view_course(request: Request, course_id: int):
         # Load version metadata for the file tree UI
         files_with_versions = db_manager.get_files_with_versions(course_id)
         folders_with_deleted = db_manager.get_folders_with_deleted(course_id)
+        study_levels = db_manager.get_file_study_levels(course_id)
 
         return templates.TemplateResponse("course_detail.html", {
             "request": request,
@@ -235,6 +239,7 @@ async def view_course(request: Request, course_id: int):
             "changes_data": changes_data,
             "files_with_versions": files_with_versions,
             "folders_with_deleted": folders_with_deleted,
+            "study_levels": study_levels,
         })
     except HTTPException:
         raise
@@ -409,11 +414,12 @@ async def check_course(course_id: int, background_tasks: BackgroundTasks):
 # ===== ANNOUNCEMENTS ROUTES =====
 
 @app.get("/announcements", response_class=HTMLResponse)
-async def list_announcements(request: Request, course_id: Optional[int] = None):
+async def list_announcements(request: Request, course_id: Optional[int] = None, tab: Optional[str] = None):
     """List announcements for all courses or a specific course."""
     try:
+        active_tab = tab if tab in ('courses', 'uni') else 'courses'
         courses = db_manager.get_courses()
-        
+
         # Get announcements
         if course_id:
             announcements = db_manager.get_announcements(course_id=course_id, limit=100)
@@ -423,13 +429,22 @@ async def list_announcements(request: Request, course_id: Optional[int] = None):
         else:
             announcements = db_manager.get_announcements(limit=100)
             course_name = None
-        
+
+        # Global feed announcements (shown separately, unaffected by course filter)
+        global_announcements = db_manager.get_global_announcements(limit=60)
+        # Attach feed name from the constant
+        for ann in global_announcements:
+            ann['feed_name'] = GLOBAL_FEEDS.get(ann['feed_key'], {}).get('name', ann['feed_key'])
+
         return templates.TemplateResponse("announcements.html", {
             "request": request,
             "announcements": announcements,
             "courses": courses,
             "selected_course_id": course_id,
-            "course_name": course_name
+            "course_name": course_name,
+            "global_announcements": global_announcements,
+            "global_feeds": GLOBAL_FEEDS,
+            "active_tab": active_tab,
         })
     except Exception as e:
         logging.error(f"Error listing announcements: {e}", exc_info=True)
@@ -481,7 +496,8 @@ async def view_settings(request: Request):
             "credentials": credentials,
             "webhook_config": webhook_config,
             "webdav_config": webdav_config,
-            "preferences": preferences
+            "preferences": preferences,
+            "global_feeds": GLOBAL_FEEDS,
         })
     except Exception as e:
         logging.error(f"Error viewing settings: {e}", exc_info=True)
@@ -547,7 +563,10 @@ async def update_preferences(
     request_timeout_seconds: int = Form(30),
     retry_attempts: int = Form(3),
     notification_enabled: Optional[bool] = Form(False),
-    notification_on_error: Optional[bool] = Form(False)
+    notification_on_error: Optional[bool] = Form(False),
+    global_feed_dept_enabled: Optional[bool] = Form(False),
+    global_feed_undergrad_enabled: Optional[bool] = Form(False),
+    global_feed_rector_enabled: Optional[bool] = Form(False),
 ):
     """Update application preferences."""
     try:
@@ -557,7 +576,10 @@ async def update_preferences(
             request_timeout_seconds=request_timeout_seconds,
             retry_attempts=retry_attempts,
             notification_enabled=notification_enabled,
-            notification_on_error=notification_on_error
+            notification_on_error=notification_on_error,
+            global_feed_dept_enabled=global_feed_dept_enabled,
+            global_feed_undergrad_enabled=global_feed_undergrad_enabled,
+            global_feed_rector_enabled=global_feed_rector_enabled,
         )
         logging.info("Updated preferences")
         return RedirectResponse(url="/settings", status_code=303)
@@ -824,6 +846,76 @@ async def api_check_status():
         return status
     except Exception as e:
         logging.error(f"API error getting check status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== STUDY TRACKING ROUTES =====
+
+@app.get("/study", response_class=HTMLResponse)
+async def study_inbox(request: Request):
+    """Study inbox: priority-sorted list of unmastered files + session log."""
+    try:
+        courses = db_manager.get_courses()
+        inbox = db_manager.get_study_inbox(limit=60)
+        sessions = db_manager.get_study_sessions(limit=50)
+        return templates.TemplateResponse("study.html", {
+            "request": request,
+            "inbox": inbox,
+            "sessions": sessions,
+            "courses": courses,
+        })
+    except Exception as e:
+        logging.error(f"Error loading study inbox: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/study/inbox")
+async def api_study_inbox(limit: int = 50):
+    """Return priority-sorted unmastered files as JSON."""
+    try:
+        inbox = db_manager.get_study_inbox(limit=limit)
+        return JSONResponse(content={"inbox": inbox})
+    except Exception as e:
+        logging.error(f"API error getting study inbox: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/courses/{course_id}/files/study-level")
+async def set_study_level(course_id: int, request: Request):
+    """Set the comprehension level (0-4) for a file."""
+    try:
+        body = await request.json()
+        file_path = body.get("file_path")
+        level = body.get("level")
+        if file_path is None or level is None:
+            raise HTTPException(status_code=422, detail="file_path and level are required")
+        level = int(level)
+        if level < 0 or level > 4:
+            raise HTTPException(status_code=422, detail="level must be between 0 and 4")
+        db_manager.set_file_study_level(course_id, file_path, level)
+        return JSONResponse(content={"status": "ok", "level": level})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"API error setting study level course {course_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/courses/{course_id}/study-sessions")
+async def add_study_session(course_id: int, request: Request):
+    """Log a study session for a course."""
+    try:
+        body = await request.json()
+        note = body.get("note") or None
+        courses = db_manager.get_courses()
+        if not any(c['id'] == course_id for c in courses):
+            raise HTTPException(status_code=404, detail="Course not found")
+        session_id = db_manager.add_study_session(course_id, note)
+        return JSONResponse(content={"status": "ok", "id": session_id})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"API error adding study session for course {course_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -534,3 +534,45 @@ function escHtml(str) {
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;');
 }
+
+// ===== Study Level UI =====
+
+const STUDY_LEVEL_ICONS = ['\u25cb', '\u25d4', '\u25d1', '\u25d5', '\u25cf']; // ○ ◔ ◑ ◕ ●
+const STUDY_LEVEL_COLORS = ['#94a3b8', '#ef4444', '#f97316', '#eab308', '#16a34a'];
+
+async function cycleStudyLevel(btn) {
+	const courseId = btn.dataset.courseId;
+	const localPath = btn.dataset.localPath;
+	const currentLevel = parseInt(btn.dataset.level, 10);
+	const nextLevel = (currentLevel + 1) % 5;
+
+	btn.disabled = true;
+	try {
+		const resp = await fetch(`/api/courses/${courseId}/files/study-level`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ file_path: localPath, level: nextLevel }),
+		});
+		if (resp.ok) {
+			btn.dataset.level = nextLevel;
+			btn.textContent = STUDY_LEVEL_ICONS[nextLevel];
+			btn.style.color = STUDY_LEVEL_COLORS[nextLevel];
+			btn.title = `Comprehension level ${nextLevel}/4 \u2014 click to advance`;
+			// If mastered (level 4) on the inbox page, fade the whole row out
+			if (nextLevel === 4) {
+				const row = btn.closest('tr');
+				if (row && row.closest('#inbox-table')) {
+					row.style.transition = 'opacity 0.6s';
+					row.style.opacity = '0.35';
+					setTimeout(() => row.remove(), 700);
+				}
+			}
+		} else {
+			window.treeEclass.showNotification('Failed to update level.', 'error');
+		}
+	} catch (e) {
+		window.treeEclass.showNotification('Error: ' + e.message, 'error');
+	} finally {
+		btn.disabled = false;
+	}
+}

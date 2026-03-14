@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Study Inbox - tree-eclass{% endblock %}
+
+{% block content %}
+<div class="page-header">
+	<h1>📚 Study Inbox</h1>
+	<button onclick="openGlobalSessionModal()" class="btn btn-primary">📝 Log Study Session</button>
+</div>
+
+<!-- Log Study Session Modal (global, course selector) -->
+<div id="globalSessionModal" class="modal" onclick="if(event.target===this)closeGlobalSessionModal()">
+	<div class="modal-content" style="max-width: 420px;">
+		<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-lg);">
+			<h3 style="margin: 0;">📝 Log Study Session</h3>
+			<button onclick="closeGlobalSessionModal()" class="btn btn-secondary" style="padding: 4px 10px;">✕</button>
+		</div>
+		<div class="form-group">
+			<label for="sessionCourse">Course</label>
+			<select id="sessionCourse" style="width: 100%;">
+				{% for course in courses %}
+				<option value="{{ course.id }}">{{ course.name }}</option>
+				{% endfor %}
+			</select>
+		</div>
+		<div class="form-group" style="margin-top: var(--spacing-md);">
+			<label for="sessionNoteGlobal">Note <span style="color:var(--text-secondary);font-weight:normal;">(optional)</span></label>
+			<input type="text" id="sessionNoteGlobal" placeholder="e.g. Chapters 3-4, lecture slides" style="width: 100%;">
+		</div>
+		<div class="form-actions" style="margin-top: var(--spacing-lg);">
+			<button onclick="submitGlobalSession()" class="btn btn-primary">Log Session</button>
+			<button onclick="closeGlobalSessionModal()" class="btn btn-secondary">Cancel</button>
+		</div>
+	</div>
+</div>
+
+<!-- Priority Inbox -->
+<div class="section">
+	<h2>Priority Inbox</h2>
+	<p style="color: var(--text-secondary); font-size: 0.9em; margin-bottom: var(--spacing-md);">
+		Files you haven't mastered yet, sorted by urgency — older files in underattended courses appear first.<br>
+		Click a circle (○ ◔ ◑ ◕ ●) to advance your comprehension level. ● = mastered (disappears from inbox).
+	</p>
+	{% if inbox %}
+	<table class="data-table" id="inbox-table">
+		<thead>
+			<tr>
+				<th style="width: 2.5rem;">Level</th>
+				<th>File</th>
+				<th>Course</th>
+				<th>Added</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% for item in inbox %}
+			<tr id="inbox-row-{{ loop.index }}" data-row-index="{{ loop.index }}">
+				<td style="text-align: center;">
+					<button class="study-level-btn"
+						data-local-path="{{ item.file_path | e }}"
+						data-course-id="{{ item.course_id }}"
+						data-level="{{ item.level }}"
+						onclick="cycleStudyLevel(this)"
+						title="Level {{ item.level }}/4 — click to advance">{{ ['○','◔','◑','◕','●'][item.level] }}</button>
+				</td>
+				<td>
+					{% if item.redirect_url %}
+					<a href="{{ item.redirect_url }}" target="_blank">{{ item.file_name }} 🔗</a>
+					{% elif item.file_path %}
+					<a href="/files{{ item.file_path }}" target="_blank">{{ item.file_name }}</a>
+					{% else %}
+					{{ item.file_name }}
+					{% endif %}
+				</td>
+				<td><a href="/courses/{{ item.course_id }}">{{ item.course_name }}</a></td>
+				<td style="color: var(--text-secondary); font-size: 0.85em; white-space: nowrap;">
+					{% if item.last_updated %}{{ item.last_updated | format_timestamp }}{% else %}—{% endif %}
+				</td>
+			</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+	{% else %}
+	<p class="empty-state">
+		{% if courses %}
+		🎉 All files are mastered! Or no files have been synced yet — run a check to populate the file tree.
+		{% else %}
+		No courses configured yet. <a href="/courses">Add a course</a> to get started.
+		{% endif %}
+	</p>
+	{% endif %}
+</div>
+
+<!-- Study Sessions Log -->
+<div class="section">
+	<h2>Study Sessions</h2>
+	{% if sessions %}
+	<table class="data-table">
+		<thead>
+			<tr>
+				<th>When</th>
+				<th>Course</th>
+				<th>Note</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% for s in sessions %}
+			<tr>
+				<td style="white-space: nowrap;">{{ s.timestamp | athens_time }}</td>
+				<td><a href="/courses/{{ s.course_id }}">{{ s.course_name }}</a></td>
+				<td style="color: var(--text-secondary);">{{ s.note or '—' }}</td>
+			</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+	{% else %}
+	<p class="empty-state">No study sessions logged yet. Use the button above to record one.</p>
+	{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+	function openGlobalSessionModal() {
+		document.getElementById('globalSessionModal').style.display = 'flex';
+	}
+	function closeGlobalSessionModal() {
+		document.getElementById('globalSessionModal').style.display = 'none';
+		document.getElementById('sessionNoteGlobal').value = '';
+	}
+	async function submitGlobalSession() {
+		const courseId = document.getElementById('sessionCourse').value;
+		const note = document.getElementById('sessionNoteGlobal').value.trim();
+		try {
+			const resp = await fetch(`/api/courses/${courseId}/study-sessions`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ note: note || null }),
+			});
+			if (resp.ok) {
+				closeGlobalSessionModal();
+				window.treeEclass.showNotification('Study session logged!', 'success');
+				setTimeout(() => location.reload(), 1000);
+			} else {
+				window.treeEclass.showNotification('Failed to log session.', 'error');
+			}
+		} catch (e) {
+			window.treeEclass.showNotification('Error: ' + e.message, 'error');
+		}
+	}
+</script>
+{% endblock %}

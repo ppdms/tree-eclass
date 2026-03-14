@@ -35,36 +35,45 @@
 
 <div class="section">
 	{% if courses %}
-	<table class="data-table courses-table">
-		<thead>
-			<tr>
-				<th>ID</th>
-				<th>Name</th>
-				<th>Actions</th>
-			</tr>
-		</thead>
-		<tbody>
-			{% for course in courses %}
-			<tr>
-				<td>{{ course.id }}</td>
-				<td>{{ course.name }}</td>
-				<td>
-					<a href="/courses/{{ course.id }}" class="btn btn-sm">View</a>
-					<a href="/history?course_id={{ course.id }}" class="btn btn-sm">History</a>
-					<button onclick="checkCourse({{ course.id }})" class="btn btn-sm btn-primary">Check</button>
-					<form method="POST" action="/courses/{{ course.id }}/reset" style="display: inline;"
-						onsubmit="return handleConfirm(event, 'Reset Course Data', 'Reset all data for this course? This will clear the file tree and change history but keep the course configuration.');">
-						<button type="submit" class="btn btn-sm btn-warning">Reset</button>
-					</form>
-					<form method="POST" action="/courses/{{ course.id }}/delete" style="display: inline;"
-						onsubmit="return handleConfirm(event, 'Delete Course', 'Delete this course completely? This action cannot be undone.');">
-						<button type="submit" class="btn btn-sm btn-danger">Delete</button>
-					</form>
-				</td>
-			</tr>
-			{% endfor %}
-		</tbody>
-	</table>
+	<ul class="course-cards">
+		{% for course in courses %}
+		{% set s = study_summaries[course.id] %}
+		{% set pct = (s.completion_ratio * 100) | round(0) | int %}
+		{% if pct >= 75 %}{% set accent = '#16a34a' %}
+		{% elif pct >= 50 %}{% set accent = '#eab308' %}
+		{% elif pct >= 25 %}{% set accent = '#f97316' %}
+		{% elif s.total > 0 %}{% set accent = '#ef4444' %}
+		{% else %}{% set accent = 'var(--border)' %}{% endif %}
+		<li class="course-card" style="--accent: {{ accent }};">
+			<div class="cc-left">
+				<a href="/courses/{{ course.id }}" class="cc-name">{{ course.name }}</a>
+			</div>
+			<div class="cc-progress">
+				{% if s.total > 0 %}
+				<div class="cc-bar" title="{{ s.total }} files total — {{ pct }}% mastered">
+					{% for lvl in [4,3,2,1,0] %}
+					{% set w = (s.by_level[lvl|string] / s.total * 100) | round(2) %}
+					{% if w > 0 %}<div class="spb-seg spb-l{{ lvl }}" style="width: {{ w }}%;"></div>{% endif %}
+					{% endfor %}
+				</div>
+				<span class="cc-pct">{{ pct }}%</span>
+				<span class="cc-file-count">{{ s.total }} file{{ 's' if s.total != 1 }}</span>
+				{% else %}
+				<span class="cc-no-files">no files yet — run a check</span>
+				{% endif %}
+			</div>
+			<div class="cc-actions">
+				<a href="/courses/{{ course.id }}" class="btn btn-sm">View</a>
+				<a href="/history?course_id={{ course.id }}" class="btn btn-sm btn-secondary">History</a>
+				<button onclick="checkCourse({{ course.id }})" class="btn btn-sm btn-primary">Check</button>
+				<form method="POST" action="/courses/{{ course.id }}/reset" style="display: inline;"
+					onsubmit="return handleConfirm(event, 'Reset Course Data', 'Reset all data for this course? This will clear the file tree and change history but keep the course configuration.');"><button type="submit" class="btn btn-sm btn-warning">Reset</button></form>
+				<form method="POST" action="/courses/{{ course.id }}/delete" style="display: inline;"
+					onsubmit="return handleConfirm(event, 'Delete Course', 'Delete this course completely? This action cannot be undone.');"><button type="submit" class="btn btn-sm btn-danger">Delete</button></form>
+			</div>
+		</li>
+		{% endfor %}
+	</ul>
 	{% else %}
 	<p class="empty-state">No courses configured. Add your first course above.</p>
 	{% endif %}

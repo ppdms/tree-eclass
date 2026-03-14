@@ -70,9 +70,6 @@ RUN apt-get update && apt-get install -y unzip && \
 # Make entrypoint executable
 RUN chmod +x docker-entrypoint.sh
 
-# Create directory for database and downloads
-RUN mkdir -p /data/downloads
-
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV DB_FILE=/data/eclass.db

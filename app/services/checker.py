@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from app.services import differ, tree_builder
-from app.services.announcements_scraper import AnnouncementsScraper
+from app.services.announcements_scraper import AnnouncementsScraper, GLOBAL_FEEDS
 from app.services.persistence import DatabaseManager
 from app.services.scraper import Scraper, COURSE_URL_TEMPLATE
 from app.services.webdav_uploader import WebDAVUploader
@@ -420,6 +420,36 @@ def run_checker(db_manager: DatabaseManager):
                     db_manager.log_check_event("course_check_complete", "No changes detected", course_id=course['id'], status="info")
             else:
                 db_manager.log_check_event("course_check_complete", "Check failed", course_id=course['id'], status="error")
+
+        # Check global feeds
+        preferences = db_manager.get_preferences()
+        ann_scraper = AnnouncementsScraper(scraper_instance.session)
+
+        for feed_key, feed_info in GLOBAL_FEEDS.items():
+            enabled_pref = f"global_feed_{feed_key}_enabled"
+            if not preferences.get(enabled_pref, False):
+                logging.debug(f"Global feed '{feed_key}' is disabled, skipping")
+                continue
+
+            db_manager.log_check_event("global_feed_check", f"Checking global feed: {feed_info['name']}", status="info")
+            try:
+                announcements = ann_scraper.fetch_global_feed(feed_key)
+                if announcements:
+                    latest = db_manager.get_latest_global_announcement_date(feed_key)
+                    new_for_feed = []
+                    for ann in announcements:
+                        if latest is None:
+                            new_for_feed.append(ann)
+                        elif ann.get('pub_date') and ann['pub_date'] > latest:
+                            new_for_feed.append(ann)
+                    db_manager.save_global_announcements(feed_key, announcements)
+                    if new_for_feed:
+                        all_announcements[feed_info['name']] = new_for_feed
+                        logging.info(f"Found {len(new_for_feed)} new announcement(s) for global feed '{feed_key}'")
+                        for ann in new_for_feed:
+                            print(f"\U0001f4e2 New Global Announcement [{feed_info['name']}]: {ann['title']}")
+            except Exception as e:
+                logging.error(f"Failed to process global feed '{feed_key}': {e}", exc_info=True)
 
         if all_changes or all_announcements:
             try:
