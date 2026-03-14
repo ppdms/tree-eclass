@@ -93,6 +93,45 @@ body {
 	color: var(--primary-color);
 }
 
+/* Navbar course dropdown */
+.nav-dropdown {
+	position: relative;
+}
+
+.nav-dropdown-menu {
+	display: none;
+	position: absolute;
+	top: 100%;
+	left: 50%;
+	transform: translateX(-50%);
+	background: var(--bg-primary, #fff);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+	list-style: none;
+	padding: 12px 0 6px;
+	margin: 0;
+	min-width: 200px;
+	z-index: 1000;
+	white-space: nowrap;
+}
+
+.nav-dropdown:hover .nav-dropdown-menu {
+	display: block;
+}
+
+.nav-dropdown-menu li a {
+	display: block;
+	padding: 8px 16px;
+	font-size: 0.875rem;
+	color: var(--text-primary) !important;
+}
+
+.nav-dropdown-menu li a:hover {
+	background: var(--bg-secondary);
+	color: var(--primary) !important;
+}
+
 /* Main Content */
 main {
 	padding-top: 1rem !important;

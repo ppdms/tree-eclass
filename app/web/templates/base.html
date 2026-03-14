@@ -25,7 +25,17 @@
 			<ul class="nav-links">
 				<li><a href="/">Timeline</a></li>
 				<li><a href="/history">History</a></li>
-				<li><a href="/courses">Courses</a></li>
+				<li class="nav-dropdown">
+					<a href="/courses">Courses</a>
+					{% set courses = nav_courses() %}
+					{% if courses %}
+					<ul class="nav-dropdown-menu">
+						{% for c in courses %}
+						<li><a href="/courses/{{ c.id }}">{{ c.name }}</a></li>
+						{% endfor %}
+					</ul>
+					{% endif %}
+				</li>
 				<li><a href="/study">📚 Study</a></li>
 				<li><a href="/announcements">Announcements</a></li>
 				<li><a href="/logs">Logs</a></li>

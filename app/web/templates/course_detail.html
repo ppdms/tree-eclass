@@ -20,7 +20,9 @@
 	<div class="tree-children">
 		{% for file in child.files %}
 		{% set rel_file = file.local_path[(webdav_folder|length + 1):] if file.local_path else '' %}
+		{% set slevel = study_levels.get(file.local_path, 0) if file.local_path else 0 %}
 		<div class="tree-file" style="margin-left: {{ (level + 1) * 20 }}px;">
+			<button class="study-level-btn" data-local-path="{{ file.local_path | e }}" data-course-id="{{ course_id }}" data-level="{{ slevel }}" onclick="cycleStudyLevel(this)" title="Comprehension level {{ slevel }}/4 — click to advance">{{ ['○','◔','◑','◕','●'][slevel] }}</button>
 			<span class="tree-icon">{% if file.redirect_url %}🔗{% else %}📄{% endif %}</span>
 			{% if file.redirect_url %}
 			<a href="{{ file.redirect_url }}" target="_blank" title="External link (SharePoint / Stream)">{{ file.name }}</a>

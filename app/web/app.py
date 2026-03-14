@@ -122,6 +122,14 @@ templates.env.filters["change_counts"] = format_change_counts
 templates.env.filters["change_no_date"] = format_change_no_date
 templates.env.filters["format_timestamp"] = format_timestamp
 
+def _get_nav_courses():
+    try:
+        return db_manager.get_courses()
+    except Exception:
+        return []
+
+templates.env.globals["nav_courses"] = _get_nav_courses
+
 # Create static directory if it doesn't exist
 static_dir = BASE_DIR / "static"
 static_dir.mkdir(exist_ok=True)
