@@ -193,11 +193,20 @@ def send_webhook(changes_by_course: dict, announcements_by_course: dict, db_mana
             overhead = len(prefix) + 10  # Some margin
             line_addition = len(line) + (2 if batch else 0)  # +2 for double newline separator
 
-            # If this single line alone exceeds the limit, truncate it
-            if overhead + line_addition > 2000:
+            # If a single line alone exceeds the limit, truncate it
+            if overhead + len(line) + (2 if batch else 0) > 2000:
                 line = line[:2000 - overhead - 5] + "…"
                 line_addition = len(line) + (2 if batch else 0)
 
+            if batch and overhead + batch_len + line_addition > 2000:
+                # Flush current batch
+                body = prefix + "\n\n".join(batch)
+                messages.append(body)
+                current_is_first = False
+                batch = [line]
+                batch_len = len(line)
+            else:
+                batch.append(line)
                 batch_len += line_addition
 
         # Flush remaining
