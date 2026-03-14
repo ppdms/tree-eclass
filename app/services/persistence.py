@@ -1581,8 +1581,8 @@ class DatabaseManager:
     # --- Study tracking methods ---
 
     def set_file_study_level(self, course_id: int, file_path: str, level: int):
-        """Upsert the comprehension level (0-4) for a file."""
-        level = max(0, min(4, level))
+        """Upsert the comprehension level (0-5) for a file. Level 5 means ignored."""
+        level = max(0, min(5, level))
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
@@ -1626,16 +1626,20 @@ class DatabaseManager:
             )
             by_level = {row[0]: row[1] for row in cursor.fetchall()}
 
+            ignored_count = by_level.pop(5, 0)
+            effective_total = max(0, total - ignored_count)
+
             # Files not in file_study are implicitly level 0
             studied_count = sum(by_level.values())
-            by_level[0] = by_level.get(0, 0) + max(0, total - studied_count)
+            by_level[0] = by_level.get(0, 0) + max(0, effective_total - studied_count)
 
             completion_ratio = (
-                sum(by_level.get(i, 0) * i for i in range(5)) / (4 * total)
-                if total > 0 else 1.0
+                sum(by_level.get(i, 0) * i for i in range(5)) / (4 * effective_total)
+                if effective_total > 0 else 1.0
             )
             return {
-                "total": total,
+                "total": effective_total,
+                "ignored": ignored_count,
                 "by_level": {str(i): by_level.get(i, 0) for i in range(5)},
                 "completion_ratio": completion_ratio,
             }

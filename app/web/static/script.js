@@ -537,14 +537,29 @@ function escHtml(str) {
 
 // ===== Study Level UI =====
 
-const STUDY_LEVEL_ICONS = ['\u25cb', '\u25d4', '\u25d1', '\u25d5', '\u25cf']; // ○ ◔ ◑ ◕ ●
-const STUDY_LEVEL_COLORS = ['#94a3b8', '#ef4444', '#f97316', '#eab308', '#16a34a'];
+const STUDY_LEVEL_ICONS = ['\u25cb', '\u25d4', '\u25d1', '\u25d5', '\u25cf', '\u2014']; // ○ ◔ ◑ ◕ ● —
+const STUDY_LEVEL_COLORS = ['#94a3b8', '#ef4444', '#f97316', '#eab308', '#16a34a', '#cbd5e1'];
+const STUDY_LEVEL_TITLES = [
+	'Not studied — click to advance',
+	'Glanced — click to advance',
+	'Familiar — click to advance',
+	'Studied — click to advance',
+	'Mastered — click to advance',
+	'Ignored (excluded from progress) — Shift+click to unignore',
+];
 
-async function cycleStudyLevel(btn) {
+async function cycleStudyLevel(btn, event) {
 	const courseId = btn.dataset.courseId;
 	const localPath = btn.dataset.localPath;
 	const currentLevel = parseInt(btn.dataset.level, 10);
-	const nextLevel = (currentLevel + 1) % 5;
+	// Shift+click: toggle ignored (level 5) ↔ level 0
+	let nextLevel;
+	if (event && event.shiftKey) {
+		nextLevel = currentLevel === 5 ? 0 : 5;
+	} else {
+		// Normal cycle only through 0-4; if currently ignored, shift back to 0
+		nextLevel = currentLevel === 5 ? 1 : (currentLevel + 1) % 5;
+	}
 
 	btn.disabled = true;
 	try {
@@ -557,7 +572,8 @@ async function cycleStudyLevel(btn) {
 			btn.dataset.level = nextLevel;
 			btn.textContent = STUDY_LEVEL_ICONS[nextLevel];
 			btn.style.color = STUDY_LEVEL_COLORS[nextLevel];
-			btn.title = `Comprehension level ${nextLevel}/4 \u2014 click to advance`;
+			btn.title = STUDY_LEVEL_TITLES[nextLevel];
+			btn.classList.toggle('study-ignored', nextLevel === 5);
 			// If mastered (level 4) on the inbox page, fade the whole row out
 			if (nextLevel === 4) {
 				const row = btn.closest('tr');

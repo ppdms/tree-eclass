@@ -898,8 +898,8 @@ async def set_study_level(course_id: int, request: Request):
         if file_path is None or level is None:
             raise HTTPException(status_code=422, detail="file_path and level are required")
         level = int(level)
-        if level < 0 or level > 4:
-            raise HTTPException(status_code=422, detail="level must be between 0 and 4")
+        if level < 0 or level > 5:
+            raise HTTPException(status_code=422, detail="level must be between 0 and 5")
         db_manager.set_file_study_level(course_id, file_path, level)
         return JSONResponse(content={"status": "ok", "level": level})
     except HTTPException:

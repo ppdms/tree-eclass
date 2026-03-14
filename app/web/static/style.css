@@ -1913,6 +1913,13 @@ a {
 	transform: scale(0.95);
 }
 
+.study-level-btn.study-ignored,
+.study-level-btn[data-level="5"] {
+	color: #cbd5e1 !important;
+	opacity: 0.5;
+	font-style: normal;
+}
+
 /* Per-course progress bar on courses list */
 .study-progress-bar {
 	display: flex;
