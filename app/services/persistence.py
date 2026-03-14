@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 16  # Current schema version
+SCHEMA_VERSION = 17  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -59,7 +59,8 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS courses (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
-                webdav_folder TEXT NOT NULL
+                webdav_folder TEXT NOT NULL,
+                sort_order INTEGER DEFAULT 0
             )
         """)
         cursor.execute("""
@@ -317,6 +318,10 @@ class DatabaseManager:
         if current_version < 16:
             self._migration_15_to_16()
             self._set_schema_version(16)
+
+        if current_version < 17:
+            self._migration_16_to_17()
+            self._set_schema_version(17)
 
         logging.info("All migrations completed successfully")
 
@@ -682,6 +687,18 @@ class DatabaseManager:
 
         self.conn.commit()
 
+    def _migration_16_to_17(self):
+        """Migration: Add sort_order column to courses table."""
+        logging.info("Running migration 16 -> 17: Adding sort_order to courses")
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(courses)")
+        if 'sort_order' not in {row[1] for row in cursor.fetchall()}:
+            cursor.execute("ALTER TABLE courses ADD COLUMN sort_order INTEGER DEFAULT 0")
+            # Initialise existing rows with their current rowid order
+            cursor.execute("UPDATE courses SET sort_order = id")
+            logging.info("Added sort_order column to courses")
+        self.conn.commit()
+
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
         try:
@@ -900,11 +917,22 @@ class DatabaseManager:
     def get_courses(self) -> List[Dict]:
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT id, name, webdav_folder FROM courses")
+            cursor.execute("SELECT id, name, webdav_folder FROM courses ORDER BY sort_order ASC, id ASC")
             rows = cursor.fetchall()
             return [{"id": row[0], "name": row[1], "webdav_folder": row[2]} for row in rows]
         except Exception as e:
             logging.error(f"Failed to get courses: {e}", exc_info=True)
+            raise
+
+    def reorder_courses(self, course_ids: list):
+        """Set sort_order for courses based on the supplied ordered list of IDs."""
+        try:
+            cursor = self.conn.cursor()
+            for i, cid in enumerate(course_ids):
+                cursor.execute("UPDATE courses SET sort_order = ? WHERE id = ?", (i, cid))
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to reorder courses: {e}", exc_info=True)
             raise
 
     def delete_course(self, course_id: int):

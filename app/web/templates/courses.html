@@ -35,7 +35,7 @@
 
 <div class="section">
 	{% if courses %}
-	<ul class="course-cards">
+	<ul class="course-cards" id="course-list">
 		{% for course in courses %}
 		{% set s = study_summaries[course.id] %}
 		{% set pct = (s.completion_ratio * 100) | round(0) | int %}
@@ -44,7 +44,8 @@
 		{% elif pct >= 25 %}{% set accent = '#f97316' %}
 		{% elif s.total > 0 %}{% set accent = '#ef4444' %}
 		{% else %}{% set accent = 'var(--border)' %}{% endif %}
-		<li class="course-card" style="--accent: {{ accent }};">
+		<li class="course-card" data-course-id="{{ course.id }}" style="--accent: {{ accent }};">
+			<span class="drag-handle" title="Drag to reorder">⠇</span>
 			<div class="cc-left">
 				<a href="/courses/{{ course.id }}" class="cc-name">{{ course.name }}</a>
 			</div>
@@ -121,5 +122,63 @@
 			window.treeEclass.showNotification('Error checking course: ' + error.message, 'error');
 		}
 	}
+
+	// Drag & drop reordering
+	let dragSrc = null;
+
+	function initDragDrop() {
+		document.querySelectorAll('#course-list .course-card').forEach(item => {
+			item.setAttribute('draggable', 'true');
+			item.addEventListener('dragstart', function(e) {
+				dragSrc = this;
+				e.dataTransfer.effectAllowed = 'move';
+				setTimeout(() => this.classList.add('dragging'), 0);
+			});
+			item.addEventListener('dragend', function() {
+				this.classList.remove('dragging');
+				document.querySelectorAll('.course-card').forEach(c => c.classList.remove('drag-over'));
+			});
+			item.addEventListener('dragover', function(e) {
+				e.preventDefault();
+				e.dataTransfer.dropEffect = 'move';
+			});
+			item.addEventListener('dragenter', function() {
+				if (this !== dragSrc) this.classList.add('drag-over');
+			});
+			item.addEventListener('dragleave', function() {
+				this.classList.remove('drag-over');
+			});
+			item.addEventListener('drop', function(e) {
+				e.preventDefault();
+				this.classList.remove('drag-over');
+				if (dragSrc && dragSrc !== this) {
+					const list = this.parentNode;
+					const items = [...list.children];
+					const srcIdx = items.indexOf(dragSrc);
+					const dstIdx = items.indexOf(this);
+					if (srcIdx < dstIdx) list.insertBefore(dragSrc, this.nextSibling);
+					else list.insertBefore(dragSrc, this);
+					saveOrder(list);
+				}
+			});
+		});
+	}
+
+	async function saveOrder(list) {
+		const ids = [...list.children].map(li => parseInt(li.dataset.courseId));
+		try {
+			const resp = await fetch('/api/courses/reorder', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(ids),
+			});
+			if (!resp.ok) throw new Error('Server error');
+			location.reload();
+		} catch (e) {
+			window.treeEclass.showNotification('Failed to save order.', 'error');
+		}
+	}
+
+	initDragDrop();
 </script>
 {% endblock %}

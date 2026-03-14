@@ -109,7 +109,7 @@ body {
 	border-radius: 8px;
 	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 	list-style: none;
-	padding: 12px 0 6px;
+	padding: 6px 0;
 	margin: 0;
 	min-width: 200px;
 	z-index: 1000;
@@ -451,12 +451,41 @@ main.container {
 	background: var(--surface);
 	border-top: 1px solid var(--border);
 	border-left: 5px solid var(--accent, var(--border));
+	position: relative;
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(200px, 320px) auto;
 	align-items: center;
-	gap: var(--spacing-xl);
-	padding: var(--spacing-md) var(--spacing-lg);
+	gap: var(--spacing-lg);
+	padding: var(--spacing-md) var(--spacing-lg) var(--spacing-md) calc(var(--spacing-lg) + 20px);
 	transition: background 0.15s;
+}
+
+.drag-handle {
+	position: absolute;
+	left: var(--spacing-lg);
+	top: 50%;
+	transform: translateY(-50%);
+	cursor: grab;
+	color: var(--text-secondary);
+	font-size: 1.1rem;
+	user-select: none;
+	opacity: 0.4;
+	transition: opacity 0.15s;
+	width: 14px;
+	text-align: center;
+}
+
+.course-card:hover .drag-handle {
+	opacity: 1;
+}
+
+.course-card.dragging {
+	opacity: 0.4;
+}
+
+.course-card.drag-over {
+	outline: 2px solid var(--primary);
+	outline-offset: -2px;
 }
 
 .course-cards li:first-child {
@@ -1918,6 +1947,63 @@ a {
 	color: #cbd5e1 !important;
 	opacity: 0.5;
 	font-style: normal;
+}
+
+/* Study level picker (shown on hover) */
+.study-wrap {
+	position: relative;
+	display: inline-block;
+	vertical-align: middle;
+}
+
+.study-picker {
+	display: none;
+	position: absolute;
+	top: 50%;
+	left: calc(100% + 2px);
+	transform: translateY(-50%);
+	background: var(--bg-primary, #fff);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+	padding: 4px 6px;
+	gap: 2px;
+	white-space: nowrap;
+	z-index: 200;
+	align-items: center;
+}
+
+.study-wrap:hover .study-picker {
+	display: flex;
+}
+
+.sp-opt {
+	background: none;
+	border: none;
+	cursor: pointer;
+	font-size: 1.1rem;
+	line-height: 1;
+	padding: 3px 4px;
+	border-radius: 5px;
+	transition: background 0.1s, transform 0.1s;
+	color: #94a3b8;
+}
+
+.sp-opt:nth-child(1) { color: #94a3b8; }
+.sp-opt:nth-child(2) { color: #ef4444; }
+.sp-opt:nth-child(3) { color: #f97316; }
+.sp-opt:nth-child(4) { color: #eab308; }
+.sp-opt:nth-child(5) { color: #16a34a; }
+
+.sp-opt:hover {
+	background: var(--bg-secondary);
+	transform: scale(1.2);
+}
+
+.sp-opt--active {
+	background: var(--bg-secondary);
+	outline: 2px solid currentColor;
+	outline-offset: -2px;
 }
 
 /* Per-course progress bar on courses list */

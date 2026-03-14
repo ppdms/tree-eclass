@@ -548,19 +548,9 @@ const STUDY_LEVEL_TITLES = [
 	'Ignored (excluded from progress) — Shift+click to unignore',
 ];
 
-async function cycleStudyLevel(btn, event) {
+async function applyStudyLevel(btn, nextLevel) {
 	const courseId = btn.dataset.courseId;
 	const localPath = btn.dataset.localPath;
-	const currentLevel = parseInt(btn.dataset.level, 10);
-	// Shift+click: toggle ignored (level 5) ↔ level 0
-	let nextLevel;
-	if (event && event.shiftKey) {
-		nextLevel = currentLevel === 5 ? 0 : 5;
-	} else {
-		// Normal cycle only through 0-4; if currently ignored, shift back to 0
-		nextLevel = currentLevel === 5 ? 1 : (currentLevel + 1) % 5;
-	}
-
 	btn.disabled = true;
 	try {
 		const resp = await fetch(`/api/courses/${courseId}/files/study-level`, {
@@ -574,6 +564,13 @@ async function cycleStudyLevel(btn, event) {
 			btn.style.color = STUDY_LEVEL_COLORS[nextLevel];
 			btn.title = STUDY_LEVEL_TITLES[nextLevel];
 			btn.classList.toggle('study-ignored', nextLevel === 5);
+			// Update picker option highlights
+			const picker = btn.closest('.study-wrap')?.querySelector('.study-picker');
+			if (picker) {
+				picker.querySelectorAll('.sp-opt').forEach(o => {
+					o.classList.toggle('sp-opt--active', parseInt(o.dataset.level) === nextLevel);
+				});
+			}
 			// If mastered (level 4) on the inbox page, fade the whole row out
 			if (nextLevel === 4) {
 				const row = btn.closest('tr');
@@ -591,4 +588,20 @@ async function cycleStudyLevel(btn, event) {
 	} finally {
 		btn.disabled = false;
 	}
+}
+
+async function cycleStudyLevel(btn, event) {
+	const currentLevel = parseInt(btn.dataset.level, 10);
+	let nextLevel;
+	if (event && event.shiftKey) {
+		nextLevel = currentLevel === 5 ? 0 : 5;
+	} else {
+		nextLevel = currentLevel === 5 ? 1 : (currentLevel + 1) % 5;
+	}
+	await applyStudyLevel(btn, nextLevel);
+}
+
+async function setStudyLevel(pickerOpt, level) {
+	const btn = pickerOpt.closest('.study-wrap').querySelector('.study-level-btn');
+	await applyStudyLevel(btn, level);
 }

@@ -3,6 +3,15 @@
 
 {% block title %}{{ course.name }} - tree-eclass{% endblock %}
 
+{% macro study_btn(study_key, course_id, slevel) %}
+<span class="study-wrap">
+	<button class="study-level-btn{% if slevel == 5 %} study-ignored{% endif %}" data-local-path="{{ study_key | e }}" data-course-id="{{ course_id }}" data-level="{{ slevel }}" onclick="cycleStudyLevel(this, event)" title="{% if slevel == 5 %}Ignored — Shift+click to unignore{% else %}Shift+click to ignore{% endif %}">{{ ['○','◔','◑','◕','●','—'][slevel] }}</button>
+	<span class="study-picker">
+		{% for i in range(5) %}<button class="sp-opt{% if slevel == i %} sp-opt--active{% endif %}" data-level="{{ i }}" onclick="setStudyLevel(this, {{ i }})" title="{{ ['Not studied','Glanced','Familiar','Studied','Mastered'][i] }}">{{ ['○','◔','◑','◕','●'][i] }}</button>{% endfor %}
+	</span>
+</span>
+{% endmacro %}
+
 {% macro render_tree_children(children, level, webdav_folder, files_with_versions, folders_with_deleted, course_id, study_levels) %}
 {% for child in children %}
 {% set rel_folder = child.local_path[(webdav_folder|length + 1):] %}
@@ -23,7 +32,7 @@
 		{% set study_key = file.local_path if file.local_path else file.url %}
 		{% set slevel = study_levels.get(study_key, 0) %}
 		<div class="tree-file" style="margin-left: {{ (level + 1) * 20 }}px;">
-			<button class="study-level-btn{% if slevel == 5 %} study-ignored{% endif %}" data-local-path="{{ study_key | e }}" data-course-id="{{ course_id }}" data-level="{{ slevel }}" onclick="cycleStudyLevel(this, event)" title="{% if slevel == 5 %}Ignored — Shift+click to unignore{% else %}Comprehension level {{ slevel }}/4 — click to advance, Shift+click to ignore{% endif %}">{{ ['○','◔','◑','◕','●','—'][slevel] }}</button>
+			{{ study_btn(study_key, course_id, slevel) }}
 			<span class="tree-icon">{% if file.redirect_url %}🔗{% else %}📄{% endif %}</span>
 			{% if file.redirect_url %}
 			<a href="{{ file.redirect_url }}" target="_blank" title="External link (SharePoint / Stream)">{{ file.name }}</a>
@@ -148,7 +157,7 @@
 				{% set study_key = file.local_path if file.local_path else file.url %}
 				{% set slevel = study_levels.get(study_key, 0) %}
 				<div class="tree-file">
-				<button class="study-level-btn{% if slevel == 5 %} study-ignored{% endif %}" data-local-path="{{ study_key | e }}" data-course-id="{{ course.id }}" data-level="{{ slevel }}" onclick="cycleStudyLevel(this, event)" title="{% if slevel == 5 %}Ignored — Shift+click to unignore{% else %}Comprehension level {{ slevel }}/4 — click to advance, Shift+click to ignore{% endif %}">{{ ['○','◔','◑','◕','●','—'][slevel] }}</button>
+				{{ study_btn(study_key, course.id, slevel) }}
 				<span class="tree-icon">{% if file.redirect_url %}🔗{% else %}📄{% endif %}</span>
 				{% if file.redirect_url %}
 				<a href="{{ file.redirect_url }}" target="_blank" title="External link (SharePoint / Stream)">{{ file.name }}</a>

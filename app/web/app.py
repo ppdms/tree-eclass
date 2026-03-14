@@ -195,6 +195,22 @@ async def index(request: Request):
 
 # ===== COURSE ROUTES =====
 
+@app.post("/api/courses/reorder")
+async def reorder_courses(request: Request):
+    """Save a new sort order for courses. Body: [id, id, ...] in desired order."""
+    try:
+        body = await request.json()
+        if not isinstance(body, list):
+            raise HTTPException(status_code=422, detail="Expected a list of course IDs")
+        db_manager.reorder_courses([int(i) for i in body])
+        return JSONResponse(content={"status": "ok"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error reordering courses: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/courses", response_class=HTMLResponse)
 async def list_courses(request: Request):
     """List all courses."""
