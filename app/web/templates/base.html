@@ -21,6 +21,10 @@
 		<div class="container">
 			<a href="/" class="logo-link">
 				<h1 class="logo">🌲 tree-eclass</h1>
+				{% set sp = semester_progress() %}
+				{% if sp is not none %}
+				<span class="semester-badge" title="Semester progress">{{ sp }}%</span>
+				{% endif %}
 			</a>
 			<ul class="nav-links">
 				<li><a href="/">Timeline</a></li>

@@ -178,6 +178,24 @@
 			</div>
 
 			<hr style="border: none; border-top: 1px solid var(--border); margin: var(--spacing-lg) 0;">
+			<h3 style="font-size: 0.9375rem; font-weight: 600; margin-bottom: var(--spacing-md);">📅 Semester Dates</h3>
+			<p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: var(--spacing-md);">When both dates are set and today falls within the range, a progress indicator is shown in the navbar.</p>
+
+			<div class="form-group">
+				<label for="semester_start">Semester Start</label>
+				<input type="date" id="semester_start" name="semester_start"
+					value="{{ preferences.semester_start or '' }}">
+				<small>First day of the semester</small>
+			</div>
+
+			<div class="form-group">
+				<label for="semester_end">Semester End</label>
+				<input type="date" id="semester_end" name="semester_end"
+					value="{{ preferences.semester_end or '' }}">
+				<small>Last day of the semester (exam period end, etc.)</small>
+			</div>
+
+			<hr style="border: none; border-top: 1px solid var(--border); margin: var(--spacing-lg) 0;">
 			<h3 style="font-size: 0.9375rem; font-weight: 600; margin-bottom: var(--spacing-md);">🏛️ Global Announcement Feeds</h3>
 			<p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: var(--spacing-md);">
 				Checked every time a regular check runs; new items appear on the <a href="/announcements">Announcements</a> page.

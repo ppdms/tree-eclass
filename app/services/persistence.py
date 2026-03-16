@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 17  # Current schema version
+SCHEMA_VERSION = 18  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -322,6 +322,10 @@ class DatabaseManager:
         if current_version < 17:
             self._migration_16_to_17()
             self._set_schema_version(17)
+
+        if current_version < 18:
+            self._migration_17_to_18()
+            self._set_schema_version(18)
 
         logging.info("All migrations completed successfully")
 
@@ -699,6 +703,18 @@ class DatabaseManager:
             logging.info("Added sort_order column to courses")
         self.conn.commit()
 
+    def _migration_17_to_18(self):
+        """Migration: Add semester_start and semester_end columns to preferences."""
+        logging.info("Running migration 17 -> 18: Adding semester_start/semester_end to preferences")
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(preferences)")
+        existing = {row[1] for row in cursor.fetchall()}
+        for col in ('semester_start', 'semester_end'):
+            if col not in existing:
+                cursor.execute(f"ALTER TABLE preferences ADD COLUMN {col} TEXT DEFAULT NULL")
+                logging.info(f"Added {col} column to preferences")
+        self.conn.commit()
+
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
         try:
@@ -783,7 +799,7 @@ class DatabaseManager:
             raise
 
     # --- Preferences methods ---
-    def save_preferences(self, check_interval_minutes: int = 60, 
+    def save_preferences(self, check_interval_minutes: int = 60,
                         max_concurrent_downloads: int = 3,
                         request_timeout_seconds: int = 30,
                         retry_attempts: int = 3,
@@ -791,18 +807,22 @@ class DatabaseManager:
                         notification_on_error: bool = True,
                         global_feed_dept_enabled: bool = True,
                         global_feed_undergrad_enabled: bool = False,
-                        global_feed_rector_enabled: bool = False):
+                        global_feed_rector_enabled: bool = False,
+                        semester_start: Optional[str] = None,
+                        semester_end: Optional[str] = None):
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO preferences 
                 (id, check_interval_minutes, max_concurrent_downloads, request_timeout_seconds, 
                  retry_attempts, notification_enabled, notification_on_error,
-                 global_feed_dept_enabled, global_feed_undergrad_enabled, global_feed_rector_enabled) 
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (check_interval_minutes, max_concurrent_downloads, request_timeout_seconds, 
+                 global_feed_dept_enabled, global_feed_undergrad_enabled, global_feed_rector_enabled,
+                 semester_start, semester_end) 
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (check_interval_minutes, max_concurrent_downloads, request_timeout_seconds,
                   retry_attempts, int(notification_enabled), int(notification_on_error),
-                  int(global_feed_dept_enabled), int(global_feed_undergrad_enabled), int(global_feed_rector_enabled)))
+                  int(global_feed_dept_enabled), int(global_feed_undergrad_enabled), int(global_feed_rector_enabled),
+                  semester_start or None, semester_end or None))
             self.conn.commit()
             logging.debug("Preferences saved successfully")
         except Exception as e:
@@ -815,7 +835,8 @@ class DatabaseManager:
             cursor.execute("""
                 SELECT check_interval_minutes, max_concurrent_downloads, request_timeout_seconds,
                        retry_attempts, notification_enabled, notification_on_error,
-                       global_feed_dept_enabled, global_feed_undergrad_enabled, global_feed_rector_enabled
+                       global_feed_dept_enabled, global_feed_undergrad_enabled, global_feed_rector_enabled,
+                       semester_start, semester_end
                 FROM preferences WHERE id = 1
             """)
             row = cursor.fetchone()
@@ -830,6 +851,8 @@ class DatabaseManager:
                     'global_feed_dept_enabled': bool(row[6]),
                     'global_feed_undergrad_enabled': bool(row[7]),
                     'global_feed_rector_enabled': bool(row[8]),
+                    'semester_start': row[9],
+                    'semester_end': row[10],
                 }
             # Return defaults if no preferences set
             return {
@@ -842,6 +865,8 @@ class DatabaseManager:
                 'global_feed_dept_enabled': True,
                 'global_feed_undergrad_enabled': False,
                 'global_feed_rector_enabled': False,
+                'semester_start': None,
+                'semester_end': None,
             }
         except Exception as e:
             logging.error(f"Failed to get preferences: {e}", exc_info=True)

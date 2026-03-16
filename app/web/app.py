@@ -128,7 +128,30 @@ def _get_nav_courses():
     except Exception:
         return []
 
+def _get_semester_progress():
+    """Return semester progress as an integer percentage (0-100), or None."""
+    try:
+        prefs = db_manager.get_preferences()
+        start_str = prefs.get('semester_start')
+        end_str = prefs.get('semester_end')
+        if not start_str or not end_str:
+            return None
+        from datetime import date
+        start = date.fromisoformat(start_str)
+        end = date.fromisoformat(end_str)
+        today = date.today()
+        if today < start or today > end:
+            return None
+        total = (end - start).days
+        if total <= 0:
+            return None
+        elapsed = (today - start).days
+        return min(100, max(0, round(elapsed * 100 / total)))
+    except Exception:
+        return None
+
 templates.env.globals["nav_courses"] = _get_nav_courses
+templates.env.globals["semester_progress"] = _get_semester_progress
 
 # Create static directory if it doesn't exist
 static_dir = BASE_DIR / "static"
@@ -591,6 +614,8 @@ async def update_preferences(
     global_feed_dept_enabled: Optional[bool] = Form(False),
     global_feed_undergrad_enabled: Optional[bool] = Form(False),
     global_feed_rector_enabled: Optional[bool] = Form(False),
+    semester_start: Optional[str] = Form(None),
+    semester_end: Optional[str] = Form(None),
 ):
     """Update application preferences."""
     try:
@@ -604,6 +629,8 @@ async def update_preferences(
             global_feed_dept_enabled=global_feed_dept_enabled,
             global_feed_undergrad_enabled=global_feed_undergrad_enabled,
             global_feed_rector_enabled=global_feed_rector_enabled,
+            semester_start=semester_start or None,
+            semester_end=semester_end or None,
         )
         logging.info("Updated preferences")
         return RedirectResponse(url="/settings", status_code=303)

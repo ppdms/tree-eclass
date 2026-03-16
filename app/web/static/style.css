@@ -61,6 +61,9 @@ body {
 .logo-link {
 	text-decoration: none;
 	transition: opacity 0.15s;
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
 }
 
 .logo-link:hover {
@@ -72,6 +75,19 @@ body {
 	font-weight: 600;
 	color: var(--primary-color);
 	margin: 0;
+	line-height: 1;
+}
+
+.semester-badge {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--primary-color);
+	background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+	border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+	border-radius: 999px;
+	padding: 0.15em 0.6em;
+	white-space: nowrap;
+	align-self: center;
 }
 
 .nav-links {
