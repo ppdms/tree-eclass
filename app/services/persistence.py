@@ -1283,13 +1283,13 @@ class DatabaseManager:
                     )
 
             timeline: List[Dict] = []
-            for cr_id, course_id, course_name, change_no, timestamp, message in change_rows:
+            for cr_id, cr_course_id, cr_course_name, change_no, timestamp, message in change_rows:
                 timeline.append({
                     "type": "change",
                     "sort_key": timestamp or "",
                     "timestamp": timestamp,
-                    "course_id": course_id,
-                    "course_name": course_name,
+                    "course_id": cr_course_id,
+                    "course_name": cr_course_name,
                     "change_no": change_no,
                     "message": message,
                     "id": cr_id,
@@ -1314,13 +1314,13 @@ class DatabaseManager:
                     ORDER BY a.pub_date DESC
                     LIMIT ?
                 """, (limit,))
-            for ann_id, course_id, course_name, title, link, description, pub_date in cursor.fetchall():
+            for ann_id, ann_course_id, ann_course_name, title, link, description, pub_date in cursor.fetchall():
                 timeline.append({
                     "type": "announcement",
                     "sort_key": pub_date or "",
                     "timestamp": pub_date,
-                    "course_id": course_id,
-                    "course_name": course_name,
+                    "course_id": ann_course_id,
+                    "course_name": ann_course_name,
                     "title": title,
                     "link": link,
                     "description": description,
