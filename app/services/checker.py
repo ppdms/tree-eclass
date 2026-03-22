@@ -13,6 +13,7 @@ import requests
 
 from app.services import differ, tree_builder
 from app.services.announcements_scraper import AnnouncementsScraper, GLOBAL_FEEDS
+from app.services.exercises_scraper import ExercisesScraper
 from app.services.persistence import DatabaseManager
 from app.services.scraper import Scraper, COURSE_URL_TEMPLATE
 from app.services.webdav_uploader import WebDAVUploader
@@ -50,8 +51,33 @@ def _print_children_recursive(parent_node, indent: str):
         print(f'{indent}{connector}\033]8;;{file.url}\007{file.name}\033]8;;\007')
 
 
+def _flush_lines_to_messages(messages: list, header: str, lines: list):
+    """Append lines to messages list, splitting at Discord's 2000-char limit."""
+    current_is_first = True
+    batch = []
+    batch_len = 0
+    for line in lines:
+        prefix = header if current_is_first else ""
+        overhead = len(prefix) + 10
+        line_addition = len(line) + (2 if batch else 0)
+        if overhead + len(line) + (2 if batch else 0) > 2000:
+            line = line[:2000 - overhead - 5] + "…"
+            line_addition = len(line) + (2 if batch else 0)
+        if batch and overhead + batch_len + line_addition > 2000:
+            messages.append(prefix + "\n\n".join(batch))
+            current_is_first = False
+            batch = [line]
+            batch_len = len(line)
+        else:
+            batch.append(line)
+            batch_len += line_addition
+    if batch:
+        prefix = header if current_is_first else ""
+        messages.append(prefix + "\n\n".join(batch))
+
+
 # Webhook notification function
-def send_webhook(changes_by_course: dict, announcements_by_course: dict, db_manager: DatabaseManager):
+def send_webhook(changes_by_course: dict, announcements_by_course: dict, db_manager: DatabaseManager, exercises_by_course: dict = None):
     """Sends a Discord webhook notification with the detected changes and announcements."""
     webhook_config = db_manager.get_webhook_config()
 
@@ -215,6 +241,52 @@ def send_webhook(changes_by_course: dict, announcements_by_course: dict, db_mana
             body = prefix + "\n\n".join(batch)
             messages.append(body)
 
+    # Handle exercise events
+    for course_name, events in (exercises_by_course or {}).items():
+        new_exs = events.get('new', [])
+        graded_exs = events.get('graded', [])
+        file_exs = events.get('file_updated', [])
+
+        # New exercises
+        if new_exs:
+            header = f"**📝 New Exercises \u2014 {course_name}**\n**Count:** {len(new_exs)} new exercise(s)\n"
+            lines = []
+            for ex in new_exs:
+                line = f"\u2022 **{ex['title']}**"
+                if ex.get('deadline'):
+                    line += f"\n  📅 {ex['deadline']}"
+                if ex.get('assignment_file_name'):
+                    line += f"\n  📎 {ex['assignment_file_name']}"
+                line += f"\n  {ex['link']}"
+                lines.append(line)
+            _flush_lines_to_messages(messages, header, lines)
+
+        # Graded exercises
+        if graded_exs:
+            header = f"**🎓 Grades Received \u2014 {course_name}**\n**Count:** {len(graded_exs)} exercise(s) graded\n"
+            lines = []
+            for ex in graded_exs:
+                max_g = f"/{ex['max_grade']}" if ex.get('max_grade') else ""
+                line = f"\u2022 **{ex['title']}**: {ex['grade']}{max_g}"
+                if ex.get('grade_comments'):
+                    line += f"\n  💬 {ex['grade_comments']}"
+                line += f"\n  {ex['link']}"
+                lines.append(line)
+            _flush_lines_to_messages(messages, header, lines)
+
+        # Exercise files updated
+        if file_exs:
+            header = f"**📎 Exercise File Updated \u2014 {course_name}**\n**Count:** {len(file_exs)} exercise(s)\n"
+            lines = []
+            for ex in file_exs:
+                line = f"\u2022 **{ex['title']}**"
+                if ex.get('assignment_file_name'):
+                    line += f"\n  {ex['assignment_file_name']}"
+                if ex.get('assignment_file_url'):
+                    line += f"\n  {ex['assignment_file_url']}"
+                lines.append(line)
+            _flush_lines_to_messages(messages, header, lines)
+
     if not messages:
         logging.info("No changes or announcements to send via webhook")
         return
@@ -251,12 +323,17 @@ def _flatten_files(node) -> dict:
     return result
 
 
-def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: Scraper) -> tuple[list, list, bool]:
+def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: Scraper) -> tuple[list, list, dict, bool]:
     """
     Process a single course: check for changes, update tree, and log changes.
-    
+
     Returns:
-        tuple: (list of file changes, list of new announcements, success flag)
+        tuple: (
+            list of file changes,
+            list of new announcements,
+            dict with keys 'new', 'graded', 'file_updated' (lists of exercise dicts),
+            success flag
+        )
     """
     course_id = course['id']
     course_name = course['name']
@@ -279,7 +356,7 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
             new_root = tree_builder.build_tree(scraper_instance, url, webdav_folder, course_name, course_id, old_root)
         except Exception as e:
             logging.error(f"Failed to build tree for course {course_name}: {e}", exc_info=True)
-            return [], [], False
+            return [], [], {}, False
         
         # Compare trees
         changes = []
@@ -358,25 +435,65 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
                 logging.info(f"No announcements found for course {course_name}")
         except Exception as e:
             logging.error(f"Failed to fetch announcements for course {course_name}: {e}", exc_info=True)
-        
+
+        # Fetch exercises and detect new/graded/updated
+        new_exercises = []
+        graded_exercises = []
+        file_updated_exercises = []
+        try:
+            stored = {ex['exercise_id']: ex for ex in db_manager.get_exercises(course_id=course_id)}
+            exercises_scraper = ExercisesScraper(scraper_instance.session)
+            exercises = exercises_scraper.fetch_exercises(course_id)
+            if exercises:
+                for ex in exercises:
+                    eid = ex['exercise_id']
+                    if eid not in stored:
+                        new_exercises.append(ex)
+                        print(f"📝 New Exercise: {ex['title']} (Course: {course_name})")
+                    else:
+                        prev = stored[eid]
+                        # Grade assigned or changed
+                        if ex['grade'] and ex['grade'] != prev.get('grade', ''):
+                            graded_exercises.append({**ex, 'old_grade': prev.get('grade', '')})
+                            print(f"🎓 Grade Update: {ex['title']} → {ex['grade']} (Course: {course_name})")
+                        # Assignment file added or renamed
+                        if ex['assignment_file_name'] and ex['assignment_file_name'] != prev.get('assignment_file_name', ''):
+                            file_updated_exercises.append(ex)
+                            print(f"📎 Exercise File Updated: {ex['title']} (Course: {course_name})")
+                db_manager.save_exercises(course_id, exercises)
+                logging.info(
+                    f"Exercises: {len(new_exercises)} new, {len(graded_exercises)} graded, "
+                    f"{len(file_updated_exercises)} file-updated for course {course_name}"
+                )
+            else:
+                logging.info(f"No exercises found for course {course_name}")
+        except Exception as e:
+            logging.error(f"Failed to fetch exercises for course {course_name}: {e}", exc_info=True)
+
         # Print and save the new tree
         try:
             print_tree(new_root, course_name)
         except Exception as e:
             logging.error(f"Failed to print tree for course {course_name}: {e}", exc_info=True)
         
+        exercise_events = {
+            'new': new_exercises,
+            'graded': graded_exercises,
+            'file_updated': file_updated_exercises,
+        }
+
         try:
             db_manager.save_tree(course_id, new_root)
             logging.info(f"Successfully saved tree for course {course_name}")
         except Exception as e:
             logging.error(f"Failed to save tree for course {course_name}: {e}", exc_info=True)
-            return changes, new_announcements, False
-        
-        return changes, new_announcements, True
-        
+            return changes, new_announcements, exercise_events, False
+
+        return changes, new_announcements, exercise_events, True
+
     except Exception as e:
         logging.error(f"Failed to process course {course_name} (ID: {course_id}): {e}", exc_info=True)
-        return [], [], False
+        return [], [], {}, False
 
 
 def run_checker(db_manager: DatabaseManager):
@@ -410,21 +527,31 @@ def run_checker(db_manager: DatabaseManager):
         scraper_instance = Scraper(db_manager, webdav_uploader)
         all_changes = {}
         all_announcements = {}
+        all_exercise_events = {}  # course_name → {'new': [...], 'graded': [...], 'file_updated': [...]}
 
         for course in courses:
             print("")
             db_manager.set_check_status(True, course['id'])
             db_manager.log_check_event("course_check_start", f"Checking course: {course['name']}", course_id=course['id'], status="info")
-            changes, new_announcements, success = process_course(db_manager, course, scraper_instance)
+            changes, new_announcements, exercise_events, success = process_course(db_manager, course, scraper_instance)
             if success:
                 if changes:
                     all_changes[course['name']] = changes
                 if new_announcements:
                     all_announcements[course['name']] = new_announcements
-                
-                total_updates = len(changes) + len(new_announcements)
+                n_ex = sum(len(v) for v in exercise_events.values())
+                if n_ex:
+                    all_exercise_events[course['name']] = exercise_events
+
+                total_updates = len(changes) + len(new_announcements) + n_ex
                 if total_updates > 0:
-                    db_manager.log_check_event("course_check_complete", f"Found {len(changes)} file change(s) and {len(new_announcements)} new announcement(s)", course_id=course['id'], status="success")
+                    n_new = len(exercise_events.get('new', []))
+                    n_graded = len(exercise_events.get('graded', []))
+                    n_file = len(exercise_events.get('file_updated', []))
+                    db_manager.log_check_event("course_check_complete",
+                        f"Found {len(changes)} file change(s), {len(new_announcements)} new announcement(s), "
+                        f"{n_new} new exercise(s), {n_graded} graded, {n_file} file-updated",
+                        course_id=course['id'], status="success")
                 else:
                     db_manager.log_check_event("course_check_complete", "No changes detected", course_id=course['id'], status="info")
             else:
@@ -460,13 +587,16 @@ def run_checker(db_manager: DatabaseManager):
             except Exception as e:
                 logging.error(f"Failed to process global feed '{feed_key}': {e}", exc_info=True)
 
-        if all_changes or all_announcements:
+        if all_changes or all_announcements or all_exercise_events:
             try:
-                changes_count = len(all_changes)
-                announcements_count = len(all_announcements)
-                print(f"\nAttempting to send webhook with updates from {max(changes_count, announcements_count)} course(s).")
-                send_webhook(all_changes, all_announcements, db_manager)
-                db_manager.log_check_event("webhook_sent", f"Webhook sent for {changes_count} course(s) with file changes and {announcements_count} course(s) with new announcements", status="success")
+                n_courses = max(len(all_changes), len(all_announcements), len(all_exercise_events))
+                print(f"\nAttempting to send webhook with updates from {n_courses} course(s).")
+                send_webhook(all_changes, all_announcements, db_manager, all_exercise_events)
+                db_manager.log_check_event("webhook_sent",
+                    f"Webhook sent for {len(all_changes)} course(s) with file changes, "
+                    f"{len(all_announcements)} course(s) with new announcements, "
+                    f"{len(all_exercise_events)} course(s) with exercise events",
+                    status="success")
             except Exception as e:
                 logging.error(f"Failed to send webhook notification: {e}", exc_info=True)
                 db_manager.log_check_event("webhook_failed", f"Failed to send webhook: {str(e)}", status="error")
@@ -523,8 +653,8 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
         scraper_instance = Scraper(db_manager, webdav_uploader)
         
         # Process the course using shared logic
-        changes, new_announcements, success = process_course(db_manager, course, scraper_instance)
-        
+        changes, new_announcements, exercise_events, success = process_course(db_manager, course, scraper_instance)
+
         if not success:
             db_manager.log_check_event("course_check_error", f"Failed to process course: {course_name}", course_id=course_id, status="error")
             db_manager.set_check_status(False)
@@ -532,31 +662,43 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
                 'success': False,
                 'error': 'Failed to process course'
             }
-        
-        # Send webhook if changes or announcements detected
-        if changes or new_announcements:
+
+        n_ex = sum(len(v) for v in exercise_events.values())
+        # Send webhook if there are any updates
+        if changes or new_announcements or n_ex:
             try:
                 all_changes = {course_name: changes} if changes else {}
                 all_announcements = {course_name: new_announcements} if new_announcements else {}
-                send_webhook(all_changes, all_announcements, db_manager)
+                all_ex_events = {course_name: exercise_events} if n_ex else {}
+                send_webhook(all_changes, all_announcements, db_manager, all_ex_events)
                 db_manager.log_check_event("webhook_sent", f"Webhook sent for course: {course_name}", course_id=course_id, status="success")
             except Exception as e:
                 logging.error(f"Failed to send webhook notification: {e}", exc_info=True)
                 db_manager.log_check_event("webhook_failed", f"Failed to send webhook: {str(e)}", course_id=course_id, status="error")
-            
-            db_manager.log_check_event("course_check_complete", f"Found {len(changes)} file change(s) and {len(new_announcements)} new announcement(s)", course_id=course_id, status="success")
+
+            n_new = len(exercise_events.get('new', []))
+            n_graded = len(exercise_events.get('graded', []))
+            n_file = len(exercise_events.get('file_updated', []))
+            db_manager.log_check_event("course_check_complete",
+                f"Found {len(changes)} file change(s), {len(new_announcements)} new announcement(s), "
+                f"{n_new} new exercise(s), {n_graded} graded, {n_file} file-updated",
+                course_id=course_id, status="success")
         else:
             db_manager.log_check_event("course_check_complete", "No changes detected", course_id=course_id, status="info")
-        
+
         db_manager.set_check_status(False)
-        
-        total_updates = len(changes) + len(new_announcements)
+
+        total_updates = len(changes) + len(new_announcements) + n_ex
         return {
             'success': True,
             'changes_detected': total_updates > 0,
             'changes_count': len(changes),
             'announcements_count': len(new_announcements),
-            'message': f'Detected {len(changes)} file change(s) and {len(new_announcements)} new announcement(s)' if total_updates > 0 else 'No changes detected'
+            'exercises_count': n_ex,
+            'message': (
+                f'Detected {len(changes)} file change(s), {len(new_announcements)} new announcement(s) and {n_ex} exercise event(s)'
+                if total_updates > 0 else 'No changes detected'
+            )
         }
         
     except Exception as e:

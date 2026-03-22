@@ -512,6 +512,109 @@ async def api_announcements(course_id: Optional[int] = None, limit: int = 50):
         )
 
 
+# ===== EXERCISES ROUTES =====
+
+_GREEK_MONTHS = {
+    'Ιανουαρίου': 1, 'Φεβρουαρίου': 2, 'Μαρτίου': 3, 'Απριλίου': 4,
+    'Μαΐου': 5, 'Ιουνίου': 6, 'Ιουλίου': 7, 'Αυγούστου': 8,
+    'Σεπτεμβρίου': 9, 'Οκτωβρίου': 10, 'Νοεμβρίου': 11, 'Δεκεμβρίου': 12,
+}
+
+def _parse_greek_deadline(deadline_str: str):
+    """Parse a Greek deadline string to a timezone-aware datetime, or None."""
+    if not deadline_str:
+        return None
+    try:
+        import re as _re
+        # e.g. "Τετάρτη, 25 Μαρτίου 2026 - 11:55 μ.μ."
+        m = _re.search(r'(\d+)\s+(\S+)\s+(\d{4})\s*-\s*(\d+):(\d+)\s*(μ\.μ\.|π\.μ\.)', deadline_str)
+        if not m:
+            return None
+        day, month_gr, year, hour, minute, period = m.groups()
+        month = _GREEK_MONTHS.get(month_gr)
+        if not month:
+            return None
+        hour, minute = int(hour), int(minute)
+        if period == 'μ.μ.' and hour != 12:
+            hour += 12
+        elif period == 'π.μ.' and hour == 12:
+            hour = 0
+        from datetime import datetime as _dt
+        return _dt(int(year), month, int(day), hour, minute,
+                   tzinfo=ZoneInfo('Europe/Athens'))
+    except Exception:
+        return None
+
+def _deadline_urgency(deadline_dt, submitted: bool):
+    """Return (urgency_class, time_label) for a deadline datetime."""
+    from datetime import datetime as _dt, timedelta as _td
+    if submitted:
+        return 'ex-submitted', None
+    if deadline_dt is None:
+        return 'ex-unknown', None
+    now = _dt.now(tz=ZoneInfo('Europe/Athens'))
+    delta = deadline_dt - now
+    total_seconds = delta.total_seconds()
+    if total_seconds < 0:
+        return 'ex-overdue', 'Overdue'
+    days = int(total_seconds // 86400)
+    hours = int((total_seconds % 86400) // 3600)
+    minutes = int((total_seconds % 3600) // 60)
+    if total_seconds < 86400:           # < 1 day
+        urgency = 'ex-critical'
+        label = f'{hours}h {minutes}m left'
+    elif total_seconds < 3 * 86400:     # < 3 days
+        urgency = 'ex-warning'
+        label = f'{days}d {hours}h left'
+    elif total_seconds < 7 * 86400:     # < 7 days
+        urgency = 'ex-moderate'
+        label = f'{days}d {hours}h left'
+    else:
+        urgency = 'ex-ok'
+        label = f'{days}d left'
+    return urgency, label
+
+
+@app.get("/exercises", response_class=HTMLResponse)
+async def list_exercises(request: Request, course_id: Optional[int] = None):
+    """List exercises sorted by deadline urgency."""
+    try:
+        courses = db_manager.get_courses()
+        exercises = db_manager.get_exercises(course_id=course_id, limit=500)
+
+        # Annotate each exercise with parsed deadline and urgency
+        for ex in exercises:
+            dl_dt = _parse_greek_deadline(ex.get('deadline', ''))
+            submitted = ex.get('submission_status') == 'submitted'
+            urgency, time_label = _deadline_urgency(dl_dt, submitted)
+            ex['_deadline_dt'] = dl_dt
+            ex['_urgency'] = urgency
+            ex['_time_label'] = time_label
+
+        # Sort: overdue first, then by closest deadline; submitted last
+        urgency_order = {'ex-overdue': 0, 'ex-critical': 1, 'ex-warning': 2,
+                         'ex-moderate': 3, 'ex-ok': 4, 'ex-submitted': 5, 'ex-unknown': 6}
+
+        def _sort_key(ex):
+            u = urgency_order.get(ex['_urgency'], 9)
+            dt = ex['_deadline_dt']
+            if dt is None:
+                return (u, datetime.max.replace(tzinfo=ZoneInfo('Europe/Athens')))
+            return (u, dt)
+
+        exercises.sort(key=_sort_key)
+
+        return templates.TemplateResponse("exercises.html", {
+            "request": request,
+            "exercises": exercises,
+            "courses": courses,
+            "selected_course_id": course_id,
+        })
+    except Exception as e:
+        logging.error(f"Error listing exercises: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 # ===== LOGS ROUTES =====
 
 @app.get("/logs", response_class=HTMLResponse)

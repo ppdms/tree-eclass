@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}Exercises - tree-eclass{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Exercises page ─────────────────────────────────────────────── */
+.ex-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 1.25rem;
+	gap: 1rem;
+	flex-wrap: wrap;
+}
+
+.ex-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+/* ── Exercise card ──────────────────────────────────────────────── */
+.ex-card {
+	display: grid;
+	grid-template-columns: 6px 1fr;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+	overflow: hidden;
+	background: var(--surface);
+	transition: box-shadow 0.15s;
+}
+.ex-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.10); }
+
+.ex-card__stripe { width: 6px; }
+.ex-card__body   { padding: 0.9rem 1.1rem; display: flex; flex-direction: column; gap: 0.45rem; }
+
+/* stripe + badge colours */
+.ex-critical  .ex-card__stripe { background: #dc2626; }
+.ex-overdue   .ex-card__stripe { background: #7f1d1d; }
+.ex-warning   .ex-card__stripe { background: #ea580c; }
+.ex-moderate  .ex-card__stripe { background: #ca8a04; }
+.ex-ok        .ex-card__stripe { background: #16a34a; }
+.ex-submitted .ex-card__stripe { background: #64748b; }
+.ex-unknown   .ex-card__stripe { background: #94a3b8; }
+
+/* ── Top row: title + badges ────────────────────────────────────── */
+.ex-card__top {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+}
+
+.ex-card__title {
+	font-size: 1rem;
+	font-weight: 700;
+	margin: 0;
+	flex: 1;
+	min-width: 0;
+}
+.ex-card__title a {
+	color: var(--text-primary);
+	text-decoration: none;
+}
+.ex-card__title a:hover { color: var(--primary-color); text-decoration: underline; }
+
+.ex-badges { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; flex-wrap: wrap; }
+
+/* time-left badge */
+.ex-time-badge {
+	font-size: 0.78rem;
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	padding: 0.2em 0.65em;
+	border-radius: 999px;
+	white-space: nowrap;
+}
+.ex-critical  .ex-time-badge { background: #dc2626; color: #fff; }
+.ex-overdue   .ex-time-badge { background: #7f1d1d; color: #fca5a5; }
+.ex-warning   .ex-time-badge { background: #ea580c; color: #fff; }
+.ex-moderate  .ex-time-badge { background: #fef08a; color: #713f12; border: 1px solid #ca8a04; }
+.ex-ok        .ex-time-badge { background: #dcfce7; color: #14532d; border: 1px solid #16a34a; }
+.ex-submitted .ex-time-badge { background: #e2e8f0; color: #475569; }
+.ex-unknown   .ex-time-badge { background: #f1f5f9; color: #64748b; }
+
+/* course badge */
+.ex-course-badge {
+	font-size: 0.72rem;
+	font-weight: 600;
+	padding: 0.2em 0.6em;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+	color: var(--primary-color);
+	border: 1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+	white-space: nowrap;
+}
+
+/* status badge */
+.ex-status-badge {
+	font-size: 0.72rem;
+	font-weight: 600;
+	padding: 0.2em 0.6em;
+	border-radius: 4px;
+	white-space: nowrap;
+}
+.ex-status-badge.submitted { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.ex-status-badge.pending   { background: #fef9c3; color: #713f12; border: 1px solid #fde047; }
+.ex-status-badge.overdue   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+/* grade badge */
+.ex-grade-badge {
+	font-size: 0.8rem;
+	font-weight: 700;
+	padding: 0.2em 0.7em;
+	border-radius: 4px;
+	background: #dbeafe;
+	color: #1e40af;
+	border: 1px solid #93c5fd;
+}
+
+/* ── Meta row ───────────────────────────────────────────────────── */
+.ex-card__meta {
+	display: flex;
+	align-items: center;
+	gap: 1.25rem;
+	flex-wrap: wrap;
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+}
+.ex-card__meta span { display: flex; align-items: center; gap: 0.25rem; }
+
+/* deadline text colour per urgency */
+.ex-critical  .ex-deadline-text,
+.ex-overdue   .ex-deadline-text { color: #dc2626; font-weight: 600; }
+.ex-warning   .ex-deadline-text { color: #ea580c; font-weight: 600; }
+.ex-moderate  .ex-deadline-text { color: #ca8a04; font-weight: 600; }
+
+/* ── Description / file / comments ─────────────────────────────── */
+.ex-card__desc {
+	font-size: 0.82rem;
+	color: var(--text-secondary);
+	border-top: 1px solid var(--border);
+	padding-top: 0.45rem;
+	margin-top: 0.1rem;
+	line-height: 1.5;
+}
+.ex-card__desc p { margin: 0 0 0.3rem; }
+.ex-card__desc p:last-child { margin-bottom: 0; }
+
+.ex-card__file {
+	font-size: 0.8rem;
+}
+.ex-card__file a { color: var(--primary-color); text-decoration: none; }
+.ex-card__file a:hover { text-decoration: underline; }
+
+.ex-card__comments {
+	font-size: 0.8rem;
+	color: var(--text-secondary);
+	font-style: italic;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ex-toolbar">
+	<h2 style="margin:0; font-size:1.15rem;">📝 Exercises</h2>
+	<select id="courseFilter" class="filter-select" onchange="filterByCourse(this.value)">
+		<option value="">All courses</option>
+		{% for course in courses %}
+		<option value="{{ course.id }}" {% if selected_course_id==course.id %}selected{% endif %}>
+			{{ course.name }}
+		</option>
+		{% endfor %}
+	</select>
+</div>
+
+{% if exercises %}
+<div class="ex-list">
+{% for ex in exercises %}
+{% set urgency = ex._urgency %}
+<div class="ex-card {{ urgency }}">
+	<div class="ex-card__stripe"></div>
+	<div class="ex-card__body">
+
+		<!-- Top row: title + all badges -->
+		<div class="ex-card__top">
+			<h3 class="ex-card__title">
+				<a href="{{ ex.link }}" target="_blank" rel="noopener noreferrer">{{ ex.title }}</a>
+			</h3>
+			<div class="ex-badges">
+				{% if ex._time_label %}
+				<span class="ex-time-badge">{{ ex._time_label }}</span>
+				{% endif %}
+
+				{% if ex.submission_status == 'submitted' %}
+				<span class="ex-status-badge submitted">✓ Submitted</span>
+				{% elif urgency == 'ex-overdue' %}
+				<span class="ex-status-badge overdue">✗ Overdue</span>
+				{% else %}
+				<span class="ex-status-badge pending">Pending</span>
+				{% endif %}
+
+				{% if ex.grade %}
+				<span class="ex-grade-badge">🎓 {{ ex.grade }}{% if ex.max_grade %}/{{ ex.max_grade }}{% endif %}</span>
+				{% endif %}
+
+				<span class="ex-course-badge">{{ ex.course_name }}</span>
+			</div>
+		</div>
+
+		<!-- Meta: deadline + start + type -->
+		<div class="ex-card__meta">
+			{% if ex.deadline %}
+			<span class="ex-deadline-text">📅 {{ ex.deadline }}</span>
+			{% endif %}
+			{% if ex.start_date %}
+			<span>🗓 {{ ex.start_date }}</span>
+			{% endif %}
+			{% if ex.work_type %}
+			<span>{{ ex.work_type }}</span>
+			{% endif %}
+			{% if ex.submission_date %}
+			<span>📤 {{ ex.submission_date }}</span>
+			{% endif %}
+		</div>
+
+		<!-- Description -->
+		{% if ex.description %}
+		<div class="ex-card__desc">{{ ex.description|safe }}</div>
+		{% endif %}
+
+		<!-- Assignment file -->
+		{% if ex.assignment_file_name %}
+		<div class="ex-card__file">📎 <a href="{{ ex.assignment_file_url }}" target="_blank" rel="noopener noreferrer">{{ ex.assignment_file_name }}</a></div>
+		{% endif %}
+
+		<!-- Grade comments -->
+		{% if ex.grade_comments %}
+		<div class="ex-card__comments">💬 {{ ex.grade_comments }}</div>
+		{% endif %}
+
+	</div>
+</div>
+{% endfor %}
+</div>
+{% else %}
+<p class="empty-state">No exercises yet. Run a check to fetch course exercises.</p>
+{% endif %}
+
+<script>
+function filterByCourse(courseId) {
+	window.location.href = courseId ? '/exercises?course_id=' + courseId : '/exercises';
+}
+</script>
+{% endblock %}

@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 18  # Current schema version
+SCHEMA_VERSION = 20  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -228,6 +228,29 @@ class DatabaseManager:
                 UNIQUE(feed_key, announcement_id)
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS exercises (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id INTEGER NOT NULL,
+                exercise_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                link TEXT NOT NULL,
+                deadline TEXT,
+                submission_status TEXT,
+                grade TEXT,
+                work_type TEXT,
+                description TEXT,
+                start_date TEXT,
+                max_grade TEXT,
+                assignment_file_name TEXT,
+                assignment_file_url TEXT,
+                grade_comments TEXT,
+                submission_date TEXT,
+                fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(course_id, exercise_id),
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
         self.conn.commit()
 
     def _get_schema_version(self) -> int:
@@ -326,6 +349,14 @@ class DatabaseManager:
         if current_version < 18:
             self._migration_17_to_18()
             self._set_schema_version(18)
+
+        if current_version < 19:
+            self._migration_18_to_19()
+            self._set_schema_version(19)
+
+        if current_version < 20:
+            self._migration_19_to_20()
+            self._set_schema_version(20)
 
         logging.info("All migrations completed successfully")
 
@@ -714,6 +745,54 @@ class DatabaseManager:
                 cursor.execute(f"ALTER TABLE preferences ADD COLUMN {col} TEXT DEFAULT NULL")
                 logging.info(f"Added {col} column to preferences")
         self.conn.commit()
+
+    def _migration_19_to_20(self):
+        """Migration: Add detail-page columns to exercises table."""
+        logging.info("Running migration 19 -> 20: Adding detail columns to exercises")
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(exercises)")
+        existing = {row[1] for row in cursor.fetchall()}
+        new_cols = [
+            ('description', 'TEXT'),
+            ('start_date', 'TEXT'),
+            ('max_grade', 'TEXT'),
+            ('assignment_file_name', 'TEXT'),
+            ('assignment_file_url', 'TEXT'),
+            ('grade_comments', 'TEXT'),
+            ('submission_date', 'TEXT'),
+        ]
+        for col, col_type in new_cols:
+            if col not in existing:
+                cursor.execute(f"ALTER TABLE exercises ADD COLUMN {col} {col_type}")
+                logging.info(f"Added {col} column to exercises table")
+        self.conn.commit()
+
+    def _migration_18_to_19(self):
+        """Migration: Add exercises table."""
+        logging.info("Running migration 18 -> 19: Adding exercises table")
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='exercises'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE exercises (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_id INTEGER NOT NULL,
+                    exercise_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    link TEXT NOT NULL,
+                    deadline TEXT,
+                    submission_status TEXT,
+                    grade TEXT,
+                    work_type TEXT,
+                    fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(course_id, exercise_id),
+                    FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+                )
+            """)
+            self.conn.commit()
+            logging.info("Created exercises table")
+        else:
+            logging.debug("exercises table already exists, skipping")
 
     # --- Credentials methods ---
     def save_credentials(self, username: str, password: str):
@@ -1889,6 +1968,120 @@ class DatabaseManager:
             return None
         except Exception as e:
             logging.error(f"Failed to get latest global announcement date for {feed_key}: {e}", exc_info=True)
+            raise
+
+    # --- Exercises methods ---
+
+    def save_exercises(self, course_id: int, exercises: List[Dict]):
+        """Upsert exercises for a course. Updates all fields on revisit."""
+        try:
+            cursor = self.conn.cursor()
+            for ex in exercises:
+                cursor.execute("""
+                    INSERT INTO exercises
+                        (course_id, exercise_id, title, link, deadline,
+                         submission_status, grade, work_type,
+                         description, start_date, max_grade,
+                         assignment_file_name, assignment_file_url,
+                         grade_comments, submission_date, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(course_id, exercise_id) DO UPDATE SET
+                        title = excluded.title,
+                        link = excluded.link,
+                        deadline = excluded.deadline,
+                        submission_status = excluded.submission_status,
+                        grade = excluded.grade,
+                        work_type = excluded.work_type,
+                        description = excluded.description,
+                        start_date = excluded.start_date,
+                        max_grade = excluded.max_grade,
+                        assignment_file_name = excluded.assignment_file_name,
+                        assignment_file_url = excluded.assignment_file_url,
+                        grade_comments = excluded.grade_comments,
+                        submission_date = excluded.submission_date,
+                        fetched_at = excluded.fetched_at
+                """, (
+                    course_id,
+                    ex['exercise_id'],
+                    ex['title'],
+                    ex['link'],
+                    ex.get('deadline', ''),
+                    ex.get('submission_status', ''),
+                    ex.get('grade', ''),
+                    ex.get('work_type', ''),
+                    ex.get('description', ''),
+                    ex.get('start_date', ''),
+                    ex.get('max_grade', ''),
+                    ex.get('assignment_file_name', ''),
+                    ex.get('assignment_file_url', ''),
+                    ex.get('grade_comments', ''),
+                    ex.get('submission_date', ''),
+                ))
+            self.conn.commit()
+            logging.debug(f"Saved {len(exercises)} exercises for course {course_id}")
+        except Exception as e:
+            logging.error(f"Failed to save exercises for course {course_id}: {e}", exc_info=True)
+            raise
+
+    def get_known_exercise_ids(self, course_id: int) -> set:
+        """Return the set of exercise_ids already stored for a course."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT exercise_id FROM exercises WHERE course_id = ?", (course_id,)
+            )
+            return {row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Failed to get known exercise ids for course {course_id}: {e}", exc_info=True)
+            raise
+
+    def get_exercises(self, course_id: Optional[int] = None, limit: int = 200) -> List[Dict]:
+        """Return exercises, optionally filtered by course, newest fetched first."""
+        try:
+            cursor = self.conn.cursor()
+            sql = """
+                SELECT e.id, e.course_id, c.name AS course_name, e.exercise_id,
+                       e.title, e.link, e.deadline, e.submission_status,
+                       e.grade, e.work_type,
+                       e.description, e.start_date, e.max_grade,
+                       e.assignment_file_name, e.assignment_file_url,
+                       e.grade_comments, e.submission_date, e.fetched_at
+                FROM exercises e
+                JOIN courses c ON e.course_id = c.id
+                {where}
+                ORDER BY e.course_id, e.id DESC
+                LIMIT ?
+            """
+            if course_id:
+                cursor.execute(sql.format(where="WHERE e.course_id = ?"), (course_id, limit))
+            else:
+                cursor.execute(sql.format(where=""), (limit,))
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "course_id": row[1],
+                    "course_name": row[2],
+                    "exercise_id": row[3],
+                    "title": row[4],
+                    "link": row[5],
+                    "deadline": row[6],
+                    "submission_status": row[7],
+                    "grade": row[8],
+                    "work_type": row[9],
+                    "description": row[10] or '',
+                    "start_date": row[11] or '',
+                    "max_grade": row[12] or '',
+                    "assignment_file_name": row[13] or '',
+                    "assignment_file_url": row[14] or '',
+                    "grade_comments": row[15] or '',
+                    "submission_date": row[16] or '',
+                    "fetched_at": row[17],
+                }
+                for row in rows
+            ]
+        except Exception as e:
+            logging.error(f"Failed to get exercises: {e}", exc_info=True)
             raise
 
     def close(self):
