@@ -1,28 +1,58 @@
 {% extends "base.html" %}
 
-{% block title %}Settings - tree-eclass{% endblock %}
+{% block title %}Settings - tree-eClass{% endblock %}
 
 {% block content %}
-<div class="page-header">
-	<h1>Settings</h1>
+
+<div class="settings-page">
+
+<!-- Add Course Section -->
+<div class="section">
+	<div class="settings-section-title">
+		<h2>Add Course</h2>
+		<div class="settings-section-actions">
+			<button type="submit" form="addCourseForm" class="btn btn-secondary settings-dirty-submit" data-dirty-button-for="addCourseForm">Submit</button>
+		</div>
+	</div>
+	<div class="form-card">
+		<form method="POST" action="/courses/add" id="addCourseForm" data-dirty-watch>
+			<div class="settings-matrix settings-matrix--2col">
+			<div class="form-group">
+				<label for="course_id">Course ID</label>
+				<input type="number" id="course_id" name="course_id" required placeholder="The numeric ID from the eClass URL (INF...), eg. 161">
+			</div>
+			<div class="form-group">
+				<label for="name">Course Name</label>
+				<input type="text" id="name" name="name" required placeholder="e.g., Algorithms">
+			</div>
+			</div>
+			<div class="form-group">
+				<label for="webdav_folder">WebDAV Folder</label>
+				<input type="text" id="webdav_folder" name="webdav_folder" required
+					placeholder="Destination path on WebDAV server. Examples: /Algorithms, /courses/Algorithms">
+			</div>
+		</form>
+	</div>
 </div>
 
-<!-- E-Class Credentials Section -->
+<!-- eClass Credentials Section -->
 <div class="section">
-	<h2>E-Class Credentials</h2>
-	<div class="info-card">
-		<p>Your e-class credentials are stored in plaintext in the local SQLite database. They are used to authenticate
-			when
-			checking for course updates.</p>
+	<div class="settings-section-title">
+		<h2>eClass Credentials</h2>
 		{% if credentials %}
-		<p class="status-success">✓ Credentials are currently configured</p>
+		<span class="settings-section-status settings-section-status--ok"><i class="bi bi-check-circle-fill"></i> Configured</span>
 		{% else %}
-		<p class="status-warning">⚠ No credentials configured</p>
+		<span class="settings-section-status settings-section-status--warn"><i class="bi bi-exclamation-triangle-fill"></i> Not Configured</span>
 		{% endif %}
+		<div class="settings-section-actions">
+			<button type="submit" form="credentialsForm" class="btn btn-secondary settings-dirty-submit" data-dirty-button-for="credentialsForm">Update</button>
+		</div>
 	</div>
+	<p class="settings-section-description">Your eClass credentials are stored in plaintext in the local SQLite database. They are used to authenticate when checking for course updates.</p>
 
 	<div class="form-card">
-		<form method="POST" action="/settings/credentials">
+		<form method="POST" action="/settings/credentials" id="credentialsForm" data-dirty-watch>
+			<div class="settings-matrix settings-matrix--2col">
 			<div class="form-group">
 				<label for="username">Username</label>
 				<input type="text" id="username" name="username"
@@ -30,39 +60,36 @@
 			</div>
 			<div class="form-group">
 				<label for="password">Password</label>
-				<input type="password" id="password" name="password" required placeholder="Enter your password">
+				<input type="password" id="password" name="password" placeholder="Enter your password">
 			</div>
-			<button type="submit" class="btn btn-primary">{% if credentials %}Update{% else %}Save{% endif %}
-				Credentials</button>
+			</div>
 		</form>
 	</div>
 </div>
 
 <!-- Webhook Configuration Section -->
 <div class="section">
-	<h2>Webhook Notifications</h2>
-	<div class="info-card">
-		<p>Configure a Discord webhook URL to receive notifications when file changes are detected in your courses.</p>
+	<div class="settings-section-title">
+		<h2>Webhook Notifications</h2>
 		{% if webhook_config %}
-		<p class="status-success">✓ Webhook is configured</p>
+		<span class="settings-section-status settings-section-status--ok"><i class="bi bi-check-circle-fill"></i> Configured</span>
 		{% else %}
-		<p class="status-warning">⚠ Webhook not configured - you won't receive notifications</p>
+		<span class="settings-section-status settings-section-status--warn"><i class="bi bi-exclamation-triangle-fill"></i> Not Configured</span>
 		{% endif %}
+		<div class="settings-section-actions">
+			<button type="submit" form="webhookForm" class="btn btn-secondary settings-dirty-submit" data-dirty-button-for="webhookForm">Update</button>
+		</div>
 	</div>
+	<p class="settings-section-description">Configure a Discord webhook URL to receive notifications when file changes are detected in your courses.</p>
 
 	<div class="form-card">
-		<form method="POST" action="/settings/webhook">
+		<form method="POST" action="/settings/webhook" id="webhookForm" data-dirty-watch>
 			<div class="form-group">
 				<label for="webhook_url">Webhook URL</label>
-				<input type="text" id="webhook_url" name="webhook_url"
-					value="{% if webhook_config %}{{ webhook_config.webhook_url }}{% endif %}" required
+				<input type="password" id="webhook_url" name="webhook_url"
+					autocomplete="new-password"
 					placeholder="https://discord.com/api/webhooks/...">
-				<small>Discord webhook URL for change notifications</small>
 			</div>
-
-			<button type="submit" class="btn btn-primary">
-				{% if webhook_config %}Update{% else %}Save{% endif %} Webhook Configuration
-			</button>
 		</form>
 	</div>
 
@@ -70,41 +97,41 @@
 
 <!-- WebDAV Configuration Section -->
 <div class="section">
-	<h2>WebDAV Storage</h2>
-	<div class="info-card">
-		<p>Configure WebDAV server details to upload files. WebDAV is required for the application to function.</p>
+	<div class="settings-section-title">
+		<h2>WebDAV Storage</h2>
 		{% if webdav_config %}
-		<p class="status-success">✓ WebDAV is configured</p>
+		<span class="settings-section-status settings-section-status--ok"><i class="bi bi-check-circle-fill"></i> Configured</span>
 		{% else %}
-		<p class="status-warning">⚠ WebDAV must be configured to check courses</p>
+		<span class="settings-section-status settings-section-status--warn"><i class="bi bi-exclamation-triangle-fill"></i> Not Configured</span>
 		{% endif %}
+		<div class="settings-section-actions">
+			<button type="submit" form="webdavForm" class="btn btn-secondary settings-dirty-submit" data-dirty-button-for="webdavForm">Update</button>
+		</div>
 	</div>
+	<p class="settings-section-description">Configure WebDAV server details to upload files. WebDAV is required for the application to function.</p>
 
 	<div class="form-card">
-		<form method="POST" action="/settings/webdav">
+		<form method="POST" action="/settings/webdav" id="webdavForm" data-dirty-watch>
 			<div class="form-group">
 				<label for="webdav_hostname">WebDAV Server URL</label>
 				<input type="text" id="webdav_hostname" name="webdav_hostname"
 					value="{% if webdav_config %}{{ webdav_config.hostname }}{% endif %}" required
 					placeholder="https://webdav.example.com">
-				<small>Full URL to your WebDAV server (e.g.,
-					https://nextcloud.example.com/remote.php/dav/files/username/)</small>
 			</div>
 
+			<div class="settings-matrix settings-matrix--2col">
 			<div class="form-group">
 				<label for="webdav_username">Username</label>
 				<input type="text" id="webdav_username" name="webdav_username"
 					value="{% if webdav_config %}{{ webdav_config.username }}{% endif %}" required
 					placeholder="your-username">
-				<small>WebDAV username for authentication</small>
 			</div>
 
 			<div class="form-group">
 				<label for="webdav_password">Password</label>
 				<input type="password" id="webdav_password" name="webdav_password"
-					value="{% if webdav_config %}{{ webdav_config.password }}{% endif %}" required
 					placeholder="Enter your password">
-				<small>WebDAV password or app token</small>
+			</div>
 			</div>
 
 			<div class="form-group">
@@ -116,9 +143,6 @@
 				<small>Only enable this if you're having SSL certificate issues</small>
 			</div>
 
-			<button type="submit" class="btn btn-primary">
-				{% if webdav_config %}Update{% else %}Save{% endif %} WebDAV Configuration
-			</button>
 		</form>
 	</div>
 
@@ -126,13 +150,17 @@
 
 <!-- Application Preferences Section -->
 <div class="section">
-	<h2>Application Preferences</h2>
-	<div class="info-card">
-		<p>Configure scan intervals, timeouts, notification preferences, and global announcement feeds.</p>
+	<div class="settings-section-title">
+		<h2>Application Preferences</h2>
+		<div class="settings-section-actions">
+			<button type="submit" form="preferencesForm" class="btn btn-secondary settings-dirty-submit" data-dirty-button-for="preferencesForm">Update</button>
+		</div>
 	</div>
+	<p class="settings-section-description">Configure scan intervals, timeouts, notification preferences, and global announcement feeds.</p>
 
 	<div class="form-card">
-		<form method="POST" action="/settings/preferences">
+		<form method="POST" action="/settings/preferences" id="preferencesForm" data-dirty-watch>
+			<div class="settings-matrix settings-matrix--2x2">
 			<div class="form-group">
 				<label for="check_interval_minutes">Check Interval (minutes)</label>
 				<input type="number" id="check_interval_minutes" name="check_interval_minutes"
@@ -160,7 +188,9 @@
 					required min="0" max="10">
 				<small>Number of retries on failed requests (0-10)</small>
 			</div>
+			</div>
 
+			<div class="settings-matrix settings-matrix--2col">
 			<div class="form-group">
 				<label>
 					<input type="checkbox" id="notification_enabled" name="notification_enabled" value="true" {% if preferences.notification_enabled %}checked{% endif %}>
@@ -176,52 +206,92 @@
 				</label>
 				<small>Send webhook notifications when errors occur during checks</small>
 			</div>
-
-			<hr style="border: none; border-top: 1px solid var(--border); margin: var(--spacing-lg) 0;">
-			<h3 style="font-size: 0.9375rem; font-weight: 600; margin-bottom: var(--spacing-md);">📅 Semester Dates</h3>
-			<p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: var(--spacing-md);">When both dates are set and today falls within the range, a progress indicator is shown in the navbar.</p>
-
-			<div class="form-group">
-				<label for="semester_start">Semester Start</label>
-				<input type="date" id="semester_start" name="semester_start"
-					value="{{ preferences.semester_start or '' }}">
-				<small>First day of the semester</small>
-			</div>
-
-			<div class="form-group">
-				<label for="semester_end">Semester End</label>
-				<input type="date" id="semester_end" name="semester_end"
-					value="{{ preferences.semester_end or '' }}">
-				<small>Last day of the semester (exam period end, etc.)</small>
 			</div>
 
 			<hr style="border: none; border-top: 1px solid var(--border); margin: var(--spacing-lg) 0;">
-			<h3 style="font-size: 0.9375rem; font-weight: 600; margin-bottom: var(--spacing-md);">🏛️ Global Announcement Feeds</h3>
-			<p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: var(--spacing-md);">
-				Checked every time a regular check runs; new items appear on the <a href="/announcements">Announcements</a> page.
-			</p>
 
-			{% for key, feed in global_feeds.items() %}
-			<div class="form-group">
-				<label>
-					<input type="checkbox" name="global_feed_{{ key }}_enabled" value="true"
-						{% if preferences['global_feed_' ~ key ~ '_enabled'] %}checked{% endif %}>
-					{{ feed.name }}
-				</label>
-				<small>
-					{% if feed.page_url %}
-					Public e-class page: <code>{{ feed.page_url }}</code>
-					{% elif feed.eclass_course_id %}
-					e-class course INF{{ feed.eclass_course_id }} — requires valid e-class credentials
-					{% else %}
-					Public RSS: <code>{{ feed.url }}</code>
-					{% endif %}
-				</small>
+			<div class="settings-preferences-split">
+				<section class="settings-preferences-panel settings-semester-panel">
+					<h3 style="font-size: 0.9375rem; font-weight: 600; margin-bottom: var(--spacing-md);"><i class="bi bi-calendar-range"></i> Semester Dates</h3>
+					<p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: var(--spacing-md);">When both dates are set and today falls within the range, a progress indicator is shown in the navbar.</p>
+
+					<div class="settings-matrix settings-matrix--2col settings-semester-matrix">
+					<div class="form-group">
+						<label for="semester_start">Semester Start</label>
+						<input type="date" id="semester_start" name="semester_start"
+							value="{{ preferences.semester_start or '' }}">
+					</div>
+
+					<div class="form-group">
+						<label for="semester_end">Semester End</label>
+						<input type="date" id="semester_end" name="semester_end"
+							value="{{ preferences.semester_end or '' }}">
+					</div>
+					</div>
+				</section>
+
+				<section class="settings-preferences-panel settings-global-feeds-panel">
+					<h3 style="font-size: 0.9375rem; font-weight: 600; margin-bottom: var(--spacing-md);"><i class="bi bi-building"></i> Global Announcement Feeds</h3>
+					<p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+						Checked every time a regular check runs; new items appear on the <a href="/">Activity</a> timeline.
+					</p>
+
+					{% for key, feed in global_feeds.items() %}
+					<div class="form-group settings-feed-item">
+						<label>
+							<input type="checkbox" name="global_feed_{{ key }}_enabled" value="true"
+								{% if preferences['global_feed_' ~ key ~ '_enabled'] %}checked{% endif %}>
+							{{ feed.name }}
+						</label>
+					</div>
+					{% endfor %}
+				</section>
 			</div>
-			{% endfor %}
 
-			<button type="submit" class="btn btn-primary">Save Preferences</button>
 		</form>
 	</div>
 </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+	document.addEventListener('DOMContentLoaded', () => {
+		const readValue = (el) => {
+			if (el.type === 'checkbox' || el.type === 'radio') {
+				return el.checked ? '1' : '0';
+			}
+			return el.value;
+		};
+
+		document.querySelectorAll('form[data-dirty-watch]').forEach((form) => {
+			if (!form.id) return;
+
+			const button = document.querySelector(`[data-dirty-button-for="${form.id}"]`);
+			if (!button) return;
+
+			const fields = Array.from(form.querySelectorAll('input, select, textarea'))
+				.filter((el) => el.name && !el.disabled && el.type !== 'hidden');
+
+			const baseline = new Map(fields.map((el) => [el, readValue(el)]));
+
+			const refreshDirtyState = () => {
+				const isDirty = fields.some((el) => readValue(el) !== baseline.get(el));
+				button.classList.toggle('is-visible', isDirty);
+			};
+
+			fields.forEach((el) => {
+				el.addEventListener('input', refreshDirtyState);
+				el.addEventListener('change', refreshDirtyState);
+			});
+
+			form.addEventListener('reset', () => {
+				requestAnimationFrame(refreshDirtyState);
+			});
+
+			refreshDirtyState();
+		});
+	});
+</script>
 {% endblock %}

@@ -1,11 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Change @ {{ change_record.change_no }} - tree-eclass{% endblock %}
+{% block title %}Change @ {{ change_record.change_no }} - tree-eClass{% endblock %}
 
 {% block content %}
-<div class="page-header">
-	<h1>📝 Change @ {{ change_record.change_no }}</h1>
-	<a href="/history?course_id={{ change_record.course_id }}" class="btn btn-secondary">← Back to History</a>
+<div class="page-actions">
+	<a href="/?view=changes&course_id={{ change_record.course_id }}" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back to History</a>
 </div>
 
 <div class="change-detail-card">
@@ -34,7 +33,7 @@
 			<span class="diff-legend-item" style="color: var(--success-color);"><strong>+</strong> Added</span>
 			<span class="diff-legend-item" style="color: var(--danger-color);"><strong>−</strong> Deleted</span>
 			<span class="diff-legend-item" style="color: var(--warning-color);"><strong>~</strong> Modified</span>
-			<span class="diff-legend-item" style="color: var(--primary-color);"><strong>±</strong> Mixed</span>
+			<span class="diff-legend-item" style="color: #60a5fa;"><strong>±</strong> Mixed</span>
 		</div>
 	</div>
 	{% if changes %}

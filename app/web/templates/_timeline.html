@@ -2,57 +2,52 @@
 {% if timeline %}
 <div class="timeline">
 	{% for item in timeline %}
-	<div class="timeline-item timeline-item-{{ item.type }}">
+	<div class="tl-card {% if item.type == 'change' %}tl-change{% else %}tl-ann{% endif %}">
+		<div class="tl-stripe"></div>
+		<div class="tl-body">
 
-		<div class="timeline-header">
-			<div class="timeline-header-left">
+			<div class="tl-row-main">
+				<span class="tl-icon">
+					{% if item.type == "change" %}
+					<a href="/courses/{{ item.course_id }}/changes/{{ item.change_no }}" title="View Details" style="color: inherit; text-decoration: none;">
+						<i class="bi bi-file-diff"></i>
+					</a>
+					{% else %}<i class="bi bi-megaphone-fill"></i>{% endif %}
+				</span>
+
 				{% if item.type == "change" %}
-				<span class="timeline-badge timeline-badge-change">📝 Changes</span>
+					{% if show_course_link %}<a class="tl-title" href="/courses/{{ item.course_id }}">{{ item.course_name }}</a>
+					{% else %}<span class="tl-title">{{ item.course_name }}</span>{% endif %}
 				{% else %}
-				<span class="timeline-badge timeline-badge-announcement">📢 Announcement</span>
+					{% if item.link %}<a class="tl-title" href="{{ item.link }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
+					{% else %}<span class="tl-title">{{ item.title }}</span>{% endif %}
 				{% endif %}
-				{% if show_course_link %}
-				<a href="/courses/{{ item.course_id }}" class="timeline-course-link">{{ item.course_name }}</a>
-				{% endif %}
+
+				<div class="tl-right">
+					{% if item.type == "announcement" and show_course_link %}
+						{% if item.course_id %}
+						<a class="tl-chip" href="/courses/{{ item.course_id }}" style="text-decoration: none; cursor: pointer;">{{ item.course_name }}</a>
+						{% else %}
+						<span class="tl-chip">{{ item.course_name }}</span>
+						{% endif %}
+					{% endif %}
+					{% if item.timestamp %}
+					<span class="tl-date">{{ item.timestamp|athens_time }}</span>
+					{% endif %}
+				</div>
 			</div>
-			<span class="timeline-date">
-				{% if item.timestamp %}
-				{{ item.timestamp|athens_time }}
-				{% else %}
-				<em>Unknown date</em>
-				{% endif %}
-			</span>
-		</div>
 
-		<div class="timeline-body">
 			{% if item.type == "change" %}
-
 			<div class="diff-tree-view timeline-diff-tree" id="diff-tree-{{ item.id }}">
 				<span class="timeline-loading">Loading…</span>
 			</div>
-
-			<div class="timeline-footer">
-				<a href="/courses/{{ item.course_id }}/changes/{{ item.change_no }}"
-					class="btn btn-sm btn-secondary">View Details →</a>
-			</div>
-
 			{% else %}
-
-			{% if item.link %}
-			<div class="timeline-ann-title">
-				<a href="{{ item.link }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>
-			</div>
-			{% else %}
-			<div class="timeline-ann-title">{{ item.title }}</div>
-			{% endif %}
-
 			{% if item.description %}
-			<div class="timeline-ann-body">{{ item.description|safe }}</div>
+			<div class="tl-ann-body">{{ item.description|safe }}</div>
+			{% endif %}
 			{% endif %}
 
-			{% endif %}
 		</div>
-
 	</div>
 	{% endfor %}
 </div>

@@ -47,13 +47,18 @@ COPY . .
 # Download and install fonts
 RUN apt-get update && apt-get install -y unzip && \
     mkdir -p /app/app/web/static/fonts /tmp/fonts && \
-    # Download Roboto
     cd /tmp/fonts && \
-    curl -L -o roboto.zip "https://github.com/googlefonts/roboto-3-classic/releases/download/v3.011/Roboto_v3.011.zip" && \
-    unzip -q roboto.zip && \
-    cp unhinted/static/Roboto-Regular.ttf /app/app/web/static/fonts/ && \
-    cp unhinted/static/Roboto-Medium.ttf /app/app/web/static/fonts/ && \
-    cp unhinted/static/Roboto-Bold.ttf /app/app/web/static/fonts/ && \
+    # # Download Roboto (replaced by Inter)
+    # curl -L -o roboto.zip "https://github.com/googlefonts/roboto-3-classic/releases/download/v3.011/Roboto_v3.011.zip" && \
+    # unzip -q roboto.zip && \
+    # cp unhinted/static/Roboto-Regular.ttf /app/app/web/static/fonts/ && \
+    # cp unhinted/static/Roboto-Medium.ttf /app/app/web/static/fonts/ && \
+    # cp unhinted/static/Roboto-Bold.ttf /app/app/web/static/fonts/ && \
+    # Download Inter (variable font)
+    curl -L -o inter.zip "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip" && \
+    unzip -q inter.zip && \
+    find /tmp/fonts -name 'InterVariable.woff2' ! -name '*Italic*' -exec cp {} /app/app/web/static/fonts/ \; && \
+    find /tmp/fonts -name 'InterVariable-Italic.woff2' -exec cp {} /app/app/web/static/fonts/ \; && \
     # Download RobotoMono
     curl -L -o robotomono.zip "https://github.com/googlefonts/RobotoMono/archive/refs/tags/v3.001.zip" && \
     unzip -q robotomono.zip && \

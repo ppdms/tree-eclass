@@ -1,21 +1,126 @@
 {% extends "base.html" %}
 {% from "_timeline.html" import render_timeline %}
 
-{% block title %}Timeline - tree-eclass{% endblock %}
+{% block title %}
+{% if active_view == 'changes' %}Change History - tree-eClass{% else %}Activity - tree-eClass{% endif %}
+{% endblock %}
+
+{% block extra_head %}
+{% if active_view == 'changes' %}
+<style>
+.changes-bar {
+	display: flex;
+	align-items: flex-end;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 0.75rem 1rem;
+	margin-bottom: 1rem;
+}
+.changes-bar .filter-group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+}
+.changes-bar label {
+	font-size: 0.7rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+.changes-bar select,
+.changes-bar input[type="date"] {
+	height: 34px;
+	padding: 0 0.5rem;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font-size: 0.85rem;
+	min-width: 140px;
+	background: var(--background);
+	color: var(--text-primary);
+}
+.changes-bar .filter-actions {
+	display: flex;
+	gap: 0.35rem;
+	margin-left: auto;
+}
+</style>
+{% endif %}
+{% endblock %}
 
 {% block content %}
-<div class="page-header">
-	<h1>Timeline</h1>
-	<div>
-		<a href="/history" class="btn btn-secondary">📜 Full History</a>
-		<a href="/announcements" class="btn btn-secondary">📢 Announcements</a>
-	</div>
+{% if active_view == 'changes' %}
+<!-- ════════ FILTERED CHANGE HISTORY ════════ -->
+<div class="page-actions">
+	<a href="/" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Activity</a>
 </div>
 
+<form method="GET" action="/" id="changesFilterForm" class="changes-bar">
+	<input type="hidden" name="view" value="changes">
+	<div class="filter-group">
+		<label for="course_filter">Course</label>
+		<select id="course_filter" name="course_id">
+			<option value="">All Courses</option>
+			{% for course in courses %}
+			<option value="{{ course.id }}" {% if selected_course and selected_course.id==course.id %}selected{% endif %}>
+				{{ course.name }}
+			</option>
+			{% endfor %}
+		</select>
+	</div>
+	<div class="filter-group">
+		<label for="start_date">From</label>
+		<input type="date" id="start_date" name="start_date" value="{{ start_date }}">
+	</div>
+	<div class="filter-group">
+		<label for="end_date">To</label>
+		<input type="date" id="end_date" name="end_date" value="{{ end_date }}">
+	</div>
+	<div class="filter-actions">
+		<button type="submit" class="btn btn-sm btn-primary">Apply</button>
+		<button type="button" class="btn btn-sm btn-secondary" onclick="clearChangesFilters()">Clear</button>
+	</div>
+</form>
+
+{% if change_records %}
+<table class="change-table">
+	<thead>
+		<tr>
+			<th>Course</th>
+			<th>Date</th>
+			<th>Changes</th>
+			<th>Actions</th>
+		</tr>
+	</thead>
+	<tbody>
+		{% for change_record in change_records %}
+		<tr>
+			<td>{{ change_record.course_name }}</td>
+			<td>{{ change_record.timestamp|athens_time }}</td>
+			<td>{{ change_record.message|change_counts|safe }}</td>
+			<td>
+				<a href="/courses/{{ change_record.course_id }}/changes/{{ change_record.change_no }}"
+					class="btn btn-sm">View Details</a>
+			</td>
+		</tr>
+		{% endfor %}
+	</tbody>
+</table>
+{% else %}
+<p class="empty-state">No changes found. Adjust your filters or run a check to detect changes.</p>
+{% endif %}
+
+{% else %}
+<!-- ════════ UNIFIED ACTIVITY TIMELINE ════════ -->
 {{ render_timeline(timeline) }}
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
+{% if active_view == 'timeline' %}
 <script>
 	const changesDataMap = {};
 	{% for item in changes_data %}
@@ -28,4 +133,14 @@
 		}
 	});
 </script>
+{% elif active_view == 'changes' %}
+<script>
+	function clearChangesFilters() {
+		document.getElementById('course_filter').value = '';
+		document.getElementById('start_date').value = '';
+		document.getElementById('end_date').value = '';
+		document.getElementById('changesFilterForm').submit();
+	}
+</script>
+{% endif %}
 {% endblock %}

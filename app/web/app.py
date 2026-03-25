@@ -1,5 +1,5 @@
 """
-FastAPI web application for managing tree-eclass.
+FastAPI web application for managing tree-eClass.
 Provides UI for viewing and managing courses, credentials, and file history.
 """
 import logging
@@ -34,7 +34,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 
-app = FastAPI(title="tree-eclass Manager", version="1.0.0")
+app = FastAPI(title="tree-eClass Manager", version="1.0.0")
 
 # Global lock to prevent parallel checks (threading.Lock works across threads and event loops)
 check_lock = threading.Lock()
@@ -189,30 +189,62 @@ def node_to_dict(node: Node, parent_path: str = "") -> dict:
 # ===== ROUTES =====
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """Main page - shows unified timeline of changes and announcements."""
+async def index(request: Request,
+                view: Optional[str] = None,
+                course_id: Optional[str] = None,
+                start_date: Optional[str] = None,
+                end_date: Optional[str] = None):
+    """Main page - unified activity timeline, with optional change-history filter view."""
     try:
-        timeline = db_manager.get_timeline_data(limit=100)
+        active_view = view if view in ('timeline', 'changes') else 'timeline'
         courses = db_manager.get_courses()
-        # Collect change items data as JSON for JS diff tree rendering
-        courses_by_id = {c['id']: c for c in courses}
-        changes_data = [
-            {
-                "id": item["id"],
-                "changes": item["changes"],
-                "webdav_folder": courses_by_id.get(item["course_id"], {}).get("webdav_folder", ""),
-            }
-            for item in timeline
-            if item["type"] == "change"
-        ]
+
+        timeline = []
+        changes_data = []
+        change_records = []
+        selected_course = None
+
+        course_id_int = None
+        if course_id and course_id.strip():
+            try:
+                course_id_int = int(course_id)
+            except ValueError:
+                pass
+
+        if active_view == 'timeline':
+            timeline = db_manager.get_timeline_data(limit=100)
+            courses_by_id = {c['id']: c for c in courses}
+            changes_data = [
+                {
+                    "id": item["id"],
+                    "changes": item["changes"],
+                    "webdav_folder": courses_by_id.get(item["course_id"], {}).get("webdav_folder", ""),
+                }
+                for item in timeline
+                if item["type"] == "change"
+            ]
+        elif active_view == 'changes':
+            change_records = db_manager.get_change_records(
+                course_id=course_id_int,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            if course_id_int:
+                selected_course = next((c for c in courses if c['id'] == course_id_int), None)
+
         return templates.TemplateResponse("timeline.html", {
             "request": request,
-            "timeline": timeline,
+            "active_view": active_view,
             "courses": courses,
+            "timeline": timeline,
             "changes_data": changes_data,
+            "change_records": change_records,
+            "selected_course": selected_course,
+            "start_date": start_date or "",
+            "end_date": end_date or "",
         })
     except Exception as e:
-        logging.error(f"Error loading timeline: {e}", exc_info=True)
+        logging.error(f"Error loading page: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -458,44 +490,6 @@ async def check_course(course_id: int, background_tasks: BackgroundTasks):
         )
 
 
-# ===== ANNOUNCEMENTS ROUTES =====
-
-@app.get("/announcements", response_class=HTMLResponse)
-async def list_announcements(request: Request, course_id: Optional[int] = None, tab: Optional[str] = None):
-    """List announcements for all courses or a specific course."""
-    try:
-        active_tab = tab if tab in ('courses', 'uni') else 'courses'
-        courses = db_manager.get_courses()
-
-        # Get announcements
-        if course_id:
-            announcements = db_manager.get_announcements(course_id=course_id, limit=100)
-            # Find the course name
-            course = next((c for c in courses if c['id'] == course_id), None)
-            course_name = course['name'] if course else f"Course {course_id}"
-        else:
-            announcements = db_manager.get_announcements(limit=100)
-            course_name = None
-
-        # Global feed announcements (shown separately, unaffected by course filter)
-        global_announcements = db_manager.get_global_announcements(limit=60)
-        # Attach feed name from the constant
-        for ann in global_announcements:
-            ann['feed_name'] = GLOBAL_FEEDS.get(ann['feed_key'], {}).get('name', ann['feed_key'])
-
-        return templates.TemplateResponse("announcements.html", {
-            "request": request,
-            "announcements": announcements,
-            "courses": courses,
-            "selected_course_id": course_id,
-            "course_name": course_name,
-            "global_announcements": global_announcements,
-            "global_feeds": GLOBAL_FEEDS,
-            "active_tab": active_tab,
-        })
-    except Exception as e:
-        logging.error(f"Error listing announcements: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/announcements")
@@ -590,6 +584,7 @@ async def list_exercises(request: Request, course_id: Optional[int] = None):
             ex['_deadline_dt'] = dl_dt
             ex['_urgency'] = urgency
             ex['_time_label'] = time_label
+            ex['_deadline_short'] = dl_dt.strftime('%-d %b · %H:%M') if dl_dt else ''
 
         # Sort: overdue first, then by closest deadline; submitted last
         urgency_order = {'ex-overdue': 0, 'ex-critical': 1, 'ex-warning': 2,
@@ -615,19 +610,14 @@ async def list_exercises(request: Request, course_id: Optional[int] = None):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# ===== LOGS ROUTES =====
-
-@app.get("/logs", response_class=HTMLResponse)
-async def view_logs(request: Request, limit: int = 100):
-    """View activity logs (checks, emails, etc.)."""
+@app.post("/exercises/{course_id}/{exercise_id}/ignore")
+async def ignore_exercise(course_id: int, exercise_id: str):
+    """Mark an exercise as ignored; it will no longer appear in the UI."""
     try:
-        logs = db_manager.get_check_logs(limit=limit)
-        return templates.TemplateResponse("logs.html", {
-            "request": request,
-            "logs": logs
-        })
+        db_manager.ignore_exercise(course_id, exercise_id)
+        return {"ok": True}
     except Exception as e:
-        logging.error(f"Error viewing logs: {e}", exc_info=True)
+        logging.error(f"Error ignoring exercise {exercise_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -638,12 +628,23 @@ async def view_settings(request: Request):
     """View and edit settings (credentials, email, and preferences)."""
     try:
         credentials = db_manager.get_credentials()
+        # Scrub credentials password payload
+        safe_credentials = (credentials[0], "") if credentials else None
+        
         webhook_config = db_manager.get_webhook_config()
+        # Scrub webhook URL payload
+        if webhook_config and "webhook_url" in webhook_config:
+            webhook_config["webhook_url"] = ""
+
         webdav_config = db_manager.get_webdav_config()
+        # Scrub webdav password payload
+        if webdav_config and "password" in webdav_config:
+            webdav_config["password"] = ""
+
         preferences = db_manager.get_preferences()
         return templates.TemplateResponse("settings.html", {
             "request": request,
-            "credentials": credentials,
+            "credentials": safe_credentials,
             "webhook_config": webhook_config,
             "webdav_config": webdav_config,
             "preferences": preferences,
@@ -657,11 +658,16 @@ async def view_settings(request: Request):
 @app.post("/settings/credentials")
 async def update_credentials(
     username: str = Form(...),
-    password: str = Form(...)
+    password: Optional[str] = Form(None)
 ):
     """Update credentials."""
     try:
-        db_manager.save_credentials(username, password)
+        final_password = password
+        if not final_password:
+            existing = db_manager.get_credentials()
+            final_password = existing[1] if existing else ""
+            
+        db_manager.save_credentials(username, final_password)
         logging.info(f"Updated credentials for user: {username}")
         return RedirectResponse(url="/settings", status_code=303)
     except Exception as e:
@@ -671,11 +677,16 @@ async def update_credentials(
 
 @app.post("/settings/webhook")
 async def update_webhook_config(
-    webhook_url: str = Form(...)
+    webhook_url: Optional[str] = Form(None)
 ):
     """Update webhook configuration."""
     try:
-        db_manager.save_webhook_config(webhook_url=webhook_url)
+        final_url = webhook_url
+        if not final_url:
+            existing = db_manager.get_webhook_config()
+            final_url = existing['webhook_url'] if existing else ""
+
+        db_manager.save_webhook_config(webhook_url=final_url)
         logging.info("Updated webhook configuration")
         return RedirectResponse(url="/settings", status_code=303)
     except Exception as e:
@@ -687,15 +698,20 @@ async def update_webhook_config(
 async def update_webdav_config(
     webdav_hostname: str = Form(...),
     webdav_username: str = Form(...),
-    webdav_password: str = Form(...),
+    webdav_password: Optional[str] = Form(None),
     webdav_disable_check: Optional[bool] = Form(False)
 ):
     """Update WebDAV configuration."""
     try:
+        final_password = webdav_password
+        if not final_password:
+            existing = db_manager.get_webdav_config()
+            final_password = existing['password'] if existing else ""
+            
         db_manager.save_webdav_config(
             hostname=webdav_hostname,
             username=webdav_username,
-            password=webdav_password,
+            password=final_password,
             disable_check=webdav_disable_check,
             timeout=30
         )
@@ -742,45 +758,6 @@ async def update_preferences(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ===== CHANGE HISTORY ROUTES =====
-
-@app.get("/history", response_class=HTMLResponse)
-async def view_history(request: Request, course_id: Optional[str] = None, 
-                       start_date: Optional[str] = None, end_date: Optional[str] = None):
-    """View change history."""
-    try:
-        # Convert course_id to int if provided and not empty
-        course_id_int = None
-        if course_id and course_id.strip():
-            try:
-                course_id_int = int(course_id)
-            except ValueError:
-                pass
-        
-        courses = db_manager.get_courses()
-        
-        # Get change records with filters
-        change_records = db_manager.get_change_records(
-            course_id=course_id_int,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        course = None
-        if course_id_int:
-            course = next((c for c in courses if c['id'] == course_id_int), None)
-        
-        return templates.TemplateResponse("history.html", {
-            "request": request,
-            "change_records": change_records,
-            "courses": courses,
-            "selected_course": course,
-            "start_date": start_date or "",
-            "end_date": end_date or ""
-        })
-    except Exception as e:
-        logging.error(f"Error viewing history: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/courses/{course_id}/changes/{change_no}", response_class=HTMLResponse)
@@ -1011,11 +988,9 @@ async def study_inbox(request: Request):
     try:
         courses = db_manager.get_courses()
         inbox = db_manager.get_study_inbox(limit=60)
-        sessions = db_manager.get_study_sessions(limit=50)
         return templates.TemplateResponse("study.html", {
             "request": request,
             "inbox": inbox,
-            "sessions": sessions,
             "courses": courses,
         })
     except Exception as e:
@@ -1054,23 +1029,6 @@ async def set_study_level(course_id: int, request: Request):
         logging.error(f"API error setting study level course {course_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@app.post("/api/courses/{course_id}/study-sessions")
-async def add_study_session(course_id: int, request: Request):
-    """Log a study session for a course."""
-    try:
-        body = await request.json()
-        note = body.get("note") or None
-        courses = db_manager.get_courses()
-        if not any(c['id'] == course_id for c in courses):
-            raise HTTPException(status_code=404, detail="Course not found")
-        session_id = db_manager.add_study_session(course_id, note)
-        return JSONResponse(content={"status": "ok", "id": session_id})
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"API error adding study session for course {course_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

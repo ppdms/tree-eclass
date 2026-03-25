@@ -144,16 +144,26 @@ function showNotification(message, type = 'info') {
 	const notification = document.createElement('div');
 	notification.className = `notification notification-${type}`;
 	notification.textContent = message;
+	const colors = {
+		success: { bg: 'rgba(74, 222, 128, 0.15)', border: 'rgba(74, 222, 128, 0.3)', text: '#4ade80' },
+		error: { bg: 'rgba(248, 113, 113, 0.15)', border: 'rgba(248, 113, 113, 0.3)', text: '#f87171' },
+		warning: { bg: 'rgba(251, 191, 36, 0.15)', border: 'rgba(251, 191, 36, 0.3)', text: '#fbbf24' },
+		info: { bg: 'rgba(96, 165, 250, 0.15)', border: 'rgba(96, 165, 250, 0.3)', text: '#60a5fa' },
+	};
+	const c = colors[type] || colors.info;
 	notification.style.cssText = `
         position: fixed;
         top: 20px;
         right: 20px;
         padding: 1rem 1.5rem;
-        background: ${type === 'success' ? '#16a34a' : type === 'error' ? '#dc2626' : '#2563eb'};
-        color: white;
+        background: ${c.bg};
+        color: ${c.text};
+        border: 1px solid ${c.border};
         border-radius: 0.5rem;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(12px);
         z-index: 1000;
+        font-weight: 500;
         animation: slideIn 0.3s ease-out;
     `;
 
@@ -318,11 +328,12 @@ function renderDiffTree(node, level = 0, webdavFolder = '') {
 		const changeClass = dir.changeType || 'unchanged';
 		const icon = getChangeIcon(dir.changeType);
 		const symbol = getChangeSymbol(dir.changeType);
+		const symbolHtml = symbol ? `<span class="diff-tree-symbol">${symbol}</span>` : '';
 
 		html += `
 			<div class="diff-tree-node diff-tree-directory ${changeClass}" style="margin-left: ${indent}px;">
 				<span class="diff-tree-icon">${icon}</span>
-				<span class="diff-tree-symbol">${symbol}</span>
+				${symbolHtml}
 				<span class="diff-tree-name">${dir.name}</span>
 			</div>
 		`;
@@ -336,25 +347,26 @@ function renderDiffTree(node, level = 0, webdavFolder = '') {
 		const changeClass = file.changeType || 'unchanged';
 		const icon = getChangeIcon(file.changeType, true);
 		const symbol = getChangeSymbol(file.changeType);
+		const symbolHtml = symbol ? `<span class="diff-tree-symbol">${symbol}</span>` : '';
 		const isAdded = file.changeType === 'added_file' || file.changeType === 'modified_file';
 		let nameHtml;
 		if (file.redirectUrl && isAdded) {
 			// External link (e.g. SharePoint recording) — link directly to the source
-			nameHtml = `<a href="${file.redirectUrl}" target="_blank" title="External link (SharePoint / Stream)">${file.name} 🔗</a>`;
+			nameHtml = `<a href="${file.redirectUrl}" target="_blank" title="External link (SharePoint / Stream)">${file.name} <i class="bi bi-box-arrow-up-right"></i></a>`;
 		} else if (isAdded && webdavFolder && file.path) {
 			nameHtml = `<a href="/files${webdavFolder}/${file.path}" target="_blank">${file.name}</a>`;
 		} else {
 			nameHtml = file.name;
 		}
 		const diffBtn = (file.changeType === 'modified_file' && file.diffWebdavPath)
-			? ` <a href="/files${escHtml(file.diffWebdavPath)}" target="_blank" class="diff-pdf-btn" title="Open visual diff PDF">📊 Diff</a>`
+			? ` <a href="/files${escHtml(file.diffWebdavPath)}" target="_blank" class="diff-pdf-btn" title="Open visual diff PDF">Diff</a>`
 			: '';
 
 		html += `
 			<div class="diff-tree-node diff-tree-file ${changeClass}" style="margin-left: ${indent}px;">
 				<span class="diff-tree-icon">${icon}</span>
-				<span class="diff-tree-symbol">${symbol}</span>
-				<span class="diff-tree-name">${nameHtml}${diffBtn}</span>
+				${symbolHtml}
+				<span class="diff-tree-name">${nameHtml}</span>${diffBtn}
 			</div>
 		`;
 	});
@@ -365,20 +377,20 @@ function renderDiffTree(node, level = 0, webdavFolder = '') {
 // Get appropriate icon for change type
 function getChangeIcon(changeType, isFile = false) {
 	if (!changeType || changeType === 'unchanged') {
-		return isFile ? '📄' : '📁';
+		return isFile ? '<i class="bi bi-file-earmark"></i>' : '<i class="bi bi-folder-fill"></i>';
 	}
 
 	if (changeType.includes('added')) {
-		return isFile ? '📄' : '📁';
+		return isFile ? '<i class="bi bi-file-earmark"></i>' : '<i class="bi bi-folder-fill"></i>';
 	} else if (changeType.includes('deleted')) {
-		return isFile ? '📄' : '📁';
+		return isFile ? '<i class="bi bi-file-earmark"></i>' : '<i class="bi bi-folder-fill"></i>';
 	} else if (changeType.includes('modified')) {
-		return '📄';
+		return '<i class="bi bi-file-earmark"></i>';
 	} else if (changeType === 'mixed') {
-		return '📁';
+		return '<i class="bi bi-folder-fill"></i>';
 	}
 
-	return isFile ? '📄' : '📁';
+	return isFile ? '<i class="bi bi-file-earmark"></i>' : '<i class="bi bi-folder-fill"></i>';
 }
 
 // Get symbol for change type
@@ -474,14 +486,14 @@ async function toggleFileVersions(btn, courseId, filePath) {
 		const rows = versions.map(v => {
 			const ts = v.timestamp ? new Date(v.timestamp).toLocaleString() : '?';
 			const diffBtn = v.diff_webdav_path
-				? ` <a href="/files${escHtml(v.diff_webdav_path)}" target="_blank" class="diff-pdf-btn" title="Open visual diff PDF">📊 Diff</a>`
+				? ` <a href="/files${escHtml(v.diff_webdav_path)}" target="_blank" class="diff-pdf-btn" title="Open visual diff PDF">Diff</a>`
 				: '';
 			if (v.redirect_url) {
-				return `<div class="version-entry">🔗 <a href="${escHtml(v.redirect_url)}" target="_blank">Old external link</a> <span class="version-ts">${escHtml(ts)}</span></div>`;
+				return `<div class="version-entry"><i class="bi bi-box-arrow-up-right"></i> <a href="${escHtml(v.redirect_url)}" target="_blank">Old external link</a> <span class="version-ts">${escHtml(ts)}</span></div>`;
 			} else if (v.version_webdav_path) {
-				return `<div class="version-entry">📄 <a href="/files${escHtml(v.version_webdav_path)}" target="_blank">Version from ${escHtml(ts)}</a>${diffBtn}</div>`;
+				return `<div class="version-entry"><i class="bi bi-file-earmark"></i> <a href="/files${escHtml(v.version_webdav_path)}" target="_blank">Version from ${escHtml(ts)}</a>${diffBtn}</div>`;
 			}
-			return `<div class="version-entry">📄 ${escHtml(ts)} (no file)</div>`;
+			return `<div class="version-entry"><i class="bi bi-file-earmark"></i> ${escHtml(ts)} (no file)</div>`;
 		}).join('');
 		_insertExpandPanel(btn, `<div class="version-panel-header">Old versions:</div>${rows}`);
 	} catch (e) {
@@ -513,11 +525,11 @@ async function toggleDeletedFiles(btn, courseId, folder) {
 			const ts = v.timestamp ? new Date(v.timestamp).toLocaleString() : '?';
 			const subpath = v.file_path;
 			if (v.redirect_url) {
-				return `<div class="version-entry">🔗 <a href="${escHtml(v.redirect_url)}" target="_blank">${escHtml(name)}</a> <span class="version-ts">(deleted ${escHtml(ts)})</span> <span class="version-path">${escHtml(subpath)}</span></div>`;
+				return `<div class="version-entry"><i class="bi bi-box-arrow-up-right"></i> <a href="${escHtml(v.redirect_url)}" target="_blank">${escHtml(name)}</a> <span class="version-ts">(deleted ${escHtml(ts)})</span> <span class="version-path">${escHtml(subpath)}</span></div>`;
 			} else if (v.version_webdav_path) {
-				return `<div class="version-entry">📄 <a href="/files${escHtml(v.version_webdav_path)}" target="_blank">${escHtml(name)}</a> <span class="version-ts">(deleted ${escHtml(ts)})</span> <span class="version-path">${escHtml(subpath)}</span></div>`;
+				return `<div class="version-entry"><i class="bi bi-file-earmark"></i> <a href="/files${escHtml(v.version_webdav_path)}" target="_blank">${escHtml(name)}</a> <span class="version-ts">(deleted ${escHtml(ts)})</span> <span class="version-path">${escHtml(subpath)}</span></div>`;
 			}
-			return `<div class="version-entry">📄 ${escHtml(name)} <span class="version-ts">(deleted ${escHtml(ts)}, no archived copy)</span> <span class="version-path">${escHtml(subpath)}</span></div>`;
+			return `<div class="version-entry"><i class="bi bi-file-earmark"></i> ${escHtml(name)} <span class="version-ts">(deleted ${escHtml(ts)}, no archived copy)</span> <span class="version-path">${escHtml(subpath)}</span></div>`;
 		}).join('');
 		_insertExpandPanel(btn, `<div class="version-panel-header">Deleted files:</div>${rows}`);
 	} catch (e) {

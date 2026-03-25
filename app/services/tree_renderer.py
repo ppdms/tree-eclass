@@ -119,7 +119,7 @@ def _infer_change_types(node: Dict[str, Any]) -> str:
 def get_change_symbol(change_type: str) -> str:
     """Get the symbol for a change type."""
     if not change_type or change_type == 'unchanged':
-        return '•'
+        return ''
     
     if 'added' in change_type:
         return '+'
@@ -130,7 +130,7 @@ def get_change_symbol(change_type: str) -> str:
     elif change_type == 'mixed':
         return '±'
     
-    return '•'
+    return ''
 
 
 def get_change_icon(change_type: str, is_file: bool = False) -> str:
@@ -188,14 +188,16 @@ def render_tree_html(node: Dict[str, Any], indent_level: int = 0, for_email: boo
         if for_email:
             color = get_change_color(change_type)
             html += f'<li class="tree-item {change_type}" style="margin-left: {indent_px}px; padding: 4px 0; display: flex; align-items: center; gap: 8px;">'
-            html += f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>'
+            symbol_html = f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>' if symbol else ''
+            html += symbol_html
             html += f'<span class="icon" style="font-size: 16px; color: {color};">{icon}&nbsp;</span>'
             html += f'<span class="path" style="flex: 1; color: {color};">{safe_name}</span>'
             html += '</li>\n'
         else:
             html += f'<div class="diff-tree-node diff-tree-directory {change_type}" style="margin-left: {indent_px}px;">'
             html += f'<span class="diff-tree-icon">{icon}</span>'
-            html += f'<span class="diff-tree-symbol">{symbol}</span>'
+            if symbol:
+                html += f'<span class="diff-tree-symbol">{symbol}</span>'
             html += f'<span class="diff-tree-name">{safe_name}</span>'
             html += '</div>\n'
 
@@ -212,14 +214,16 @@ def render_tree_html(node: Dict[str, Any], indent_level: int = 0, for_email: boo
         if for_email:
             color = get_change_color(change_type)
             html += f'<li class="tree-item {change_type}" style="margin-left: {indent_px}px; padding: 4px 0; display: flex; align-items: center; gap: 8px;">'
-            html += f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>'
+            symbol_html = f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>' if symbol else ''
+            html += symbol_html
             html += f'<span class="icon" style="font-size: 16px; color: {color};">{icon}&nbsp;</span>'
             html += f'<span class="path" style="flex: 1; color: {color};">{safe_name}</span>'
             html += '</li>\n'
         else:
             html += f'<div class="diff-tree-node diff-tree-file {change_type}" style="margin-left: {indent_px}px;">'
             html += f'<span class="diff-tree-icon">{icon}</span>'
-            html += f'<span class="diff-tree-symbol">{symbol}</span>'
+            if symbol:
+                html += f'<span class="diff-tree-symbol">{symbol}</span>'
             html += f'<span class="diff-tree-name">{safe_name}</span>'
             html += '</div>\n'
     
@@ -250,7 +254,8 @@ def render_tree_for_email(changes: List[Dict[str, str]]) -> str:
 
         color = get_change_color(change_type)
         html += f'<li class="tree-item {change_type}" style="padding: 4px 0; display: flex; align-items: center; gap: 8px;">'
-        html += f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>'
+        symbol_html = f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>' if symbol else ''
+        html += symbol_html
         html += f'<span class="icon" style="font-size: 16px; color: {color};">{icon}&nbsp;</span>'
         html += f'<span class="path" style="flex: 1; color: {color};">{safe_name}</span>'
         html += '</li>\n'
@@ -267,7 +272,8 @@ def render_tree_for_email(changes: List[Dict[str, str]]) -> str:
 
         color = get_change_color(change_type)
         html += f'<li class="tree-item {change_type}" style="padding: 4px 0; display: flex; align-items: center; gap: 8px;">'
-        html += f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>'
+        symbol_html = f'<span class="symbol" style="font-weight: bold; min-width: 16px; color: {color};">{symbol}</span>' if symbol else ''
+        html += symbol_html
         html += f'<span class="icon" style="font-size: 16px; color: {color};">{icon}&nbsp;</span>'
         html += f'<span class="path" style="flex: 1; color: {color};">{safe_name}</span>'
         html += '</li>\n'

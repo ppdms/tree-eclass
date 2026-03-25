@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 20  # Current schema version
+SCHEMA_VERSION = 21  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -149,17 +149,6 @@ class DatabaseManager:
             )
         """)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS check_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                log_type TEXT NOT NULL,
-                course_id INTEGER,
-                message TEXT,
-                status TEXT,
-                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE SET NULL
-            )
-        """)
-        cursor.execute("""
             CREATE TABLE IF NOT EXISTS check_status (
                 id INTEGER PRIMARY KEY,
                 is_checking INTEGER DEFAULT 0,
@@ -246,6 +235,7 @@ class DatabaseManager:
                 assignment_file_url TEXT,
                 grade_comments TEXT,
                 submission_date TEXT,
+                ignored INTEGER NOT NULL DEFAULT 0,
                 fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(course_id, exercise_id),
                 FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
@@ -357,6 +347,10 @@ class DatabaseManager:
         if current_version < 20:
             self._migration_19_to_20()
             self._set_schema_version(20)
+
+        if current_version < 21:
+            self._migration_20_to_21()
+            self._set_schema_version(21)
 
         logging.info("All migrations completed successfully")
 
@@ -767,6 +761,17 @@ class DatabaseManager:
                 logging.info(f"Added {col} column to exercises table")
         self.conn.commit()
 
+    def _migration_20_to_21(self):
+        """Migration: Add ignored column to exercises table."""
+        logging.info("Running migration 20 -> 21: Adding ignored column to exercises")
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(exercises)")
+        existing = {row[1] for row in cursor.fetchall()}
+        if 'ignored' not in existing:
+            cursor.execute("ALTER TABLE exercises ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0")
+            logging.info("Added ignored column to exercises table")
+        self.conn.commit()
+
     def _migration_18_to_19(self):
         """Migration: Add exercises table."""
         logging.info("Running migration 18 -> 19: Adding exercises table")
@@ -1049,7 +1054,6 @@ class DatabaseManager:
             cursor.execute("DELETE FROM change_record_items WHERE change_record_id IN (SELECT id FROM change_records WHERE course_id = ?)", (course_id,))
             cursor.execute("DELETE FROM change_records WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM change_history WHERE course_id = ?", (course_id,))
-            cursor.execute("DELETE FROM check_logs WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM file_versions WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM file_study WHERE course_id = ?", (course_id,))
             cursor.execute("DELETE FROM study_sessions WHERE course_id = ?", (course_id,))
@@ -1074,8 +1078,6 @@ class DatabaseManager:
             cursor.execute("DELETE FROM change_record_items WHERE change_record_id IN (SELECT id FROM change_records WHERE course_id = ?)", (course_id,))
             # Delete change records
             cursor.execute("DELETE FROM change_records WHERE course_id = ?", (course_id,))
-            # Delete check logs for this course
-            cursor.execute("DELETE FROM check_logs WHERE course_id = ?", (course_id,))
             # Delete announcements for this course
             cursor.execute("DELETE FROM announcements WHERE course_id = ?", (course_id,))
             # Delete file version history
@@ -1405,6 +1407,32 @@ class DatabaseManager:
                     "description": description,
                     "id": ann_id,
                 })
+                
+            # --- Global Announcements ---
+            if course_id is None:
+                cursor.execute("""
+                    SELECT id, feed_key, title, link, description, pub_date
+                    FROM global_announcements
+                    ORDER BY pub_date DESC
+                    LIMIT ?
+                """, (limit,))
+                for global_ann_id, feed_key, title, link, description, pub_date in cursor.fetchall():
+                    # Map 'feed_key' to a readable name if possible, or just capitalize
+                    feed_name = feed_key.replace('_', ' ').title() if feed_key else "Global"
+                    if feed_key == "cs_uoa_gr": feed_name = "CS UoA"
+                    if feed_key == "my_uoa_gr": feed_name = "My UoA"
+                    
+                    timeline.append({
+                        "type": "announcement", # use same type to leverage existing UI
+                        "sort_key": pub_date or "",
+                        "timestamp": pub_date,
+                        "course_id": None,
+                        "course_name": feed_name,
+                        "title": title,
+                        "link": link,
+                        "description": description,
+                        "id": f"global_{global_ann_id}",
+                    })
 
             # Merge-sort descending by timestamp string (ISO 8601 sorts lexicographically)
             timeline.sort(key=lambda x: x["sort_key"], reverse=True)
@@ -1413,60 +1441,7 @@ class DatabaseManager:
             logging.error(f"Failed to get timeline data: {e}", exc_info=True)
             raise
 
-    # --- Check logs and status methods ---
-    def log_check_event(self, log_type: str, message: str, course_id: Optional[int] = None, status: str = "info"):
-        """Log a check event (check start, check end, email sent, etc.)."""
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute("""
-                INSERT INTO check_logs (log_type, course_id, message, status)
-                VALUES (?, ?, ?, ?)
-            """, (log_type, course_id, message, status))
-            self.conn.commit()
-            logging.debug(f"Logged check event: {log_type} - {message}")
-        except Exception as e:
-            logging.error(f"Failed to log check event: {e}", exc_info=True)
-            raise
-
-    def get_check_logs(self, limit: int = 100, log_type: Optional[str] = None) -> List[Dict]:
-        """Get check logs, optionally filtered by log_type."""
-        try:
-            cursor = self.conn.cursor()
-            if log_type:
-                cursor.execute("""
-                    SELECT cl.id, cl.timestamp, cl.log_type, cl.course_id, c.name as course_name, cl.message, cl.status
-                    FROM check_logs cl
-                    LEFT JOIN courses c ON cl.course_id = c.id
-                    WHERE cl.log_type = ?
-                    ORDER BY cl.timestamp DESC
-                    LIMIT ?
-                """, (log_type, limit))
-            else:
-                cursor.execute("""
-                    SELECT cl.id, cl.timestamp, cl.log_type, cl.course_id, c.name as course_name, cl.message, cl.status
-                    FROM check_logs cl
-                    LEFT JOIN courses c ON cl.course_id = c.id
-                    ORDER BY cl.timestamp DESC
-                    LIMIT ?
-                """, (limit,))
-            
-            rows = cursor.fetchall()
-            return [
-                {
-                    "id": row[0],
-                    "timestamp": row[1],
-                    "log_type": row[2],
-                    "course_id": row[3],
-                    "course_name": row[4],
-                    "message": row[5],
-                    "status": row[6]
-                }
-                for row in rows
-            ]
-        except Exception as e:
-            logging.error(f"Failed to get check logs: {e}", exc_info=True)
-            raise
-
+    # --- Check status methods ---
     def set_check_status(self, is_checking: bool, course_id: Optional[int] = None):
         """Set the global check status."""
         try:
@@ -2035,8 +2010,10 @@ class DatabaseManager:
             logging.error(f"Failed to get known exercise ids for course {course_id}: {e}", exc_info=True)
             raise
 
-    def get_exercises(self, course_id: Optional[int] = None, limit: int = 200) -> List[Dict]:
-        """Return exercises, optionally filtered by course, newest fetched first."""
+    def get_exercises(self, course_id: Optional[int] = None, limit: int = 200,
+                      include_ignored: bool = False) -> List[Dict]:
+        """Return exercises, optionally filtered by course, newest fetched first.
+        Ignored exercises are excluded by default; pass include_ignored=True to include them."""
         try:
             cursor = self.conn.cursor()
             sql = """
@@ -2045,17 +2022,22 @@ class DatabaseManager:
                        e.grade, e.work_type,
                        e.description, e.start_date, e.max_grade,
                        e.assignment_file_name, e.assignment_file_url,
-                       e.grade_comments, e.submission_date, e.fetched_at
+                       e.grade_comments, e.submission_date, e.fetched_at, e.ignored
                 FROM exercises e
                 JOIN courses c ON e.course_id = c.id
                 {where}
                 ORDER BY e.course_id, e.id DESC
                 LIMIT ?
             """
+            ignored_clause = "" if include_ignored else "AND e.ignored = 0"
             if course_id:
-                cursor.execute(sql.format(where="WHERE e.course_id = ?"), (course_id, limit))
+                cursor.execute(
+                    sql.format(where=f"WHERE e.course_id = ? {ignored_clause}"),
+                    (course_id, limit),
+                )
             else:
-                cursor.execute(sql.format(where=""), (limit,))
+                where = f"WHERE e.ignored = 0" if not include_ignored else ""
+                cursor.execute(sql.format(where=where), (limit,))
             rows = cursor.fetchall()
             return [
                 {
@@ -2077,11 +2059,25 @@ class DatabaseManager:
                     "grade_comments": row[15] or '',
                     "submission_date": row[16] or '',
                     "fetched_at": row[17],
+                    "ignored": bool(row[18]),
                 }
                 for row in rows
             ]
         except Exception as e:
             logging.error(f"Failed to get exercises: {e}", exc_info=True)
+            raise
+
+    def ignore_exercise(self, course_id: int, exercise_id: str):
+        """Mark an exercise as ignored so it won't appear in the UI."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE exercises SET ignored = 1 WHERE course_id = ? AND exercise_id = ?",
+                (course_id, exercise_id),
+            )
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to ignore exercise {exercise_id}: {e}", exc_info=True)
             raise
 
     def close(self):

@@ -4,7 +4,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>{% block title %}tree-eclass Manager{% endblock %}</title>
+	<title>{% block title %}tree-eClass Manager{% endblock %}</title>
 
 	<!-- Favicons -->
 	<link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
@@ -12,25 +12,30 @@
 	<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
 	<link rel="manifest" href="/static/favicon/site.webmanifest">
 
+	<link rel="stylesheet" href="/static/fonts.css">
 	<link rel="stylesheet" href="/static/style.css">
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 	{% block extra_head %}{% endblock %}
 </head>
 
 <body>
 	<nav class="navbar">
 		<div class="container">
-			<a href="/" class="logo-link">
-				<h1 class="logo">🌲 tree-eclass</h1>
-				{% set sp = semester_progress() %}
-				{% if sp is not none %}
-				<span class="semester-badge" title="Semester progress">{{ sp }}%</span>
-				{% endif %}
-			</a>
+			<div class="nav-brand">
+				<a href="/" class="logo-link">
+					<h1 class="logo"><i class="bi bi-tree-fill"></i> tree-eClass</h1>
+					{% set sp = semester_progress() %}
+					{% if sp is not none %}
+					<span class="semester-badge" title="Semester progress">{{ sp }}%</span>
+					{% endif %}
+				</a>
+				<a href="#" id="runCheckBtn" onclick="event.preventDefault(); runCheck()" class="nav-check-btn" title="Run Check"><i class="bi bi-arrow-clockwise"></i></a>
+			</div>
+			{% set path = request.url.path %}
 			<ul class="nav-links">
-				<li><a href="/">Timeline</a></li>
-				<li><a href="/history">History</a></li>
+				<li><a href="/" {% if path == '/' %}class="nav-active"{% endif %}>Activity</a></li>
 				<li class="nav-dropdown">
-					<a href="/courses">Courses</a>
+					<a href="/courses" {% if path.startswith('/courses') %}class="nav-active"{% endif %}>Courses</a>
 					{% set courses = nav_courses() %}
 					{% if courses %}
 					<ul class="nav-dropdown-menu">
@@ -40,14 +45,9 @@
 					</ul>
 					{% endif %}
 				</li>
-				<li><a href="/study">📚 Study</a></li>
-				<li><a href="/exercises">📝 Exercises</a></li>
-				<li><a href="/announcements">Announcements</a></li>
-				<li><a href="/logs">Logs</a></li>
-				<li><a href="/settings">Settings</a></li>
-				<li><button id="runCheckBtn" onclick="runCheck()" class="btn btn-primary" style="margin-left: auto;">🔄
-						Run
-						Check</button></li>
+				<li><a href="/study" {% if path == '/study' %}class="nav-active"{% endif %}>Study</a></li>
+				<li><a href="/exercises" {% if path == '/exercises' %}class="nav-active"{% endif %}>Exercises</a></li>
+				<li><a href="/settings" {% if path == '/settings' %}class="nav-active"{% endif %}>Settings</a></li>
 			</ul>
 		</div>
 	</nav>
@@ -80,15 +80,17 @@
 				const btn = document.getElementById('runCheckBtn');
 
 				if (status.is_checking) {
-					btn.textContent = '⏳ Checking...';
-					btn.disabled = true;
+					btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+					btn.classList.add('nav-check-spinning');
+					btn.dataset.checking = '1';
 					// Start polling if not already polling
 					if (!checkStatusInterval) {
 						checkStatusInterval = setInterval(updateCheckStatus, 2000);
 					}
 				} else {
-					btn.textContent = '🔄 Run Check';
-					btn.disabled = false;
+					btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+					btn.classList.remove('nav-check-spinning');
+					btn.dataset.checking = '0';
 					// Stop polling
 					if (checkStatusInterval) {
 						clearInterval(checkStatusInterval);
@@ -104,6 +106,8 @@
 		updateCheckStatus();
 
 		async function runCheck() {
+			const btn = document.getElementById('runCheckBtn');
+			if (btn.dataset.checking === '1') return;
 			const confirmed = await showModal('Run Check', 'Run check for all courses now?');
 			if (!confirmed) return;
 

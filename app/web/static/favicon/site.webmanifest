@@ -1,6 +1,6 @@
 {
-	"name": "tree-eclass Manager",
-	"short_name": "tree-eclass",
+	"name": "tree-eClass Manager",
+	"short_name": "tree-eClass",
 	"icons": [
 		{
 			"src": "/static/favicon/android-chrome-192x192.png",

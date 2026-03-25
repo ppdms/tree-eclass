@@ -441,23 +441,24 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
         graded_exercises = []
         file_updated_exercises = []
         try:
-            stored = {ex['exercise_id']: ex for ex in db_manager.get_exercises(course_id=course_id)}
+            stored = {ex['exercise_id']: ex for ex in db_manager.get_exercises(course_id=course_id, include_ignored=True)}
             exercises_scraper = ExercisesScraper(scraper_instance.session)
             exercises = exercises_scraper.fetch_exercises(course_id)
             if exercises:
                 for ex in exercises:
                     eid = ex['exercise_id']
+                    ignored = stored.get(eid, {}).get('ignored', False)
                     if eid not in stored:
                         new_exercises.append(ex)
                         print(f"📝 New Exercise: {ex['title']} (Course: {course_name})")
                     else:
                         prev = stored[eid]
-                        # Grade assigned or changed
+                        # Grade assigned or changed — notify even if ignored
                         if ex['grade'] and ex['grade'] != prev.get('grade', ''):
                             graded_exercises.append({**ex, 'old_grade': prev.get('grade', '')})
                             print(f"🎓 Grade Update: {ex['title']} → {ex['grade']} (Course: {course_name})")
-                        # Assignment file added or renamed
-                        if ex['assignment_file_name'] and ex['assignment_file_name'] != prev.get('assignment_file_name', ''):
+                        # Assignment file added or renamed — skip if ignored
+                        if not ignored and ex['assignment_file_name'] and ex['assignment_file_name'] != prev.get('assignment_file_name', ''):
                             file_updated_exercises.append(ex)
                             print(f"📎 Exercise File Updated: {ex['title']} (Course: {course_name})")
                 db_manager.save_exercises(course_id, exercises)
@@ -501,12 +502,10 @@ def run_checker(db_manager: DatabaseManager):
     try:
         # Set check status to active
         db_manager.set_check_status(True)
-        db_manager.log_check_event("check_start", "Starting check for all courses", status="info")
         
         courses = db_manager.get_courses()
         if not courses:
             logging.warning("No courses found in the database. Nothing to do.")
-            db_manager.log_check_event("check_end", "No courses found", status="warning")
             db_manager.set_check_status(False)
             return
 
@@ -532,7 +531,6 @@ def run_checker(db_manager: DatabaseManager):
         for course in courses:
             print("")
             db_manager.set_check_status(True, course['id'])
-            db_manager.log_check_event("course_check_start", f"Checking course: {course['name']}", course_id=course['id'], status="info")
             changes, new_announcements, exercise_events, success = process_course(db_manager, course, scraper_instance)
             if success:
                 if changes:
@@ -543,19 +541,8 @@ def run_checker(db_manager: DatabaseManager):
                 if n_ex:
                     all_exercise_events[course['name']] = exercise_events
 
-                total_updates = len(changes) + len(new_announcements) + n_ex
-                if total_updates > 0:
-                    n_new = len(exercise_events.get('new', []))
-                    n_graded = len(exercise_events.get('graded', []))
-                    n_file = len(exercise_events.get('file_updated', []))
-                    db_manager.log_check_event("course_check_complete",
-                        f"Found {len(changes)} file change(s), {len(new_announcements)} new announcement(s), "
-                        f"{n_new} new exercise(s), {n_graded} graded, {n_file} file-updated",
-                        course_id=course['id'], status="success")
-                else:
-                    db_manager.log_check_event("course_check_complete", "No changes detected", course_id=course['id'], status="info")
             else:
-                db_manager.log_check_event("course_check_complete", "Check failed", course_id=course['id'], status="error")
+                logging.warning(f"Failed to process course: {course['name']}")
 
         # Check global feeds
         preferences = db_manager.get_preferences()
@@ -567,7 +554,6 @@ def run_checker(db_manager: DatabaseManager):
                 logging.debug(f"Global feed '{feed_key}' is disabled, skipping")
                 continue
 
-            db_manager.log_check_event("global_feed_check", f"Checking global feed: {feed_info['name']}", status="info")
             try:
                 announcements = ann_scraper.fetch_global_feed(feed_key)
                 if announcements:
@@ -592,22 +578,14 @@ def run_checker(db_manager: DatabaseManager):
                 n_courses = max(len(all_changes), len(all_announcements), len(all_exercise_events))
                 print(f"\nAttempting to send webhook with updates from {n_courses} course(s).")
                 send_webhook(all_changes, all_announcements, db_manager, all_exercise_events)
-                db_manager.log_check_event("webhook_sent",
-                    f"Webhook sent for {len(all_changes)} course(s) with file changes, "
-                    f"{len(all_announcements)} course(s) with new announcements, "
-                    f"{len(all_exercise_events)} course(s) with exercise events",
-                    status="success")
             except Exception as e:
                 logging.error(f"Failed to send webhook notification: {e}", exc_info=True)
-                db_manager.log_check_event("webhook_failed", f"Failed to send webhook: {str(e)}", status="error")
         print("")
         
-        db_manager.log_check_event("check_end", f"Check completed. {len(all_changes)} course(s) with changes", status="success")
         db_manager.set_check_status(False)
         
     except Exception as e:
         logging.error(f"Critical error in run_checker: {e}", exc_info=True)
-        db_manager.log_check_event("check_error", f"Critical error: {str(e)}", status="error")
         db_manager.set_check_status(False)
 
 
@@ -630,12 +608,10 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
         
         course_name = course['name']
         logging.info(f"Checking course '{course_name}' (ID: {course_id})")
-        db_manager.log_check_event("course_check_start", f"Checking course: {course_name}", course_id=course_id, status="info")
         
         # Initialize WebDAV uploader (required)
         webdav_config = db_manager.get_webdav_config()
         if not webdav_config:
-            db_manager.log_check_event("course_check_error", "WebDAV must be configured", course_id=course_id, status="error")
             db_manager.set_check_status(False)
             return {"success": False, "error": "WebDAV must be configured to check courses"}
         
@@ -646,7 +622,6 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
             logging.info("WebDAV connection established")
         except Exception as e:
             logging.error(f"Failed to initialize WebDAV uploader: {e}", exc_info=True)
-            db_manager.log_check_event("course_check_error", f"WebDAV connection failed: {e}", course_id=course_id, status="error")
             db_manager.set_check_status(False)
             return {"success": False, "error": f"WebDAV is required but not available: {e}"}
         
@@ -656,7 +631,6 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
         changes, new_announcements, exercise_events, success = process_course(db_manager, course, scraper_instance)
 
         if not success:
-            db_manager.log_check_event("course_check_error", f"Failed to process course: {course_name}", course_id=course_id, status="error")
             db_manager.set_check_status(False)
             return {
                 'success': False,
@@ -671,20 +645,8 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
                 all_announcements = {course_name: new_announcements} if new_announcements else {}
                 all_ex_events = {course_name: exercise_events} if n_ex else {}
                 send_webhook(all_changes, all_announcements, db_manager, all_ex_events)
-                db_manager.log_check_event("webhook_sent", f"Webhook sent for course: {course_name}", course_id=course_id, status="success")
             except Exception as e:
                 logging.error(f"Failed to send webhook notification: {e}", exc_info=True)
-                db_manager.log_check_event("webhook_failed", f"Failed to send webhook: {str(e)}", course_id=course_id, status="error")
-
-            n_new = len(exercise_events.get('new', []))
-            n_graded = len(exercise_events.get('graded', []))
-            n_file = len(exercise_events.get('file_updated', []))
-            db_manager.log_check_event("course_check_complete",
-                f"Found {len(changes)} file change(s), {len(new_announcements)} new announcement(s), "
-                f"{n_new} new exercise(s), {n_graded} graded, {n_file} file-updated",
-                course_id=course_id, status="success")
-        else:
-            db_manager.log_check_event("course_check_complete", "No changes detected", course_id=course_id, status="info")
 
         db_manager.set_check_status(False)
 
@@ -703,7 +665,6 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
         
     except Exception as e:
         logging.error(f"Critical error checking course {course_id}: {e}", exc_info=True)
-        db_manager.log_check_event("course_check_error", f"Critical error: {str(e)}", course_id=course_id, status="error")
         db_manager.set_check_status(False)
         return {
             'success': False,

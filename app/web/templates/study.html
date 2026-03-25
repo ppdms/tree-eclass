@@ -1,156 +1,274 @@
 {% extends "base.html" %}
 
-{% block title %}Study Inbox - tree-eclass{% endblock %}
+{% block title %}Study Inbox - tree-eClass{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Inbox ───────────────────────────────────────────────────── */
+.inbox-hint {
+	color: var(--text-secondary);
+	font-size: 0.8rem;
+	margin-bottom: 0.6rem;
+}
+
+.inbox-wrap {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+}
+
+.inbox-table {
+	width: 100%;
+	border-collapse: collapse;
+	background: var(--surface);
+}
+
+.inbox-table thead {
+	background: var(--surface-raised);
+}
+
+.inbox-table th {
+	font-size: 0.68rem;
+	font-weight: 600;
+	color: var(--text-secondary);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	padding: 0.4rem 0.75rem;
+	text-align: left;
+	border-bottom: 1px solid var(--border);
+}
+
+.inbox-table th:nth-child(1) {
+	text-align: center;
+	width: 3rem;
+	min-width: 3rem;
+}
+.inbox-table th:nth-child(2) { padding-left: 0; }
+.inbox-table th:nth-child(3) { text-align: right; }
+.inbox-table th:nth-child(4) { text-align: right; }
+
+.inbox-table td {
+	padding: 0.35rem 0.75rem;
+	border-bottom: 1px solid var(--border-light);
+	vertical-align: middle;
+}
+
+.inbox-table tr:last-child td { border-bottom: none; }
+
+.inbox-table tbody tr:hover { background: rgba(255, 255, 255, 0.025); }
+
+.inbox-table .col-level {
+	width: 3rem;
+	min-width: 3rem;
+	text-align: center;
+	padding-left: 0.2rem;
+	padding-right: 0.2rem;
+	line-height: 1;
+}
+
+.inbox-table .col-level .study-wrap {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.5rem;
+	height: 1.5rem;
+	margin: 0 auto;
+	line-height: 1;
+}
+
+.inbox-table .col-level .study-level-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.5rem;
+	height: 1.5rem;
+	font-size: 1.1rem;
+	padding: 0;
+	margin: 0;
+	line-height: 1;
+	transform: translateY(-1px);
+}
+.inbox-table td:nth-child(2) { padding-left: 0; }
+.inbox-table td:nth-child(2) .inbox-file-name {
+	display: inline-flex;
+	align-items: center;
+	min-height: 1.5rem;
+	line-height: 1.15;
+}
+.inbox-table .col-course { text-align: right; white-space: nowrap; width: 1%; }
+.inbox-table .col-date { white-space: nowrap; text-align: right; width: 1%; }
+
+.inbox-file-name {
+	font-size: 0.875rem;
+	font-weight: 500;
+	color: var(--primary-color);
+	text-decoration: none;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: block;
+	max-width: 100%;
+}
+.inbox-file-name:hover { text-decoration: underline; }
+
+.inbox-file-course {
+	font-size: 0.78rem;
+	color: var(--text-secondary);
+	text-decoration: none;
+	white-space: nowrap;
+}
+.inbox-file-course:hover { color: var(--primary-color); }
+
+.inbox-date {
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+	.inbox-wrap {
+		overflow-x: hidden;
+	}
+
+	.inbox-table thead {
+		display: none;
+	}
+
+	.inbox-table,
+	.inbox-table tbody,
+	.inbox-table tr,
+	.inbox-table td {
+		display: block;
+		width: 100%;
+	}
+
+	.inbox-table tbody tr {
+		display: grid;
+		grid-template-columns: 2.5rem minmax(0, 1fr);
+		grid-template-areas:
+			"level file"
+			"level course"
+			"level date";
+		gap: 0.15rem 0.55rem;
+		padding: 0.45rem 0.35rem;
+		border-bottom: 1px solid var(--border-light);
+	}
+
+	.inbox-table tbody tr:last-child {
+		border-bottom: none;
+	}
+
+	.inbox-table td {
+		padding: 0;
+		border-bottom: none;
+		min-width: 0;
+	}
+
+	.inbox-table .col-level {
+		grid-area: level;
+		width: auto;
+		min-width: 0;
+		padding: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.inbox-table td:nth-child(2) {
+		grid-area: file;
+	}
+
+	.inbox-table .col-course {
+		grid-area: course;
+		text-align: left;
+		white-space: normal;
+		width: auto;
+	}
+
+	.inbox-table .col-date {
+		grid-area: date;
+		text-align: left;
+		white-space: normal;
+		width: auto;
+	}
+
+	.inbox-file-name {
+		display: block;
+		min-height: 0;
+		line-height: 1.35;
+		white-space: normal;
+		overflow: visible;
+		text-overflow: clip;
+		overflow-wrap: anywhere;
+	}
+
+	.inbox-file-course {
+		display: block;
+		white-space: normal;
+		word-break: break-word;
+	}
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="page-header">
-	<h1>📚 Study Inbox</h1>
-	<button onclick="openGlobalSessionModal()" class="btn btn-primary">📝 Log Study Session</button>
-</div>
-
-<!-- Log Study Session Modal (global, course selector) -->
-<div id="globalSessionModal" class="modal" onclick="if(event.target===this)closeGlobalSessionModal()">
-	<div class="modal-content" style="max-width: 420px;">
-		<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-lg);">
-			<h3 style="margin: 0;">📝 Log Study Session</h3>
-			<button onclick="closeGlobalSessionModal()" class="btn btn-secondary" style="padding: 4px 10px;">✕</button>
-		</div>
-		<div class="form-group">
-			<label for="sessionCourse">Course</label>
-			<select id="sessionCourse" style="width: 100%;">
-				{% for course in courses %}
-				<option value="{{ course.id }}">{{ course.name }}</option>
-				{% endfor %}
-			</select>
-		</div>
-		<div class="form-group" style="margin-top: var(--spacing-md);">
-			<label for="sessionNoteGlobal">Note <span style="color:var(--text-secondary);font-weight:normal;">(optional)</span></label>
-			<input type="text" id="sessionNoteGlobal" placeholder="e.g. Chapters 3-4, lecture slides" style="width: 100%;">
-		</div>
-		<div class="form-actions" style="margin-top: var(--spacing-lg);">
-			<button onclick="submitGlobalSession()" class="btn btn-primary">Log Session</button>
-			<button onclick="closeGlobalSessionModal()" class="btn btn-secondary">Cancel</button>
-		</div>
-	</div>
-</div>
-
 <!-- Priority Inbox -->
-<div class="section">
-	<h2>Priority Inbox</h2>
-	<p style="color: var(--text-secondary); font-size: 0.9em; margin-bottom: var(--spacing-md);">
-		Files you haven't mastered yet, sorted by urgency — older files in underattended courses appear first.<br>
-		Click a circle (○ ◔ ◑ ◕ ●) to advance your comprehension level. ● = mastered (disappears from inbox).
-	</p>
-	{% if inbox %}
-	<table class="data-table" id="inbox-table">
-		<thead>
-			<tr>
-				<th style="width: 2.5rem;">Level</th>
-				<th>File</th>
-				<th>Course</th>
-				<th>Added</th>
-			</tr>
-		</thead>
-		<tbody>
-			{% for item in inbox %}
-			<tr id="inbox-row-{{ loop.index }}" data-row-index="{{ loop.index }}">
-				<td style="text-align: center;">
-					<span class="study-wrap">
-						<button class="study-level-btn"
-							data-local-path="{{ item.file_path | e }}"
-							data-course-id="{{ item.course_id }}"
-							data-level="{{ item.level }}"
-							onclick="cycleStudyLevel(this, event)"
-							title="Shift+click to ignore">{{ ['○','◔','◑','◕','●'][item.level] }}</button>
-						<span class="study-picker">
-							{% for i in range(5) %}<button class="sp-opt{% if item.level == i %} sp-opt--active{% endif %}" data-level="{{ i }}" onclick="setStudyLevel(this, {{ i }})" title="{{ ['Not studied','Glanced','Familiar','Studied','Mastered'][i] }}">{{ ['○','◔','◑','◕','●'][i] }}</button>{% endfor %}
-						</span>
+<p class="inbox-hint">Click a circle to advance comprehension level. ● = mastered.</p>
+
+{% if inbox %}
+<div class="inbox-wrap"><table class="inbox-table">
+	<thead>
+		<tr>
+			<th></th>
+			<th>File</th>
+			<th>Course</th>
+			<th>Added</th>
+		</tr>
+	</thead>
+	<tbody>
+		{% for item in inbox %}
+		<tr id="inbox-row-{{ loop.index }}" data-row-index="{{ loop.index }}">
+			<td class="col-level">
+				<span class="study-wrap">
+					<button class="study-level-btn"
+						data-local-path="{{ item.file_path | e }}"
+						data-course-id="{{ item.course_id }}"
+						data-level="{{ item.level }}"
+						onclick="cycleStudyLevel(this, event)"
+						title="Shift+click to ignore">{{ ['○','◔','◑','◕','●'][item.level] }}</button>
+					<span class="study-picker">
+						{% for i in range(5) %}<button class="sp-opt{% if item.level == i %} sp-opt--active{% endif %}" data-level="{{ i }}" onclick="setStudyLevel(this, {{ i }})" title="{{ ['Not studied','Glanced','Familiar','Studied','Mastered'][i] }}">{{ ['○','◔','◑','◕','●'][i] }}</button>{% endfor %}
 					</span>
-				</td>
-				<td>
-					{% if item.redirect_url %}
-					<a href="{{ item.redirect_url }}" target="_blank">{{ item.file_name }} 🔗</a>
-					{% elif item.file_path %}
-					<a href="/files{{ item.file_path }}" target="_blank">{{ item.file_name }}</a>
-					{% else %}
-					{{ item.file_name }}
-					{% endif %}
-				</td>
-				<td><a href="/courses/{{ item.course_id }}">{{ item.course_name }}</a></td>
-				<td style="color: var(--text-secondary); font-size: 0.85em; white-space: nowrap;">
-					{% if item.last_updated %}{{ item.last_updated | format_timestamp }}{% else %}—{% endif %}
-				</td>
-			</tr>
-			{% endfor %}
-		</tbody>
-	</table>
+				</span>
+			</td>
+			<td>
+				{% if item.redirect_url %}
+				<a class="inbox-file-name" href="{{ item.redirect_url }}" target="_blank">{{ item.file_name }}</a>
+				{% elif item.file_path %}
+				<a class="inbox-file-name" href="/files{{ item.file_path }}" target="_blank">{{ item.file_name }}</a>
+				{% else %}
+				<span class="inbox-file-name" style="color: var(--text-primary); cursor: default;">{{ item.file_name }}</span>
+				{% endif %}
+			</td>
+			<td class="col-course">
+				<a class="inbox-file-course" href="/courses/{{ item.course_id }}">{{ item.course_name }}</a>
+			</td>
+			<td class="col-date">
+				<span class="inbox-date">{% if item.last_updated %}{{ item.last_updated | format_timestamp }}{% else %}—{% endif %}</span>
+			</td>
+		</tr>
+		{% endfor %}
+	</tbody>
+</table></div>
+{% else %}
+<p class="empty-state">
+	{% if courses %}
+	All files mastered! Or no files synced yet — run a check to populate the file tree.
 	{% else %}
-	<p class="empty-state">
-		{% if courses %}
-		🎉 All files are mastered! Or no files have been synced yet — run a check to populate the file tree.
-		{% else %}
-		No courses configured yet. <a href="/courses">Add a course</a> to get started.
-		{% endif %}
-	</p>
+	No courses configured. <a href="/courses">Add a course</a> to get started.
 	{% endif %}
-</div>
-
-<!-- Study Sessions Log -->
-<div class="section">
-	<h2>Study Sessions</h2>
-	{% if sessions %}
-	<table class="data-table">
-		<thead>
-			<tr>
-				<th>When</th>
-				<th>Course</th>
-				<th>Note</th>
-			</tr>
-		</thead>
-		<tbody>
-			{% for s in sessions %}
-			<tr>
-				<td style="white-space: nowrap;">{{ s.timestamp | athens_time }}</td>
-				<td><a href="/courses/{{ s.course_id }}">{{ s.course_name }}</a></td>
-				<td style="color: var(--text-secondary);">{{ s.note or '—' }}</td>
-			</tr>
-			{% endfor %}
-		</tbody>
-	</table>
-	{% else %}
-	<p class="empty-state">No study sessions logged yet. Use the button above to record one.</p>
-	{% endif %}
-</div>
+</p>
+{% endif %}
 {% endblock %}
 
-{% block extra_scripts %}
-<script>
-	function openGlobalSessionModal() {
-		document.getElementById('globalSessionModal').style.display = 'flex';
-	}
-	function closeGlobalSessionModal() {
-		document.getElementById('globalSessionModal').style.display = 'none';
-		document.getElementById('sessionNoteGlobal').value = '';
-	}
-	async function submitGlobalSession() {
-		const courseId = document.getElementById('sessionCourse').value;
-		const note = document.getElementById('sessionNoteGlobal').value.trim();
-		try {
-			const resp = await fetch(`/api/courses/${courseId}/study-sessions`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ note: note || null }),
-			});
-			if (resp.ok) {
-				closeGlobalSessionModal();
-				window.treeEclass.showNotification('Study session logged!', 'success');
-				setTimeout(() => location.reload(), 1000);
-			} else {
-				window.treeEclass.showNotification('Failed to log session.', 'error');
-			}
-		} catch (e) {
-			window.treeEclass.showNotification('Error: ' + e.message, 'error');
-		}
-	}
-</script>
-{% endblock %}

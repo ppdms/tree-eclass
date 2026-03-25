@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Announcements - tree-eclass{% endblock %}
+{% block title %}Announcements - tree-eClass{% endblock %}
 
 {% block content %}
 <!-- Tab toggle + inline course filter -->
 <div class="section ann-toolbar">
 	<div class="tab-toggle">
-		<a href="/announcements?tab=courses" class="tab-btn {% if active_tab == 'courses' %}tab-btn--active{% endif %}">📢 Course Announcements</a>
-		<a href="/announcements?tab=uni" class="tab-btn {% if active_tab == 'uni' %}tab-btn--active{% endif %}">🏛️ University Feeds</a>
+		<a href="/announcements?tab=courses" class="tab-btn {% if active_tab == 'courses' %}tab-btn--active{% endif %}"><i class="bi bi-megaphone"></i> Course Announcements</a>
+		<a href="/announcements?tab=uni" class="tab-btn {% if active_tab == 'uni' %}tab-btn--active{% endif %}"><i class="bi bi-building"></i> University Feeds</a>
 	</div>
 	{% if active_tab == 'courses' %}
 	<div class="ann-course-filter">
@@ -26,31 +26,24 @@
 {% if active_tab == 'courses' %}
 <div class="section">
 	{% if announcements %}
-	<div class="announcements-list">
+	<div class="ann-list">
 		{% for announcement in announcements %}
-		<div class="announcement-card">
-			<div class="announcement-header">
-				<div class="announcement-title-row">
-					<h3 class="announcement-title">
-						<a href="{{ announcement.link }}" target="_blank" rel="noopener noreferrer">
-							{{ announcement.title }}
-						</a>
-					</h3>
-					<span class="announcement-course">{{ announcement.course_name }}</span>
+		<div class="ann-card">
+			<div class="ann-stripe"></div>
+			<div class="ann-body">
+				<div class="ann-row-title">
+					<a class="ann-title" href="{{ announcement.link }}" target="_blank" rel="noopener noreferrer">{{ announcement.title }}</a>
+					<div class="ann-right">
+						<span class="ann-chip">{{ announcement.course_name }}</span>
+						{% if announcement.pub_date %}
+						<span class="ann-date"><i class="bi bi-calendar3"></i> {{ announcement.pub_date|athens_time }}</span>
+						{% endif %}
+					</div>
 				</div>
-				<div class="announcement-meta">
-					{% if announcement.pub_date %}
-					<span class="announcement-date">
-						📅 {{ announcement.pub_date|athens_time }}
-					</span>
-					{% endif %}
-				</div>
+				{% if announcement.description %}
+				<div class="ann-content">{{ announcement.description|safe }}</div>
+				{% endif %}
 			</div>
-			{% if announcement.description %}
-			<div class="announcement-body">
-				{{ announcement.description|safe }}
-			</div>
-			{% endif %}
 		</div>
 		{% endfor %}
 	</div>
@@ -63,31 +56,24 @@
 <!-- University feeds tab -->
 <div class="section">
 	{% if global_announcements %}
-	<div class="announcements-list">
+	<div class="ann-list">
 		{% for announcement in global_announcements %}
-		<div class="announcement-card">
-			<div class="announcement-header">
-				<div class="announcement-title-row">
-					<h3 class="announcement-title">
-						<a href="{{ announcement.link }}" target="_blank" rel="noopener noreferrer">
-							{{ announcement.title }}
-						</a>
-					</h3>
-					<span class="announcement-course">{{ announcement.feed_name }}</span>
+		<div class="ann-card ann-card-uni">
+			<div class="ann-stripe"></div>
+			<div class="ann-body">
+				<div class="ann-row-title">
+					<a class="ann-title" href="{{ announcement.link }}" target="_blank" rel="noopener noreferrer">{{ announcement.title }}</a>
+					<div class="ann-right">
+						<span class="ann-chip">{{ announcement.feed_name }}</span>
+						{% if announcement.pub_date %}
+						<span class="ann-date"><i class="bi bi-calendar3"></i> {{ announcement.pub_date|athens_time }}</span>
+						{% endif %}
+					</div>
 				</div>
-				<div class="announcement-meta">
-					{% if announcement.pub_date %}
-					<span class="announcement-date">
-						📅 {{ announcement.pub_date|athens_time }}
-					</span>
-					{% endif %}
-				</div>
+				{% if announcement.description %}
+				<div class="ann-content">{{ announcement.description|safe }}</div>
+				{% endif %}
 			</div>
-			{% if announcement.description %}
-			<div class="announcement-body">
-				{{ announcement.description|safe }}
-			</div>
-			{% endif %}
 		</div>
 		{% endfor %}
 	</div>
