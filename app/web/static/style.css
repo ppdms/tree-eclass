@@ -1027,16 +1027,17 @@ main.container {
 	align-items: center;
 	gap: 0.5rem;
 	min-width: 0;
+	justify-content: flex-end;
 }
 
 .cc-bar {
-	flex: 1;
+	flex: 0 0 clamp(8.5rem, 16vw, 12rem);
+	width: clamp(8.5rem, 16vw, 12rem);
 	height: 8px;
 	border-radius: 4px;
 	overflow: hidden;
 	background: var(--border);
 	display: flex;
-	min-width: 80px;
 }
 
 .cc-pct {
@@ -2488,7 +2489,7 @@ a.tl-chip:hover {
 
 .tl-date {
 	font-size: 0.78rem;
-	color: var(--text-primary);
+	color: var(--text-primary-soft);
 	font-weight: 600;
 	white-space: nowrap;
 }
