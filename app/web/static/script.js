@@ -1,4 +1,4 @@
-// tree-eclass Manager - Client-side JavaScript
+// tree-eclass - Client-side JavaScript
 
 // Custom Modal Dialog
 function showModal(title, message, alertMode = false) {
