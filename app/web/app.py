@@ -520,8 +520,43 @@ def _parse_greek_deadline(deadline_str: str):
         return None
     try:
         import re as _re
+        from datetime import datetime as _dt, timedelta as _td
+
+        cleaned = " ".join(deadline_str.split())
+
+        # Relative forms seen in eClass list, e.g. "αύριο - 11:55 μ.μ."
+        rel = _re.search(
+            r'(σήμερα|αύριο|μεθαύριο)\s*-\s*(\d+):(\d+)\s*(μ\.μ\.|π\.μ\.)',
+            cleaned,
+            flags=_re.IGNORECASE,
+        )
+        if rel:
+            rel_word, hour, minute, period = rel.groups()
+            now = _dt.now(tz=ZoneInfo('Europe/Athens'))
+            base_date = now.date()
+            rel_word = rel_word.lower()
+            if rel_word == 'αύριο':
+                base_date = base_date + _td(days=1)
+            elif rel_word == 'μεθαύριο':
+                base_date = base_date + _td(days=2)
+
+            hour, minute = int(hour), int(minute)
+            if period == 'μ.μ.' and hour != 12:
+                hour += 12
+            elif period == 'π.μ.' and hour == 12:
+                hour = 0
+
+            return _dt(
+                base_date.year,
+                base_date.month,
+                base_date.day,
+                hour,
+                minute,
+                tzinfo=ZoneInfo('Europe/Athens'),
+            )
+
         # e.g. "Τετάρτη, 25 Μαρτίου 2026 - 11:55 μ.μ."
-        m = _re.search(r'(\d+)\s+(\S+)\s+(\d{4})\s*-\s*(\d+):(\d+)\s*(μ\.μ\.|π\.μ\.)', deadline_str)
+        m = _re.search(r'(\d+)\s+(\S+)\s+(\d{4})\s*-\s*(\d+):(\d+)\s*(μ\.μ\.|π\.μ\.)', cleaned)
         if not m:
             return None
         day, month_gr, year, hour, minute, period = m.groups()
@@ -533,7 +568,6 @@ def _parse_greek_deadline(deadline_str: str):
             hour += 12
         elif period == 'π.μ.' and hour == 12:
             hour = 0
-        from datetime import datetime as _dt
         return _dt(int(year), month, int(day), hour, minute,
                    tzinfo=ZoneInfo('Europe/Athens'))
     except Exception:
