@@ -7,21 +7,16 @@
 <span class="study-wrap">
 	<button class="study-level-btn{% if slevel == 5 %} study-ignored{% endif %}" data-local-path="{{ study_key | e }}" data-course-id="{{ course_id }}" data-level="{{ slevel }}" onclick="cycleStudyLevel(this, event)" title="{% if slevel == 5 %}Ignored — Shift+click to unignore{% else %}Shift+click to ignore{% endif %}">{{ ['○','◔','◑','◕','●','—'][slevel] }}</button>
 	<span class="study-picker">
-		{% for i in range(5) %}<button class="sp-opt{% if slevel == i %} sp-opt--active{% endif %}" data-level="{{ i }}" onclick="setStudyLevel(this, {{ i }})" title="{{ ['Not studied','Glanced','Familiar','Studied','Mastered'][i] }}">{{ ['○','◔','◑','◕','●'][i] }}</button>{% endfor %}
+		{% for i in range(5) %}<button class="sp-opt{% if slevel == i %} sp-opt--active{% endif %}" data-level="{{ i }}" onclick="setStudyLevel(this, Number(this.dataset.level))" title="{{ ['Not studied','Glanced','Familiar','Studied','Mastered'][i] }}">{{ ['○','◔','◑','◕','●'][i] }}</button>{% endfor %}
 	</span>
 </span>
 {% endmacro %}
 
 {% macro render_tree_children(children, level, webdav_folder, files_with_versions, folders_with_deleted, course_id, study_levels) %}
 {% for child in children %}
-{% set rel_folder = child.local_path[(webdav_folder|length + 1):] %}
 <div class="tree-node" style="margin-left: {{ level * 20 }}px;">
 	<span class="tree-icon"><i class="bi bi-folder-fill"></i></span>
 	<span class="tree-name">{{ child.name }}</span>
-	{% if rel_folder in folders_with_deleted %}
-	<button class="version-indicator deleted-indicator"
-		onclick="toggleDeletedFiles(this, {{ course_id }}, {{ rel_folder | tojson }})"><i class="bi bi-trash3"></i></button>
-	{% endif %}
 
 	{% if child.files %}
 	<div class="tree-children">
@@ -51,8 +46,9 @@
 			{% endif %}
 			{% if rel_file and rel_file in files_with_versions %}
 			<button class="version-indicator modified-indicator"
+				data-course-id="{{ course_id }}"
 				data-fp="{{ rel_file | e }}"
-				onclick="toggleFileVersions(this, {{ course_id }}, this.dataset.fp)">
+				onclick="toggleFileVersions(this, Number(this.dataset.courseId), this.dataset.fp)">
 <i class="bi bi-clock-history"></i></button>
 			{% endif %}
 			{% if file.last_updated %}
@@ -81,7 +77,7 @@
 	</div>
 </div>
 
-<div id="settingsModal" class="modal" onclick="if(event.target===this)toggleSettingsModal()">
+<div id="settingsModal" class="modal" onclick="handleSettingsModalBackdropClick(event)">
 	<div class="modal-content" style="max-width: 560px;">
 		<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-lg);">
 			<h3 style="margin: 0;">Settings</h3>
@@ -109,13 +105,17 @@
 
 		<hr style="border: none; border-top: 1px solid var(--border); margin: var(--spacing-lg) 0;">
 		<div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
-			<button onclick="toggleSettingsModal(); checkCourse({{ course.id }})" class="btn btn-primary"><i class="bi bi-arrow-clockwise"></i> Check Now</button>
+			<button data-course-id="{{ course.id }}" onclick="checkCourseFromButton(this)" class="btn btn-primary"><i class="bi bi-arrow-clockwise"></i> Check Now</button>
 			<form method="POST" action="/courses/{{ course.id }}/reset" style="display: inline;"
-				onsubmit="return handleConfirm(event, 'Reset Course Data', 'Reset all data for this course? This will clear the file tree and change history but keep the course configuration.');">
+				data-confirm-title="Reset Course Data"
+				data-confirm-message="Reset all data for this course? This will clear the file tree and change history but keep the course configuration."
+				onsubmit="return handleConfirmForm(event, this);">
 				<button type="submit" class="btn btn-warning"><i class="bi bi-arrow-clockwise"></i> Reset Data</button>
 			</form>
 			<form method="POST" action="/courses/{{ course.id }}/delete" style="display: inline;"
-				onsubmit="return handleConfirm(event, 'Delete Course', 'Delete this course completely? This action cannot be undone.');">
+				data-confirm-title="Delete Course"
+				data-confirm-message="Delete this course completely? This action cannot be undone."
+				onsubmit="return handleConfirmForm(event, this);">
 				<button type="submit" class="btn btn-danger"><i class="bi bi-trash"></i> Delete Course</button>
 			</form>
 		</div>
@@ -131,9 +131,11 @@
 		<div class="tree-node">
 			<span class="tree-icon"><i class="bi bi-folder-fill"></i></span>
 			<span class="tree-name">{{ tree.name }}</span>
-			{% if "" in folders_with_deleted %}
+			{% if folders_with_deleted %}
 			<button class="version-indicator deleted-indicator"
-				onclick="toggleDeletedFiles(this, {{ course.id }}, '')">
+				data-course-id="{{ course.id }}"
+				data-folder=""
+				onclick="toggleDeletedFiles(this, Number(this.dataset.courseId), this.dataset.folder)">
 	<i class="bi bi-trash3"></i></button>
 			{% endif %}
 			<div class="tree-children">
@@ -164,8 +166,9 @@
 					{% endif %}
 				{% if rel_file and rel_file in files_with_versions %}
 				<button class="version-indicator modified-indicator"
+					data-course-id="{{ course.id }}"
 					data-fp="{{ rel_file | e }}"
-					onclick="toggleFileVersions(this, {{ course.id }}, this.dataset.fp)">
+					onclick="toggleFileVersions(this, Number(this.dataset.courseId), this.dataset.fp)">
 <i class="bi bi-clock-history"></i></button>
 				{% endif %}
 				</div>
@@ -196,6 +199,10 @@
 		modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
 	}
 
+	function handleSettingsModalBackdropClick(event) {
+		if (event.target === event.currentTarget) toggleSettingsModal();
+	}
+
 	function toggleTreeView() {
 		const container = document.getElementById('tree-view-container');
 		const icon = document.getElementById('tree-toggle-icon');
@@ -214,6 +221,10 @@
 		return false;
 	}
 
+	function handleConfirmForm(event, form) {
+		return handleConfirm(event, form.dataset.confirmTitle, form.dataset.confirmMessage);
+	}
+
 	async function checkCourse(courseId) {
 		try {
 			const response = await fetch(`/courses/${courseId}/check`, { method: 'POST' });
@@ -230,6 +241,11 @@
 		} catch (error) {
 			window.treeEclass.showNotification('Error: ' + error.message, 'error');
 		}
+	}
+
+	function checkCourseFromButton(btn) {
+		toggleSettingsModal();
+		checkCourse(Number(btn.dataset.courseId));
 	}
 
 	// Init diff trees for course timeline

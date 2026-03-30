@@ -238,7 +238,7 @@
 						onclick="cycleStudyLevel(this, event)"
 						title="Shift+click to ignore">{{ ['○','◔','◑','◕','●'][item.level] }}</button>
 					<span class="study-picker">
-						{% for i in range(5) %}<button class="sp-opt{% if item.level == i %} sp-opt--active{% endif %}" data-level="{{ i }}" onclick="setStudyLevel(this, {{ i }})" title="{{ ['Not studied','Glanced','Familiar','Studied','Mastered'][i] }}">{{ ['○','◔','◑','◕','●'][i] }}</button>{% endfor %}
+						{% for i in range(5) %}<button class="sp-opt{% if item.level == i %} sp-opt--active{% endif %}" data-level="{{ i }}" onclick="setStudyLevel(this, Number(this.dataset.level))" title="{{ ['Not studied','Glanced','Familiar','Studied','Mastered'][i] }}">{{ ['○','◔','◑','◕','●'][i] }}</button>{% endfor %}
 					</span>
 				</span>
 			</td>

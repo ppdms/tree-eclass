@@ -29,7 +29,7 @@
 					<span class="semester-badge" title="Semester progress">{{ sp }}%</span>
 					{% endif %}
 				</a>
-				<a href="#" id="runCheckBtn" onclick="event.preventDefault(); runCheck()" class="nav-check-btn" title="Run Check"><i class="bi bi-arrow-clockwise"></i></a>
+				<a href="#" id="runCheckBtn" onclick="handleRunCheckClick(event)" class="nav-check-btn" title="Run Check"><i class="bi bi-arrow-clockwise"></i></a>
 			</div>
 			{% set path = request.url.path %}
 			<ul class="nav-links">
@@ -72,6 +72,11 @@
 	<script>
 		// Poll check status and update button
 		let checkStatusInterval = null;
+
+		function handleRunCheckClick(event) {
+			event.preventDefault();
+			runCheck();
+		}
 
 		async function updateCheckStatus() {
 			try {

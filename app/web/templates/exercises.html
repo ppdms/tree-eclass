@@ -333,7 +333,9 @@ a.ex-course:hover {
 				{% endif %}
 
 				<button class="ex-ignore-btn" title="Hide exercise"
-					onclick="ignoreExercise(this, {{ ex.course_id }}, '{{ ex.exercise_id }}')">
+					data-course-id="{{ ex.course_id }}"
+					data-exercise-id="{{ ex.exercise_id | e }}"
+					onclick="ignoreExercise(this, Number(this.dataset.courseId), this.dataset.exerciseId)">
 					<i class="bi bi-eye-slash"></i>
 				</button>
 			</div>
