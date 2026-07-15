@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 22  # Current schema version
+SCHEMA_VERSION = 23  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -224,6 +224,26 @@ class DatabaseManager:
             )
         """)
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS study_plan_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id INTEGER NOT NULL,
+                scheduled_date TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('study', 'review')),
+                completed INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS study_review_overrides (
+                course_id INTEGER NOT NULL,
+                review_offset INTEGER NOT NULL,
+                scheduled_date TEXT NOT NULL,
+                PRIMARY KEY (course_id, review_offset),
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS global_announcements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 feed_key TEXT NOT NULL,
@@ -374,6 +394,10 @@ class DatabaseManager:
         if current_version < 22:
             self._migration_21_to_22()
             self._set_schema_version(22)
+
+        if current_version < 23:
+            self._migration_22_to_23()
+            self._set_schema_version(23)
 
         logging.info("All migrations completed successfully")
 
@@ -821,6 +845,32 @@ class DatabaseManager:
         cursor.execute("""
             INSERT OR IGNORE INTO study_planner_settings (id, daily_blocks, block_minutes)
             VALUES (1, 6, 50)
+        """)
+        self.conn.commit()
+
+    def _migration_22_to_23(self):
+        """Migration: Add editable study calendar items and review overrides."""
+        logging.info("Running migration 22 -> 23: Adding editable study calendar items")
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS study_plan_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id INTEGER NOT NULL,
+                scheduled_date TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('study', 'review')),
+                completed INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS study_review_overrides (
+                course_id INTEGER NOT NULL,
+                review_offset INTEGER NOT NULL,
+                scheduled_date TEXT NOT NULL,
+                PRIMARY KEY (course_id, review_offset),
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
         """)
         self.conn.commit()
 
@@ -1841,6 +1891,78 @@ class DatabaseManager:
         except Exception as e:
             logging.error(f"Failed to save course exam plan for {course_id}: {e}", exc_info=True)
             raise
+
+    def get_study_plan_items(self) -> List[Dict]:
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT spi.id, spi.course_id, c.name, spi.scheduled_date,
+                   spi.kind, spi.completed
+            FROM study_plan_items spi
+            JOIN courses c ON c.id = spi.course_id
+            ORDER BY spi.scheduled_date, spi.id
+        """)
+        return [
+            {"id": row[0], "course_id": row[1], "course_name": row[2],
+             "scheduled_date": row[3], "kind": row[4], "completed": bool(row[5])}
+            for row in cursor.fetchall()
+        ]
+
+    def add_study_plan_item(self, course_id: int, scheduled_date: str, kind: str) -> int:
+        if kind not in {"study", "review"}:
+            raise ValueError("Invalid study plan item kind")
+        datetime.fromisoformat(scheduled_date)
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT INTO study_plan_items (course_id, scheduled_date, kind) VALUES (?, ?, ?)",
+            (course_id, scheduled_date, kind),
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def update_study_plan_item(
+        self, item_id: int, scheduled_date: Optional[str] = None,
+        completed: Optional[bool] = None,
+    ) -> bool:
+        updates, values = [], []
+        if scheduled_date is not None:
+            datetime.fromisoformat(scheduled_date)
+            updates.append("scheduled_date = ?")
+            values.append(scheduled_date)
+        if completed is not None:
+            updates.append("completed = ?")
+            values.append(1 if completed else 0)
+        if not updates:
+            return False
+        values.append(item_id)
+        cursor = self.conn.cursor()
+        cursor.execute(f"UPDATE study_plan_items SET {', '.join(updates)} WHERE id = ?", values)
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def delete_study_plan_item(self, item_id: int) -> bool:
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM study_plan_items WHERE id = ?", (item_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_study_review_overrides(self) -> Dict[Tuple[int, int], str]:
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT course_id, review_offset, scheduled_date FROM study_review_overrides")
+        return {(row[0], row[1]): row[2] for row in cursor.fetchall()}
+
+    def save_study_review_override(
+        self, course_id: int, review_offset: int, scheduled_date: str,
+    ):
+        if review_offset not in {1, 3, 7}:
+            raise ValueError("Invalid review offset")
+        datetime.fromisoformat(scheduled_date)
+        self.conn.execute("""
+            INSERT INTO study_review_overrides (course_id, review_offset, scheduled_date)
+            VALUES (?, ?, ?)
+            ON CONFLICT(course_id, review_offset) DO UPDATE SET
+                scheduled_date = excluded.scheduled_date
+        """, (course_id, review_offset, scheduled_date))
+        self.conn.commit()
 
     def set_file_study_level(self, course_id: int, file_path: str, level: int):
         """Upsert the comprehension level (0-5) for a file. Level 5 means ignored."""

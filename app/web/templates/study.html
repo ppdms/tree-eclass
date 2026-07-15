@@ -142,42 +142,85 @@
 .planner-message--ok { background: rgba(74, 222, 128, 0.1); color: #86efac; }
 .planner-message--warn { background: rgba(248, 113, 113, 0.1); color: #fca5a5; }
 
-.planner-summary {
+.planner-calendar-wrap { overflow-x: auto; margin: 0 0 1rem; }
+.planner-calendar {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 0.65rem;
-	margin-bottom: 0.8rem;
-}
-.planner-stat,
-.planner-today {
-	background: var(--surface-raised);
+	grid-template-columns: repeat(7, minmax(7.5rem, 1fr));
+	min-width: 58rem;
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
-	padding: 0.75rem;
+	overflow: hidden;
+	background: var(--border);
+	gap: 1px;
 }
-.planner-stat-label {
-	display: block;
+.planner-weekday {
+	background: var(--surface-raised);
 	color: var(--text-secondary);
-	font-size: 0.68rem;
-	text-transform: uppercase;
+	font-size: 0.67rem;
+	font-weight: 650;
 	letter-spacing: 0.06em;
+	padding: 0.45rem 0.55rem;
+	text-transform: uppercase;
 }
-.planner-stat-value { display: block; margin-top: 0.2rem; font-size: 1.05rem; font-weight: 650; }
-
-.planner-today { margin-bottom: 0.8rem; }
-.planner-today h3 { margin: 0 0 0.55rem; font-size: 0.95rem; }
-.planner-allocation {
+.planner-blank { background: var(--background); min-height: 7.25rem; }
+.planner-calendar-day {
+	background: var(--surface);
+	min-height: 7.25rem;
+	padding: 0.5rem;
+}
+.planner-calendar-day--today { box-shadow: inset 0 0 0 2px var(--primary-color); }
+.planner-calendar-day--exam { background: rgba(248, 113, 113, 0.07); }
+.planner-date { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.6rem; }
+.planner-date strong { font-size: 0.9rem; }
+.planner-date span { color: var(--primary-color); font-size: 0.66rem; font-weight: 650; text-transform: uppercase; }
+.planner-focus { color: var(--text-secondary); font-size: 0.68rem; line-height: 1.35; }
+.planner-focus a { display: block; color: var(--text-primary); font-size: 0.79rem; font-weight: 600; text-decoration: none; }
+.planner-focus--review a { color: #c4b5fd; }
+.planner-exam {
+	background: rgba(248, 113, 113, 0.13);
+	border-left: 2px solid #f87171;
+	border-radius: 3px;
+	color: #fecaca;
+	font-size: 0.72rem;
+	margin-top: 0.45rem;
+	padding: 0.3rem 0.4rem;
+}
+.planner-exam strong { display: block; }
+.planner-card {
 	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 1rem;
-	padding: 0.32rem 0;
-	border-bottom: 1px solid var(--border-light);
+	align-items: center;
+	gap: 0.3rem;
+	background: rgba(96, 165, 250, 0.1);
+	border: 1px solid rgba(96, 165, 250, 0.2);
+	border-radius: 6px;
+	color: var(--text-primary);
+	cursor: grab;
+	font-size: 0.72rem;
+	margin-top: 0.35rem;
+	padding: 0.35rem 0.4rem;
 }
-.planner-allocation:last-child { border-bottom: none; }
-.planner-allocation-name { font-size: 0.86rem; font-weight: 550; }
-.planner-allocation-meta { color: var(--text-secondary); font-size: 0.75rem; white-space: nowrap; }
-.planner-review { color: #c4b5fd; }
+.planner-card--review { background: rgba(167, 139, 250, 0.11); border-color: rgba(167, 139, 250, 0.25); color: #ddd6fe; }
+.planner-card--done { opacity: 0.48; text-decoration: line-through; }
+.planner-card-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.planner-card-action { border: 0; background: none; color: inherit; cursor: pointer; padding: 0; line-height: 1; }
+.planner-day-add {
+	border: 0;
+	background: none;
+	color: var(--text-secondary);
+	cursor: pointer;
+	font-size: 0.7rem;
+	margin-top: 0.45rem;
+	padding: 0;
+}
+.planner-day-add:hover { color: var(--primary-color); }
+.planner-calendar-day--drop { box-shadow: inset 0 0 0 2px #a78bfa; }
+.planner-more { border: 0; background: none; color: var(--primary-color); cursor: pointer; font-size: 0.68rem; padding: 0.2rem 0 0; }
+.planner-dialog { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary); max-width: 22rem; width: calc(100% - 2rem); }
+.planner-dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
+.planner-dialog h3 { margin-top: 0; }
+.planner-dialog label { display: grid; gap: 0.3rem; color: var(--text-secondary); font-size: 0.75rem; margin-bottom: 0.75rem; }
+.planner-dialog select { background: var(--background); border: 1px solid var(--border); border-radius: 5px; color: var(--text-primary); padding: 0.5rem; }
+.planner-dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 
 .planner-warnings {
 	margin: 0 0 0.8rem;
@@ -206,15 +249,14 @@
 .planner-day-total { text-align: right; color: var(--text-secondary); font-size: 0.75rem; }
 
 .planner-config-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
-.planner-config { width: 100%; border-collapse: collapse; background: var(--surface); min-width: 850px; }
+.planner-config { width: 100%; border-collapse: collapse; background: var(--surface); min-width: 34rem; }
 .planner-config th,
 .planner-config td { padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--border-light); text-align: left; }
 .planner-config th { color: var(--text-secondary); background: var(--surface-raised); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; }
 .planner-config td { font-size: 0.8rem; }
 .planner-config tr:last-child td { border-bottom: none; }
 .planner-config input[type="datetime-local"],
-.planner-config input[type="number"],
-.planner-global input[type="number"] {
+.planner-config input[type="number"] {
 	box-sizing: border-box;
 	background: var(--background);
 	color: var(--text-primary);
@@ -223,23 +265,10 @@
 	padding: 0.38rem 0.45rem;
 }
 .planner-config input[type="datetime-local"] { width: 12.6rem; color-scheme: dark; }
-.planner-config input[type="number"] { width: 5rem; }
-.planner-global {
-	display: flex;
-	align-items: end;
-	gap: 0.75rem;
-	margin: 0.75rem 0;
-	flex-wrap: wrap;
-}
-.planner-global label { display: grid; gap: 0.25rem; color: var(--text-secondary); font-size: 0.72rem; }
-.planner-global input[type="number"] { width: 6rem; }
+.planner-actions { margin: 0.75rem 0; }
 .planner-config-note { color: var(--text-secondary); font-size: 0.75rem; margin: 0.5rem 0 0; }
 
 @media (max-width: 768px) {
-	.planner-summary { grid-template-columns: 1fr; }
-	.planner-day { grid-template-columns: 6.5rem minmax(0, 1fr); }
-	.planner-day-total { display: none; }
-
 	.inbox-wrap {
 		overflow-x: hidden;
 	}
@@ -328,81 +357,85 @@
 {% block content %}
 <div class="section planner-section">
 	<h2>Exam Planner</h2>
-	<p class="planner-lead">A deadline-aware plan using remaining workload, importance, and daily capacity. Reviews are added automatically 7, 3, and 1 day before each exam.</p>
+	<p class="planner-lead">Your daily focus from today through the final exam. Focus shifts automatically as exams get closer.</p>
 
 	{% if planner_saved %}<div class="planner-message planner-message--ok">Study plan updated.</div>{% endif %}
 	{% if planner_error %}<div class="planner-message planner-message--warn">{{ planner_error }}</div>{% endif %}
 
-	{% if planner.course_totals %}
-	<div class="planner-summary">
-		<div class="planner-stat"><span class="planner-stat-label">Required</span><span class="planner-stat-value">{{ planner.total_required_blocks }} blocks</span></div>
-		<div class="planner-stat"><span class="planner-stat-label">Scheduled</span><span class="planner-stat-value">{{ planner.total_scheduled_blocks }} blocks</span></div>
-		<div class="planner-stat"><span class="planner-stat-label">Capacity</span><span class="planner-stat-value">{{ planner_settings.daily_blocks }} × {{ planner_settings.block_minutes }} min/day</span></div>
-	</div>
-
+	{% if planner.days %}
 	{% if planner.warnings %}
 	<ul class="planner-warnings">{% for warning in planner.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
 	{% endif %}
 
-	<div class="planner-today">
-		<h3>Today · {{ planner.start_date.strftime('%d %b %Y') }}</h3>
-		{% if planner.today %}
-			{% for item in planner.today.allocations %}
-			<div class="planner-allocation">
-				<span class="planner-allocation-name">{{ item.course_name }}</span>
-				<span class="planner-allocation-meta">{{ item.blocks }} block{{ 's' if item.blocks != 1 }}{% if item.review_blocks %} · <span class="planner-review">{{ item.review_blocks }} review</span>{% endif %}</span>
-			</div>
-			{% endfor %}
-		{% else %}
-		<p class="inbox-hint" style="margin:0;">No study blocks scheduled today.</p>
-		{% endif %}
-	</div>
-
-	<details class="planner-schedule">
-		<summary>Full day-by-day schedule · {{ planner.days|length }} study days</summary>
-		<div class="planner-days">
+	<p class="inbox-hint">{{ planner.start_date.strftime('%d %b %Y') }} – {{ planner.end_date.strftime('%d %b %Y') }} · {{ planner.days|length }} days</p>
+	<div class="planner-calendar-wrap">
+		<div class="planner-calendar" aria-label="Study focus calendar">
+			{% for weekday in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}<div class="planner-weekday">{{ weekday }}</div>{% endfor %}
+			{% for _ in range(planner.start_date.weekday()) %}<div class="planner-blank" aria-hidden="true"></div>{% endfor %}
 		{% for day in planner.days %}
-			<div class="planner-day">
-				<div class="planner-day-date">{{ day.date.strftime('%a %d %b') }}</div>
-				<div class="planner-day-items">
-				{% for item in day.allocations %}
-					<span>{{ item.course_name }} — {{ item.blocks }}{% if item.review_blocks %} ({{ item.review_blocks }} review){% endif %}</span>
-				{% endfor %}
+			<div class="planner-calendar-day{% if day.is_today %} planner-calendar-day--today{% endif %}{% if day.exams %} planner-calendar-day--exam{% endif %}" data-date="{{ day.date.isoformat() }}">
+				<div class="planner-date"><strong>{{ day.date.day }}</strong>{% if day.is_today %}<span>Today · {{ day.date.strftime('%b') }}</span>{% elif day.date.day == 1 %}<span>{{ day.date.strftime('%b') }}</span>{% endif %}</div>
+				{% if day.focus and not day.focus.is_review %}
+				<div class="planner-focus">
+					Suggested focus
+					<a href="/courses/{{ day.focus.course_id }}">{{ day.focus.course_name }}</a>
+					<button type="button" class="planner-more" onclick="openSessionDialog('{{ day.date.isoformat() }}', {{ day.focus.course_id }}, 'study')">+ Study more</button>
 				</div>
-				<div class="planner-day-total">{{ day.blocks }} blocks</div>
+				{% endif %}
+				{% for review in day.reviews %}
+				<div class="planner-card planner-card--review" draggable="true" data-auto-review="1" data-course-id="{{ review.course_id }}" data-offset="{{ review.offset }}">
+					<i class="bi bi-arrow-repeat"></i><span class="planner-card-label">Review {{ review.course_name }}</span>
+				</div>
+				{% endfor %}
+				{% for item in day.sessions %}
+				<div class="planner-card{% if item.kind == 'review' %} planner-card--review{% endif %}{% if item.completed %} planner-card--done{% endif %}" draggable="true" data-item-id="{{ item.id }}">
+					<button type="button" class="planner-card-action" onclick="toggleSession({{ item.id }}, {{ 'false' if item.completed else 'true' }})" title="Mark {{ 'not done' if item.completed else 'done' }}"><i class="bi bi-{{ 'check-circle-fill' if item.completed else 'circle' }}"></i></button>
+					<span class="planner-card-label">{{ 'Review' if item.kind == 'review' else 'Study' }} {{ item.course_name }}</span>
+					<button type="button" class="planner-card-action" onclick="deleteSession({{ item.id }})" title="Remove"><i class="bi bi-x"></i></button>
+				</div>
+				{% endfor %}
+				{% for exam in day.exams %}<div class="planner-exam"><strong>Exam</strong>{{ exam.course_name }} · {{ exam.exam_at.strftime('%H:%M') }}</div>{% endfor %}
+				<button type="button" class="planner-day-add" onclick="openSessionDialog('{{ day.date.isoformat() }}')"><i class="bi bi-plus"></i> Add session</button>
 			</div>
 		{% endfor %}
 		</div>
-	</details>
+	</div>
 	{% endif %}
 
-	<details{% if not planner.course_totals or planner_error %} open{% endif %}>
-		<summary style="cursor:pointer; color:var(--primary-color); font-size:0.84rem;">Configure exams and workload</summary>
+	<details{% if not planner.days or planner_error %} open{% endif %}>
+		<summary style="cursor:pointer; color:var(--primary-color); font-size:0.84rem;">Configure exams</summary>
 		<form method="POST" action="/study/planner" id="plannerForm">
-			<div class="planner-global">
-				<label>Blocks per day<input type="number" name="daily_blocks" min="1" max="24" value="{{ planner_settings.daily_blocks }}"></label>
-				<label>Minutes per block<input type="number" name="block_minutes" min="15" max="180" step="5" value="{{ planner_settings.block_minutes }}"></label>
-				<button type="submit" class="btn btn-primary">Recalculate plan</button>
-			</div>
+			<div class="planner-actions"><button type="submit" class="btn btn-primary">Update calendar</button></div>
 			<div class="planner-config-wrap"><table class="planner-config">
-				<thead><tr><th>Use</th><th>Course</th><th>Exam</th><th>Core blocks left</th><th>Importance</th><th>Daily cap</th></tr></thead>
+				<thead><tr><th>Use</th><th>Course</th><th>Exam date and time</th></tr></thead>
 				<tbody>
 				{% for row in planner_rows %}
 				<tr>
 					<td><input type="checkbox" name="enabled_{{ row.course_id }}"{% if row.enabled %} checked{% endif %} aria-label="Include {{ row.course_name }}"></td>
 					<td><a href="/courses/{{ row.course_id }}">{{ row.course_name }}</a></td>
 					<td><input type="datetime-local" name="exam_at_{{ row.course_id }}" value="{{ row.exam_at or '' }}"></td>
-					<td><input type="number" name="remaining_blocks_{{ row.course_id }}" min="0" max="9999" value="{{ row.remaining_blocks }}"></td>
-					<td><input type="number" name="importance_{{ row.course_id }}" min="0.25" max="3" step="0.25" value="{{ row.importance }}"></td>
-					<td><input type="number" name="max_daily_blocks_{{ row.course_id }}" min="1" max="12" value="{{ row.max_daily_blocks }}"></td>
 				</tr>
 				{% endfor %}
 				</tbody>
 			</table></div>
-			<p class="planner-config-note">“Core blocks left” excludes the automatic review blocks. Importance 1.0 is normal; use 1.25–1.5 for higher-priority exams.</p>
+			<p class="planner-config-note">That’s all the planner needs. It balances daily focus using exam proximity and highlights review days automatically.</p>
 		</form>
 	</details>
 </div>
+
+<dialog id="sessionDialog" class="planner-dialog">
+	<form method="dialog" onsubmit="saveSession(event)">
+		<h3>Add a study session</h3>
+		<input type="hidden" id="sessionDate">
+		<label>Course
+			<select id="sessionCourse" required>{% for row in planner_rows if row.enabled %}<option value="{{ row.course_id }}">{{ row.course_name }}</option>{% endfor %}</select>
+		</label>
+		<label>What kind of session?
+			<select id="sessionKind"><option value="study">Study</option><option value="review">Review</option></select>
+		</label>
+		<div class="planner-dialog-actions"><button type="button" class="btn btn-secondary" onclick="sessionDialog.close()">Cancel</button><button type="submit" class="btn btn-primary">Add to calendar</button></div>
+	</form>
+</dialog>
 
 <!-- Priority Inbox -->
 <h2 style="margin-top:1.25rem;">Study Inbox</h2>
@@ -462,4 +495,84 @@
 	{% endif %}
 </p>
 {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const sessionDialog = document.getElementById('sessionDialog');
+let draggedSession = null;
+
+function openSessionDialog(date, courseId = null, kind = 'study') {
+	document.getElementById('sessionDate').value = date;
+	if (courseId !== null) document.getElementById('sessionCourse').value = String(courseId);
+	document.getElementById('sessionKind').value = kind;
+	sessionDialog.showModal();
+}
+
+async function plannerRequest(url, options) {
+	const response = await fetch(url, options);
+	if (!response.ok) {
+		const body = await response.json().catch(() => ({}));
+		throw new Error(body.detail || 'Could not update the calendar');
+	}
+}
+
+async function saveSession(event) {
+	event.preventDefault();
+	try {
+		await plannerRequest('/api/study/plan-items', {
+			method: 'POST', headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify({
+				course_id: Number(document.getElementById('sessionCourse').value),
+				scheduled_date: document.getElementById('sessionDate').value,
+				kind: document.getElementById('sessionKind').value
+			})
+		});
+		location.reload();
+	} catch (error) { window.treeEclass.showNotification(error.message, 'error'); }
+}
+
+async function toggleSession(id, completed) {
+	try {
+		await plannerRequest(`/api/study/plan-items/${id}`, {
+			method: 'PATCH', headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify({completed})
+		});
+		location.reload();
+	} catch (error) { window.treeEclass.showNotification(error.message, 'error'); }
+}
+
+async function deleteSession(id) {
+	try {
+		await plannerRequest(`/api/study/plan-items/${id}`, {method: 'DELETE'});
+		location.reload();
+	} catch (error) { window.treeEclass.showNotification(error.message, 'error'); }
+}
+
+document.querySelectorAll('.planner-card[draggable="true"]').forEach(card => {
+	card.addEventListener('dragstart', () => {
+		draggedSession = card.dataset.autoReview
+			? {auto: true, course_id: Number(card.dataset.courseId), offset: Number(card.dataset.offset)}
+			: {auto: false, id: Number(card.dataset.itemId)};
+	});
+});
+
+document.querySelectorAll('.planner-calendar-day').forEach(day => {
+	day.addEventListener('dragover', event => { event.preventDefault(); day.classList.add('planner-calendar-day--drop'); });
+	day.addEventListener('dragleave', () => day.classList.remove('planner-calendar-day--drop'));
+	day.addEventListener('drop', async event => {
+		event.preventDefault();
+		day.classList.remove('planner-calendar-day--drop');
+		if (!draggedSession) return;
+		try {
+			const url = draggedSession.auto ? '/api/study/review-override' : `/api/study/plan-items/${draggedSession.id}`;
+			const body = draggedSession.auto
+				? {course_id: draggedSession.course_id, offset: draggedSession.offset, scheduled_date: day.dataset.date}
+				: {scheduled_date: day.dataset.date};
+			await plannerRequest(url, {method: draggedSession.auto ? 'PUT' : 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+			location.reload();
+		} catch (error) { window.treeEclass.showNotification(error.message, 'error'); }
+	});
+});
+</script>
 {% endblock %}

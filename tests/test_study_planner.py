@@ -39,55 +39,64 @@ def exam(course_id, name, exam_at, remaining_blocks, importance=1.0, max_daily_b
 
 
 class StudyPlannerTests(unittest.TestCase):
-    def test_earliest_deadline_receives_the_needed_capacity(self):
+    def test_calendar_contains_every_day_through_final_exam(self):
         plan = build_study_plan(
             [
                 exam(1, "Early", "2026-09-04T09:00", 6),
                 exam(2, "Later", "2026-09-10T09:00", 6),
             ],
-            daily_blocks=3,
             start_date=date(2026, 9, 1),
         )
-        early = next(item for item in plan["course_totals"] if item["course_id"] == 1)
-        self.assertEqual(early["scheduled_core_blocks"], 6)
-        self.assertEqual(early["unscheduled_core_blocks"], 0)
-        self.assertTrue(all(day["blocks"] <= 3 for day in plan["days"]))
+        self.assertEqual(len(plan["days"]), 10)
+        self.assertEqual(plan["days"][0]["date"], date(2026, 9, 1))
+        self.assertEqual(plan["days"][-1]["date"], date(2026, 9, 10))
 
-    def test_review_blocks_are_reserved_at_seven_three_and_one_days(self):
+    def test_reviews_are_highlighted_at_seven_three_and_one_days(self):
         plan = build_study_plan(
             [exam(1, "Algorithms", datetime(2026, 9, 11, 9), 0)],
-            daily_blocks=4,
             start_date=date(2026, 9, 1),
         )
         review_days = {
-            day["date"]: day["allocations"][0]["review_blocks"]
+            day["date"]
             for day in plan["days"]
+            if day["focus"] and day["focus"]["is_review"]
         }
-        self.assertEqual(review_days[date(2026, 9, 4)], 1)
-        self.assertEqual(review_days[date(2026, 9, 8)], 1)
-        self.assertEqual(review_days[date(2026, 9, 10)], 2)
+        self.assertEqual(review_days, {
+            date(2026, 9, 4), date(2026, 9, 8), date(2026, 9, 10)
+        })
 
-    def test_impossible_cluster_reports_shortage(self):
+    def test_exam_day_is_in_calendar_and_marked(self):
+        plan = build_study_plan(
+            [exam(1, "One", "2026-09-03T09:00", 5)],
+            start_date=date(2026, 9, 1),
+        )
+        exam_day = plan["days"][-1]
+        self.assertEqual(exam_day["date"], date(2026, 9, 3))
+        self.assertEqual(exam_day["exams"][0]["course_name"], "One")
+
+    def test_multiple_courses_receive_focus_days(self):
         plan = build_study_plan(
             [
-                exam(1, "One", "2026-09-03T09:00", 5),
-                exam(2, "Two", "2026-09-03T14:00", 5),
+                exam(1, "Earlier", "2026-09-08T09:00", 10),
+                exam(2, "Later", "2026-09-12T09:00", 10),
             ],
-            daily_blocks=3,
             start_date=date(2026, 9, 1),
         )
-        self.assertFalse(plan["feasible"])
-        self.assertTrue(any("short" in warning for warning in plan["warnings"]))
+        focused = {day["focus"]["course_id"] for day in plan["days"] if day["focus"]}
+        self.assertEqual(focused, {1, 2})
 
-    def test_daily_course_cap_includes_review_blocks(self):
+    def test_review_can_be_rescheduled(self):
         plan = build_study_plan(
-            [exam(1, "Capped", "2026-09-08T09:00", 10, max_daily_blocks=2)],
-            daily_blocks=8,
+            [exam(1, "Algorithms", "2026-09-11T09:00", 0)],
             start_date=date(2026, 9, 1),
+            review_overrides={(1, 3): "2026-09-07"},
         )
-        for day in plan["days"]:
-            for allocation in day["allocations"]:
-                self.assertLessEqual(allocation["blocks"], 2)
+        review_dates = {
+            day["date"]: [review["offset"] for review in day["reviews"]]
+            for day in plan["days"] if day["reviews"]
+        }
+        self.assertIn(3, review_dates[date(2026, 9, 7)])
+        self.assertNotIn(date(2026, 9, 8), review_dates)
 
 
 class StudyPlannerPersistenceTests(unittest.TestCase):
@@ -115,6 +124,19 @@ class StudyPlannerPersistenceTests(unittest.TestCase):
         # Updating a course must not delete its planner row via SQLite REPLACE.
         self.db.save_course(10, "Algorithms II", "/Algorithms")
         self.assertEqual(self.db.get_course_exam_plans()[0]["remaining_blocks"], 24)
+
+    def test_calendar_items_and_review_overrides_round_trip(self):
+        self.db.save_course(10, "Algorithms", "/Algorithms")
+        item_id = self.db.add_study_plan_item(10, "2026-09-10", "review")
+        self.db.update_study_plan_item(item_id, scheduled_date="2026-09-11", completed=True)
+        item = self.db.get_study_plan_items()[0]
+        self.assertEqual(item["scheduled_date"], "2026-09-11")
+        self.assertTrue(item["completed"])
+
+        self.db.save_study_review_override(10, 3, "2026-09-20")
+        self.assertEqual(self.db.get_study_review_overrides()[(10, 3)], "2026-09-20")
+        self.assertTrue(self.db.delete_study_plan_item(item_id))
+        self.assertEqual(self.db.get_study_plan_items(), [])
 
 
 if __name__ == "__main__":

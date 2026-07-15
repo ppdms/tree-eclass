@@ -233,7 +233,7 @@ async def index(request: Request,
             if course_id_int:
                 selected_course = next((c for c in courses if c['id'] == course_id_int), None)
 
-        return templates.TemplateResponse("timeline.html", {
+        return templates.TemplateResponse(request=request, name="timeline.html", context={
             "request": request,
             "active_view": active_view,
             "courses": courses,
@@ -273,7 +273,7 @@ async def list_courses(request: Request):
     try:
         courses = db_manager.get_courses()
         study_summaries = {c['id']: db_manager.get_course_study_summary(c['id']) for c in courses}
-        return templates.TemplateResponse("courses.html", {
+        return templates.TemplateResponse(request=request, name="courses.html", context={
             "request": request,
             "courses": courses,
             "study_summaries": study_summaries,
@@ -311,7 +311,7 @@ async def view_course(request: Request, course_id: int):
         folders_with_deleted = db_manager.get_folders_with_deleted(course_id)
         study_levels = db_manager.get_file_study_levels(course_id)
 
-        return templates.TemplateResponse("course_detail.html", {
+        return templates.TemplateResponse(request=request, name="course_detail.html", context={
             "request": request,
             "course": course,
             "tree": tree,
@@ -634,7 +634,7 @@ async def list_exercises(request: Request, course_id: Optional[int] = None):
 
         exercises.sort(key=_sort_key)
 
-        return templates.TemplateResponse("exercises.html", {
+        return templates.TemplateResponse(request=request, name="exercises.html", context={
             "request": request,
             "exercises": exercises,
             "courses": courses,
@@ -677,7 +677,7 @@ async def view_settings(request: Request):
             webdav_config["password"] = ""
 
         preferences = db_manager.get_preferences()
-        return templates.TemplateResponse("settings.html", {
+        return templates.TemplateResponse(request=request, name="settings.html", context={
             "request": request,
             "credentials": safe_credentials,
             "webhook_config": webhook_config,
@@ -811,7 +811,7 @@ async def view_change_record(request: Request, course_id: int, change_no: str):
         course = next((c for c in db_manager.get_courses() if c['id'] == course_id), None)
         webdav_folder = course['webdav_folder'] if course else ''
 
-        return templates.TemplateResponse("change_detail.html", {
+        return templates.TemplateResponse(request=request, name="change_detail.html", context={
             "request": request,
             "change_record": change_record,
             "changes": changes,
@@ -1023,19 +1023,23 @@ async def study_inbox(request: Request):
     try:
         courses = db_manager.get_courses()
         inbox = db_manager.get_study_inbox(limit=60)
-        planner_settings = db_manager.get_study_planner_settings()
         planner_rows = db_manager.get_course_exam_plans()
         enabled_exams = [row for row in planner_rows if row["enabled"] and row["exam_at"]]
+        review_overrides = db_manager.get_study_review_overrides()
         planner = build_study_plan(
             enabled_exams,
-            daily_blocks=planner_settings["daily_blocks"],
             start_date=datetime.now(ZoneInfo("Europe/Athens")).date(),
+            review_overrides=review_overrides,
         )
-        return templates.TemplateResponse("study.html", {
+        items_by_date = {}
+        for item in db_manager.get_study_plan_items():
+            items_by_date.setdefault(item["scheduled_date"], []).append(item)
+        for day in planner["days"]:
+            day["sessions"] = items_by_date.get(day["date"].isoformat(), [])
+        return templates.TemplateResponse(request=request, name="study.html", context={
             "request": request,
             "inbox": inbox,
             "courses": courses,
-            "planner_settings": planner_settings,
             "planner_rows": planner_rows,
             "planner": planner,
             "planner_saved": request.query_params.get("planner_saved") == "1",
@@ -1046,29 +1050,72 @@ async def study_inbox(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.post("/api/study/plan-items")
+async def add_study_plan_item(request: Request):
+    try:
+        body = await request.json()
+        course_id = int(body["course_id"])
+        scheduled_date = date.fromisoformat(str(body["scheduled_date"])).isoformat()
+        kind = str(body.get("kind", "study"))
+        if not any(c["id"] == course_id for c in db_manager.get_courses()):
+            raise HTTPException(status_code=404, detail="Course not found")
+        item_id = db_manager.add_study_plan_item(course_id, scheduled_date, kind)
+        return JSONResponse(content={"ok": True, "id": item_id})
+    except HTTPException:
+        raise
+    except (KeyError, TypeError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.patch("/api/study/plan-items/{item_id}")
+async def update_study_plan_item(request: Request, item_id: int):
+    try:
+        body = await request.json()
+        scheduled_date = body.get("scheduled_date")
+        if scheduled_date is not None:
+            scheduled_date = date.fromisoformat(str(scheduled_date)).isoformat()
+        completed = body.get("completed")
+        if completed is not None and not isinstance(completed, bool):
+            raise ValueError("completed must be a boolean")
+        if not db_manager.update_study_plan_item(item_id, scheduled_date, completed):
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.delete("/api/study/plan-items/{item_id}")
+async def delete_study_plan_item(item_id: int):
+    if not db_manager.delete_study_plan_item(item_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"ok": True}
+
+
+@app.put("/api/study/review-override")
+async def move_study_review(request: Request):
+    try:
+        body = await request.json()
+        course_id = int(body["course_id"])
+        offset = int(body["offset"])
+        scheduled_date = date.fromisoformat(str(body["scheduled_date"])).isoformat()
+        db_manager.save_study_review_override(course_id, offset, scheduled_date)
+        return {"ok": True}
+    except (KeyError, TypeError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @app.post("/study/planner")
 async def save_study_planner(request: Request):
-    """Validate and persist planner settings for every course."""
+    """Validate and persist the included exams."""
     try:
         form = await request.form()
         courses = db_manager.get_courses()
+        existing_plans = {
+            row["course_id"]: row for row in db_manager.get_course_exam_plans()
+        }
 
-        def bounded_int(key: str, default: int, minimum: int, maximum: int) -> int:
-            try:
-                value = int(str(form.get(key, default)))
-            except (TypeError, ValueError):
-                value = default
-            return max(minimum, min(maximum, value))
-
-        def bounded_float(key: str, default: float, minimum: float, maximum: float) -> float:
-            try:
-                value = float(str(form.get(key, default)))
-            except (TypeError, ValueError):
-                value = default
-            return max(minimum, min(maximum, value))
-
-        daily_blocks = bounded_int("daily_blocks", 6, 1, 24)
-        block_minutes = bounded_int("block_minutes", 50, 15, 180)
         rows = []
         errors = []
         for course in courses:
@@ -1082,12 +1129,14 @@ async def save_study_planner(request: Request):
                     errors.append(f"{course['name']} has an invalid exam date.")
             if enabled and not exam_at:
                 errors.append(f"{course['name']} needs an exam date when enabled.")
+            existing = existing_plans.get(course["id"], {})
             rows.append({
                 "course_id": course["id"],
                 "exam_at": exam_at,
-                "remaining_blocks": bounded_int(f"remaining_blocks_{suffix}", 0, 0, 9999),
-                "importance": bounded_float(f"importance_{suffix}", 1.0, 0.25, 3.0),
-                "max_daily_blocks": bounded_int(f"max_daily_blocks_{suffix}", 3, 1, 12),
+                # Keep legacy advanced values intact for database compatibility.
+                "remaining_blocks": existing.get("remaining_blocks", 0),
+                "importance": existing.get("importance", 1.0),
+                "max_daily_blocks": existing.get("max_daily_blocks", 3),
                 "enabled": enabled,
             })
 
@@ -1097,7 +1146,6 @@ async def save_study_planner(request: Request):
                 status_code=303,
             )
 
-        db_manager.save_study_planner_settings(daily_blocks, block_minutes)
         for row in rows:
             db_manager.save_course_exam_plan(**row)
         return RedirectResponse(url="/study?planner_saved=1", status_code=303)
