@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 21  # Current schema version
+SCHEMA_VERSION = 22  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -205,6 +205,25 @@ class DatabaseManager:
             )
         """)
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS study_planner_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                daily_blocks INTEGER NOT NULL DEFAULT 6,
+                block_minutes INTEGER NOT NULL DEFAULT 50
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS course_exam_plans (
+                course_id INTEGER PRIMARY KEY,
+                exam_at TEXT,
+                remaining_blocks INTEGER NOT NULL DEFAULT 0,
+                importance REAL NOT NULL DEFAULT 1.0,
+                max_daily_blocks INTEGER NOT NULL DEFAULT 3,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS global_announcements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 feed_key TEXT NOT NULL,
@@ -351,6 +370,10 @@ class DatabaseManager:
         if current_version < 21:
             self._migration_20_to_21()
             self._set_schema_version(21)
+
+        if current_version < 22:
+            self._migration_21_to_22()
+            self._set_schema_version(22)
 
         logging.info("All migrations completed successfully")
 
@@ -772,6 +795,35 @@ class DatabaseManager:
             logging.info("Added ignored column to exercises table")
         self.conn.commit()
 
+    def _migration_21_to_22(self):
+        """Migration: Add persistent exam study-planner configuration."""
+        logging.info("Running migration 21 -> 22: Adding study planner tables")
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS study_planner_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                daily_blocks INTEGER NOT NULL DEFAULT 6,
+                block_minutes INTEGER NOT NULL DEFAULT 50
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS course_exam_plans (
+                course_id INTEGER PRIMARY KEY,
+                exam_at TEXT,
+                remaining_blocks INTEGER NOT NULL DEFAULT 0,
+                importance REAL NOT NULL DEFAULT 1.0,
+                max_daily_blocks INTEGER NOT NULL DEFAULT 3,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
+            INSERT OR IGNORE INTO study_planner_settings (id, daily_blocks, block_minutes)
+            VALUES (1, 6, 50)
+        """)
+        self.conn.commit()
+
     def _migration_18_to_19(self):
         """Migration: Add exercises table."""
         logging.info("Running migration 18 -> 19: Adding exercises table")
@@ -1015,8 +1067,13 @@ class DatabaseManager:
     def save_course(self, course_id: int, name: str, webdav_folder: str):
         try:
             cursor = self.conn.cursor()
-            cursor.execute("INSERT OR REPLACE INTO courses (id, name, webdav_folder) VALUES (?, ?, ?)", 
-                          (course_id, name, webdav_folder))
+            cursor.execute("""
+                INSERT INTO courses (id, name, webdav_folder)
+                VALUES (?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    webdav_folder = excluded.webdav_folder
+            """, (course_id, name, webdav_folder))
             self.conn.commit()
             logging.debug(f"Saved course: {name} (ID: {course_id})")
         except Exception as e:
@@ -1686,6 +1743,104 @@ class DatabaseManager:
             raise
 
     # --- Study tracking methods ---
+
+    def get_study_planner_settings(self) -> Dict:
+        """Return global study-planner settings."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT daily_blocks, block_minutes FROM study_planner_settings WHERE id = 1"
+            )
+            row = cursor.fetchone()
+            if not row:
+                return {"daily_blocks": 6, "block_minutes": 50}
+            return {"daily_blocks": row[0], "block_minutes": row[1]}
+        except Exception as e:
+            logging.error(f"Failed to get study planner settings: {e}", exc_info=True)
+            raise
+
+    def save_study_planner_settings(self, daily_blocks: int, block_minutes: int):
+        """Save global study-planner settings."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO study_planner_settings (id, daily_blocks, block_minutes)
+                VALUES (1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    daily_blocks = excluded.daily_blocks,
+                    block_minutes = excluded.block_minutes
+            """, (max(1, daily_blocks), max(15, block_minutes)))
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to save study planner settings: {e}", exc_info=True)
+            raise
+
+    def get_course_exam_plans(self) -> List[Dict]:
+        """Return planner configuration for every configured course."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT c.id, c.name, cep.exam_at,
+                       COALESCE(cep.remaining_blocks, 0),
+                       COALESCE(cep.importance, 1.0),
+                       COALESCE(cep.max_daily_blocks, 3),
+                       COALESCE(cep.enabled, 0)
+                FROM courses c
+                LEFT JOIN course_exam_plans cep ON cep.course_id = c.id
+                ORDER BY c.sort_order ASC, c.id ASC
+            """)
+            return [
+                {
+                    "course_id": row[0],
+                    "course_name": row[1],
+                    "exam_at": row[2],
+                    "remaining_blocks": row[3],
+                    "importance": row[4],
+                    "max_daily_blocks": row[5],
+                    "enabled": bool(row[6]),
+                }
+                for row in cursor.fetchall()
+            ]
+        except Exception as e:
+            logging.error(f"Failed to get course exam plans: {e}", exc_info=True)
+            raise
+
+    def save_course_exam_plan(
+        self,
+        course_id: int,
+        exam_at: Optional[str],
+        remaining_blocks: int,
+        importance: float,
+        max_daily_blocks: int,
+        enabled: bool,
+    ):
+        """Upsert one course's planner configuration."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO course_exam_plans
+                    (course_id, exam_at, remaining_blocks, importance,
+                     max_daily_blocks, enabled, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(course_id) DO UPDATE SET
+                    exam_at = excluded.exam_at,
+                    remaining_blocks = excluded.remaining_blocks,
+                    importance = excluded.importance,
+                    max_daily_blocks = excluded.max_daily_blocks,
+                    enabled = excluded.enabled,
+                    updated_at = excluded.updated_at
+            """, (
+                course_id,
+                exam_at,
+                max(0, remaining_blocks),
+                max(0.25, importance),
+                max(1, max_daily_blocks),
+                1 if enabled else 0,
+            ))
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to save course exam plan for {course_id}: {e}", exc_info=True)
+            raise
 
     def set_file_study_level(self, course_id: int, file_path: str, level: int):
         """Upsert the comprehension level (0-5) for a file. Level 5 means ignored."""

@@ -26,6 +26,7 @@ from app.services.tree_builder import Node, File
 from app.services.checker import run_checker, check_single_course, print_tree
 from app.services.webdav_uploader import WebDAVUploader
 from app.services.announcements_scraper import GLOBAL_FEEDS
+from app.services.study_planner import build_study_plan
 
 # Configure logging for systemd
 logging.basicConfig(
@@ -1018,17 +1019,90 @@ async def api_check_status():
 
 @app.get("/study", response_class=HTMLResponse)
 async def study_inbox(request: Request):
-    """Study inbox: priority-sorted list of unmastered files + session log."""
+    """Study inbox plus deadline-aware exam planner."""
     try:
         courses = db_manager.get_courses()
         inbox = db_manager.get_study_inbox(limit=60)
+        planner_settings = db_manager.get_study_planner_settings()
+        planner_rows = db_manager.get_course_exam_plans()
+        enabled_exams = [row for row in planner_rows if row["enabled"] and row["exam_at"]]
+        planner = build_study_plan(
+            enabled_exams,
+            daily_blocks=planner_settings["daily_blocks"],
+            start_date=datetime.now(ZoneInfo("Europe/Athens")).date(),
+        )
         return templates.TemplateResponse("study.html", {
             "request": request,
             "inbox": inbox,
             "courses": courses,
+            "planner_settings": planner_settings,
+            "planner_rows": planner_rows,
+            "planner": planner,
+            "planner_saved": request.query_params.get("planner_saved") == "1",
+            "planner_error": request.query_params.get("planner_error", ""),
         })
     except Exception as e:
         logging.error(f"Error loading study inbox: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/study/planner")
+async def save_study_planner(request: Request):
+    """Validate and persist planner settings for every course."""
+    try:
+        form = await request.form()
+        courses = db_manager.get_courses()
+
+        def bounded_int(key: str, default: int, minimum: int, maximum: int) -> int:
+            try:
+                value = int(str(form.get(key, default)))
+            except (TypeError, ValueError):
+                value = default
+            return max(minimum, min(maximum, value))
+
+        def bounded_float(key: str, default: float, minimum: float, maximum: float) -> float:
+            try:
+                value = float(str(form.get(key, default)))
+            except (TypeError, ValueError):
+                value = default
+            return max(minimum, min(maximum, value))
+
+        daily_blocks = bounded_int("daily_blocks", 6, 1, 24)
+        block_minutes = bounded_int("block_minutes", 50, 15, 180)
+        rows = []
+        errors = []
+        for course in courses:
+            suffix = str(course["id"])
+            enabled = f"enabled_{suffix}" in form
+            exam_at = str(form.get(f"exam_at_{suffix}", "")).strip() or None
+            if exam_at:
+                try:
+                    datetime.fromisoformat(exam_at)
+                except ValueError:
+                    errors.append(f"{course['name']} has an invalid exam date.")
+            if enabled and not exam_at:
+                errors.append(f"{course['name']} needs an exam date when enabled.")
+            rows.append({
+                "course_id": course["id"],
+                "exam_at": exam_at,
+                "remaining_blocks": bounded_int(f"remaining_blocks_{suffix}", 0, 0, 9999),
+                "importance": bounded_float(f"importance_{suffix}", 1.0, 0.25, 3.0),
+                "max_daily_blocks": bounded_int(f"max_daily_blocks_{suffix}", 3, 1, 12),
+                "enabled": enabled,
+            })
+
+        if errors:
+            return RedirectResponse(
+                url=f"/study?planner_error={quote(' '.join(errors))}",
+                status_code=303,
+            )
+
+        db_manager.save_study_planner_settings(daily_blocks, block_minutes)
+        for row in rows:
+            db_manager.save_course_exam_plan(**row)
+        return RedirectResponse(url="/study?planner_saved=1", status_code=303)
+    except Exception as e:
+        logging.error(f"Error saving study planner: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1073,4 +1147,3 @@ if __name__ == "__main__":
         reload=True,
         log_level="info"
     )
-

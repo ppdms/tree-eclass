@@ -126,7 +126,120 @@
 	white-space: nowrap;
 }
 
+/* ── Exam planner ─────────────────────────────────────────────── */
+.planner-lead {
+	color: var(--text-secondary);
+	font-size: 0.88rem;
+	margin: -0.25rem 0 1rem;
+}
+
+.planner-message {
+	border-radius: var(--radius);
+	padding: 0.65rem 0.8rem;
+	margin-bottom: 0.8rem;
+	font-size: 0.84rem;
+}
+.planner-message--ok { background: rgba(74, 222, 128, 0.1); color: #86efac; }
+.planner-message--warn { background: rgba(248, 113, 113, 0.1); color: #fca5a5; }
+
+.planner-summary {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 0.65rem;
+	margin-bottom: 0.8rem;
+}
+.planner-stat,
+.planner-today {
+	background: var(--surface-raised);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 0.75rem;
+}
+.planner-stat-label {
+	display: block;
+	color: var(--text-secondary);
+	font-size: 0.68rem;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+.planner-stat-value { display: block; margin-top: 0.2rem; font-size: 1.05rem; font-weight: 650; }
+
+.planner-today { margin-bottom: 0.8rem; }
+.planner-today h3 { margin: 0 0 0.55rem; font-size: 0.95rem; }
+.planner-allocation {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.32rem 0;
+	border-bottom: 1px solid var(--border-light);
+}
+.planner-allocation:last-child { border-bottom: none; }
+.planner-allocation-name { font-size: 0.86rem; font-weight: 550; }
+.planner-allocation-meta { color: var(--text-secondary); font-size: 0.75rem; white-space: nowrap; }
+.planner-review { color: #c4b5fd; }
+
+.planner-warnings {
+	margin: 0 0 0.8rem;
+	padding: 0.7rem 0.8rem 0.7rem 1.8rem;
+	border: 1px solid rgba(248, 113, 113, 0.3);
+	border-radius: var(--radius);
+	background: rgba(248, 113, 113, 0.06);
+	color: #fecaca;
+	font-size: 0.8rem;
+}
+.planner-warnings li + li { margin-top: 0.25rem; }
+
+.planner-schedule { margin: 0 0 1rem; }
+.planner-schedule summary { cursor: pointer; color: var(--primary-color); font-size: 0.84rem; }
+.planner-days { margin-top: 0.6rem; border-top: 1px solid var(--border); }
+.planner-day {
+	display: grid;
+	grid-template-columns: 8rem minmax(0, 1fr) 4rem;
+	gap: 0.75rem;
+	padding: 0.55rem 0;
+	border-bottom: 1px solid var(--border-light);
+}
+.planner-day-date { font-size: 0.78rem; font-weight: 600; }
+.planner-day-items { font-size: 0.78rem; color: var(--text-primary-soft); }
+.planner-day-items span { display: block; }
+.planner-day-total { text-align: right; color: var(--text-secondary); font-size: 0.75rem; }
+
+.planner-config-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.planner-config { width: 100%; border-collapse: collapse; background: var(--surface); min-width: 850px; }
+.planner-config th,
+.planner-config td { padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--border-light); text-align: left; }
+.planner-config th { color: var(--text-secondary); background: var(--surface-raised); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.planner-config td { font-size: 0.8rem; }
+.planner-config tr:last-child td { border-bottom: none; }
+.planner-config input[type="datetime-local"],
+.planner-config input[type="number"],
+.planner-global input[type="number"] {
+	box-sizing: border-box;
+	background: var(--background);
+	color: var(--text-primary);
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	padding: 0.38rem 0.45rem;
+}
+.planner-config input[type="datetime-local"] { width: 12.6rem; color-scheme: dark; }
+.planner-config input[type="number"] { width: 5rem; }
+.planner-global {
+	display: flex;
+	align-items: end;
+	gap: 0.75rem;
+	margin: 0.75rem 0;
+	flex-wrap: wrap;
+}
+.planner-global label { display: grid; gap: 0.25rem; color: var(--text-secondary); font-size: 0.72rem; }
+.planner-global input[type="number"] { width: 6rem; }
+.planner-config-note { color: var(--text-secondary); font-size: 0.75rem; margin: 0.5rem 0 0; }
+
 @media (max-width: 768px) {
+	.planner-summary { grid-template-columns: 1fr; }
+	.planner-day { grid-template-columns: 6.5rem minmax(0, 1fr); }
+	.planner-day-total { display: none; }
+
 	.inbox-wrap {
 		overflow-x: hidden;
 	}
@@ -213,7 +326,86 @@
 {% endblock %}
 
 {% block content %}
+<div class="section planner-section">
+	<h2>Exam Planner</h2>
+	<p class="planner-lead">A deadline-aware plan using remaining workload, importance, and daily capacity. Reviews are added automatically 7, 3, and 1 day before each exam.</p>
+
+	{% if planner_saved %}<div class="planner-message planner-message--ok">Study plan updated.</div>{% endif %}
+	{% if planner_error %}<div class="planner-message planner-message--warn">{{ planner_error }}</div>{% endif %}
+
+	{% if planner.course_totals %}
+	<div class="planner-summary">
+		<div class="planner-stat"><span class="planner-stat-label">Required</span><span class="planner-stat-value">{{ planner.total_required_blocks }} blocks</span></div>
+		<div class="planner-stat"><span class="planner-stat-label">Scheduled</span><span class="planner-stat-value">{{ planner.total_scheduled_blocks }} blocks</span></div>
+		<div class="planner-stat"><span class="planner-stat-label">Capacity</span><span class="planner-stat-value">{{ planner_settings.daily_blocks }} × {{ planner_settings.block_minutes }} min/day</span></div>
+	</div>
+
+	{% if planner.warnings %}
+	<ul class="planner-warnings">{% for warning in planner.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+	{% endif %}
+
+	<div class="planner-today">
+		<h3>Today · {{ planner.start_date.strftime('%d %b %Y') }}</h3>
+		{% if planner.today %}
+			{% for item in planner.today.allocations %}
+			<div class="planner-allocation">
+				<span class="planner-allocation-name">{{ item.course_name }}</span>
+				<span class="planner-allocation-meta">{{ item.blocks }} block{{ 's' if item.blocks != 1 }}{% if item.review_blocks %} · <span class="planner-review">{{ item.review_blocks }} review</span>{% endif %}</span>
+			</div>
+			{% endfor %}
+		{% else %}
+		<p class="inbox-hint" style="margin:0;">No study blocks scheduled today.</p>
+		{% endif %}
+	</div>
+
+	<details class="planner-schedule">
+		<summary>Full day-by-day schedule · {{ planner.days|length }} study days</summary>
+		<div class="planner-days">
+		{% for day in planner.days %}
+			<div class="planner-day">
+				<div class="planner-day-date">{{ day.date.strftime('%a %d %b') }}</div>
+				<div class="planner-day-items">
+				{% for item in day.allocations %}
+					<span>{{ item.course_name }} — {{ item.blocks }}{% if item.review_blocks %} ({{ item.review_blocks }} review){% endif %}</span>
+				{% endfor %}
+				</div>
+				<div class="planner-day-total">{{ day.blocks }} blocks</div>
+			</div>
+		{% endfor %}
+		</div>
+	</details>
+	{% endif %}
+
+	<details{% if not planner.course_totals or planner_error %} open{% endif %}>
+		<summary style="cursor:pointer; color:var(--primary-color); font-size:0.84rem;">Configure exams and workload</summary>
+		<form method="POST" action="/study/planner" id="plannerForm">
+			<div class="planner-global">
+				<label>Blocks per day<input type="number" name="daily_blocks" min="1" max="24" value="{{ planner_settings.daily_blocks }}"></label>
+				<label>Minutes per block<input type="number" name="block_minutes" min="15" max="180" step="5" value="{{ planner_settings.block_minutes }}"></label>
+				<button type="submit" class="btn btn-primary">Recalculate plan</button>
+			</div>
+			<div class="planner-config-wrap"><table class="planner-config">
+				<thead><tr><th>Use</th><th>Course</th><th>Exam</th><th>Core blocks left</th><th>Importance</th><th>Daily cap</th></tr></thead>
+				<tbody>
+				{% for row in planner_rows %}
+				<tr>
+					<td><input type="checkbox" name="enabled_{{ row.course_id }}"{% if row.enabled %} checked{% endif %} aria-label="Include {{ row.course_name }}"></td>
+					<td><a href="/courses/{{ row.course_id }}">{{ row.course_name }}</a></td>
+					<td><input type="datetime-local" name="exam_at_{{ row.course_id }}" value="{{ row.exam_at or '' }}"></td>
+					<td><input type="number" name="remaining_blocks_{{ row.course_id }}" min="0" max="9999" value="{{ row.remaining_blocks }}"></td>
+					<td><input type="number" name="importance_{{ row.course_id }}" min="0.25" max="3" step="0.25" value="{{ row.importance }}"></td>
+					<td><input type="number" name="max_daily_blocks_{{ row.course_id }}" min="1" max="12" value="{{ row.max_daily_blocks }}"></td>
+				</tr>
+				{% endfor %}
+				</tbody>
+			</table></div>
+			<p class="planner-config-note">“Core blocks left” excludes the automatic review blocks. Importance 1.0 is normal; use 1.25–1.5 for higher-priority exams.</p>
+		</form>
+	</details>
+</div>
+
 <!-- Priority Inbox -->
+<h2 style="margin-top:1.25rem;">Study Inbox</h2>
 <p class="inbox-hint">Adjust the circles to your comprehension level.</p>
 
 {% if inbox %}
@@ -271,4 +463,3 @@
 </p>
 {% endif %}
 {% endblock %}
-
