@@ -6,6 +6,11 @@ from typing import Optional
 from urllib.parse import unquote
 from bs4 import BeautifulSoup
 
+
+class GoogleDriveDownloadError(RuntimeError):
+    """Raised when Google Drive content cannot be fetched."""
+
+
 def download_file(file_url, destination_path, webdav_uploader=None):
     """
     Downloads a file from a Google Drive URL and uploads to WebDAV.
@@ -30,24 +35,30 @@ def download_file(file_url, destination_path, webdav_uploader=None):
     if auth_user:
         download_url += f"&authuser={auth_user}"
 
-    with requests.get(download_url, stream=True) as r:
-        r.raise_for_status()
-        
-        file_name = get_file_name(r, file_url)
-        
-        # WebDAV is required
-        if not webdav_uploader or not webdav_uploader.is_configured():
-            raise RuntimeError("WebDAV must be configured to download files")
-        
-        # Download to memory first, compute MD5, then upload
-        file_data = b''
-        for chunk in r.iter_content(chunk_size=8192):
-            file_data += chunk
-        
-        md5_hash = compute_md5_from_bytes(file_data)
-        webdav_path = webdav_uploader.upload_file(file_data, destination_path, file_name)
-        
-        return webdav_path, md5_hash, file_name
+    try:
+        with requests.get(download_url, stream=True) as r:
+            r.raise_for_status()
+            file_name = get_file_name(r, file_url)
+
+            # Download to memory before uploading so request failures can be
+            # distinguished from WebDAV failures.
+            file_data = bytearray()
+            for chunk in r.iter_content(chunk_size=8192):
+                file_data.extend(chunk)
+    except requests.exceptions.RequestException as e:
+        raise GoogleDriveDownloadError(
+            f"Failed to fetch Google Drive file: {file_url} - {e}"
+        ) from e
+
+    # WebDAV is required
+    if not webdav_uploader or not webdav_uploader.is_configured():
+        raise RuntimeError("WebDAV must be configured to download files")
+
+    file_data = bytes(file_data)
+    md5_hash = compute_md5_from_bytes(file_data)
+    webdav_path = webdav_uploader.upload_file(file_data, destination_path, file_name)
+
+    return webdav_path, md5_hash, file_name
 
 def extract_file_id(url):
     """

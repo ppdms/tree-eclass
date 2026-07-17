@@ -126,7 +126,159 @@
 	white-space: nowrap;
 }
 
+/* ── Exam planner ─────────────────────────────────────────────── */
+.planner-message {
+	border-radius: var(--radius);
+	padding: 0.65rem 0.8rem;
+	margin-bottom: 0.8rem;
+	font-size: 0.84rem;
+}
+.planner-message--ok { background: rgba(74, 222, 128, 0.1); color: #86efac; }
+.planner-message--warn { background: rgba(248, 113, 113, 0.1); color: #fca5a5; }
+
+.exam-countdown-strip { display: none; }
+
+.planner-calendar-wrap { overflow-x: auto; margin: 0 0 1rem; }
+.planner-calendar {
+	display: grid;
+	grid-template-columns: repeat(7, minmax(7.5rem, 1fr));
+	grid-auto-rows: 5.5rem;
+	min-width: 58rem;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	overflow: hidden;
+	background: #444c56;
+	gap: 3px 1px;
+}
+.planner-blank { position: relative; background: var(--background); }
+.planner-calendar-day {
+	position: relative;
+	background: var(--surface);
+	padding: 0.5rem;
+	overflow: hidden;
+}
+/* Shade alternating weeks so a row of 7 days reads as one unit, and tint
+   weekends, both via ::before/::after overlay layers rather than `filter` or
+   `background` directly. `filter` is avoided entirely: combined with the
+   navbar's `backdrop-filter` it triggers a Chromium compositor bug that paints
+   a dark smear over unrelated parts of the page on scroll. Overlays compose
+   fine with the today/exam highlighting below without fighting for CSS
+   specificity. */
+.planner-blank:nth-child(14n+1)::before, .planner-blank:nth-child(14n+2)::before, .planner-blank:nth-child(14n+3)::before,
+.planner-blank:nth-child(14n+4)::before, .planner-blank:nth-child(14n+5)::before, .planner-blank:nth-child(14n+6)::before, .planner-blank:nth-child(14n+7)::before,
+.planner-calendar-day:nth-child(14n+1)::before, .planner-calendar-day:nth-child(14n+2)::before, .planner-calendar-day:nth-child(14n+3)::before,
+.planner-calendar-day:nth-child(14n+4)::before, .planner-calendar-day:nth-child(14n+5)::before, .planner-calendar-day:nth-child(14n+6)::before, .planner-calendar-day:nth-child(14n+7)::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: rgba(255, 255, 255, 0.05);
+	pointer-events: none;
+}
+/* Sat = nth-child(7n+6), Sun = nth-child(7n), holding for every week since the
+   grid never resets its 7-column flow. */
+.planner-blank:nth-child(7n+6)::after, .planner-blank:nth-child(7n)::after,
+.planner-calendar-day:nth-child(7n+6)::after, .planner-calendar-day:nth-child(7n)::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: rgba(96, 165, 250, 0.06);
+	pointer-events: none;
+}
+.planner-calendar-day--today { box-shadow: inset 0 0 0 2px var(--primary-color); }
+.planner-calendar-day--exam { background: rgba(248, 113, 113, 0.1); }
+.planner-calendar-day--month-start { border-left: 3px solid var(--primary-color); }
+.planner-date { display: flex; justify-content: space-between; align-items: baseline; gap: 0.35rem; margin-bottom: 0.3rem; }
+.planner-date strong { font-size: 0.9rem; }
+.planner-date-right { display: flex; align-items: baseline; gap: 0.3rem; }
+.planner-weekday-label { color: var(--text-secondary); font-size: 0.62rem; font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; }
+.planner-month-label {
+	display: inline-block;
+	color: var(--background);
+	background: var(--primary-color);
+	font-size: 0.62rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	padding: 0.1rem 0.4rem;
+	border-radius: 3px;
+}
+.planner-exam {
+	position: relative;
+	background: rgba(248, 113, 113, 0.13);
+	border-left: 2px solid #f87171;
+	border-radius: 3px;
+	color: #fecaca;
+	font-size: 0.72rem;
+	margin-top: 0.35rem;
+	padding: 0.3rem 0.4rem;
+	overflow: hidden;
+}
+.planner-exam strong { display: block; font-size: 0.76rem; }
+.planner-exam-course { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.planner-warnings {
+	margin: 0 0 0.8rem;
+	padding: 0.7rem 0.8rem 0.7rem 1.8rem;
+	border: 1px solid rgba(248, 113, 113, 0.3);
+	border-radius: var(--radius);
+	background: rgba(248, 113, 113, 0.06);
+	color: #fecaca;
+	font-size: 0.8rem;
+}
+.planner-warnings li + li { margin-top: 0.25rem; }
+
+.planner-config-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.planner-config { width: 100%; border-collapse: collapse; background: var(--surface); min-width: 34rem; }
+.planner-config th,
+.planner-config td { padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--border-light); text-align: left; }
+.planner-config th { color: var(--text-secondary); background: var(--surface-raised); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.planner-config td { font-size: 0.8rem; }
+.planner-config tr:last-child td { border-bottom: none; }
+.planner-config input[type="datetime-local"],
+.planner-config input[type="number"],
+.planner-config input[type="text"] {
+	box-sizing: border-box;
+	background: var(--background);
+	color: var(--text-primary);
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	padding: 0.38rem 0.45rem;
+}
+.planner-config input[type="datetime-local"] { width: 15.5rem; color-scheme: dark; }
+.planner-config input[type="text"] { width: 10rem; }
+.planner-actions { margin: 0.75rem 0; }
+
 @media (max-width: 768px) {
+	.planner-calendar-wrap {
+		display: none;
+	}
+
+	.exam-countdown-strip {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+		gap: 0.6rem;
+		margin: 0 0 1rem;
+	}
+
+	.exam-countdown-card {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.05rem;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		padding: 0.55rem 0.7rem;
+		text-decoration: none;
+		color: var(--text-primary);
+	}
+
+	.exam-countdown-card:hover { border-color: var(--primary-color); }
+	.exam-countdown-days { font-size: 1.3rem; font-weight: 700; color: var(--primary-color); line-height: 1; }
+	.exam-countdown-unit { display: block; font-size: 0.62rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.2rem; }
+	.exam-countdown-course { font-size: 0.8rem; font-weight: 600; line-height: 1.25; }
+	.exam-countdown-date { font-size: 0.7rem; color: var(--text-secondary); }
+
 	.inbox-wrap {
 		overflow-x: hidden;
 	}
@@ -169,7 +321,6 @@
 		grid-area: level;
 		width: auto;
 		min-width: 0;
-		padding: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -213,7 +364,82 @@
 {% endblock %}
 
 {% block content %}
+<div class="section planner-section">
+	<h2>Exam Planner</h2>
+
+	{% if planner_saved %}<div class="planner-message planner-message--ok">Study plan updated.</div>{% endif %}
+	{% if planner_error %}<div class="planner-message planner-message--warn">{{ planner_error }}</div>{% endif %}
+
+	{% if planner.days %}
+	{% if planner.warnings %}
+	<ul class="planner-warnings">{% for warning in planner.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+	{% endif %}
+
+	<p class="inbox-hint">{{ planner.start_date.strftime('%d %b %Y') }} – {{ planner.end_date.strftime('%d %b %Y') }}</p>
+
+	<div class="exam-countdown-strip">
+		{% for day in planner.days %}{% for exam in day.exams %}
+		<a class="exam-countdown-card" href="/courses/{{ exam.course_id }}">
+			{% if exam.days_left == 0 %}
+			<span class="exam-countdown-days">Today</span>
+			{% else %}
+			<span class="exam-countdown-days">{{ exam.days_left }}</span>
+			<span class="exam-countdown-unit">{{ 'day' if exam.days_left == 1 else 'days' }} left</span>
+			{% endif %}
+			<span class="exam-countdown-course">{{ exam.course_name }}</span>
+			<span class="exam-countdown-date">{{ exam.exam_at.strftime('%d %b, %H:%M') }}</span>
+		</a>
+		{% endfor %}{% endfor %}
+	</div>
+
+	<div class="planner-calendar-wrap">
+		<div class="planner-calendar" aria-label="Exam calendar">
+			{% for _ in range(planner.start_date.weekday()) %}<div class="planner-blank" aria-hidden="true"></div>{% endfor %}
+		{% for day in planner.days %}
+			<div class="planner-calendar-day{% if day.is_today %} planner-calendar-day--today{% endif %}{% if day.exams %} planner-calendar-day--exam{% endif %}{% if day.date.day == 1 %} planner-calendar-day--month-start{% endif %}">
+				<div class="planner-date">
+					<strong>{{ day.date.day }}</strong>
+					<span class="planner-date-right">
+						{% if day.date.day == 1 %}<span class="planner-month-label">{{ day.date.strftime('%b') }}</span>{% endif %}
+						<span class="planner-weekday-label">{{ day.date.strftime('%a') }}</span>
+					</span>
+				</div>
+				{% for exam in day.exams %}
+				<div class="planner-exam">
+					<strong>{% if exam.days_left == 0 %}Today{% else %}{{ exam.days_left }} {{ 'day' if exam.days_left == 1 else 'days' }}{% endif %}</strong>
+					<span class="planner-exam-course">{{ exam.course_name }} · {{ exam.exam_at.strftime('%H:%M') }}</span>
+				</div>
+				{% endfor %}
+			</div>
+		{% endfor %}
+			{% for _ in range(6 - planner.end_date.weekday()) %}<div class="planner-blank" aria-hidden="true"></div>{% endfor %}
+		</div>
+	</div>
+	{% endif %}
+
+	<details{% if not planner.days or planner_error %} open{% endif %}>
+		<summary style="cursor:pointer; color:var(--primary-color); font-size:0.84rem;">Configure exams</summary>
+		<form method="POST" action="/study/planner" id="plannerForm">
+			<div class="planner-actions"><button type="submit" class="btn btn-primary">Update calendar</button></div>
+			<div class="planner-config-wrap"><table class="planner-config">
+				<thead><tr><th>Use</th><th>Course</th><th>Short Name</th><th>Exam date and time</th></tr></thead>
+				<tbody>
+				{% for row in planner_rows %}
+				<tr>
+					<td><input type="checkbox" name="enabled_{{ row.course_id }}"{% if row.enabled %} checked{% endif %} aria-label="Include {{ row.course_name }}"></td>
+					<td><a href="/courses/{{ row.course_id }}">{{ row.course_name }}</a></td>
+					<td><input type="text" name="short_name_{{ row.course_id }}" value="{{ row.short_name or '' }}" placeholder="Full name" maxlength="24"></td>
+					<td><input type="datetime-local" name="exam_at_{{ row.course_id }}" value="{{ row.exam_at or '' }}"></td>
+				</tr>
+				{% endfor %}
+				</tbody>
+			</table></div>
+		</form>
+	</details>
+</div>
+
 <!-- Priority Inbox -->
+<h2 style="margin-top:1.25rem;">Study Inbox</h2>
 <p class="inbox-hint">Adjust the circles to your comprehension level.</p>
 
 {% if inbox %}
@@ -271,4 +497,3 @@
 </p>
 {% endif %}
 {% endblock %}
-

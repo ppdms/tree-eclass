@@ -35,6 +35,29 @@
 	</div>
 </div>
 
+<!-- Hidden Courses Section -->
+<div class="section">
+	<div class="settings-section-title">
+		<h2>Hidden Courses</h2>
+	</div>
+	{% if hidden_courses %}
+	<div class="form-card">
+		<div style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
+			{% for course in hidden_courses %}
+			<div style="display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md);">
+				<span>{{ course.name }}</span>
+				<form method="POST" action="/courses/{{ course.id }}/show">
+					<button type="submit" class="btn btn-secondary"><i class="bi bi-eye"></i> Show</button>
+				</form>
+			</div>
+			{% endfor %}
+		</div>
+	</div>
+	{% else %}
+	<p class="settings-section-description">No hidden courses.</p>
+	{% endif %}
+</div>
+
 <!-- eClass Credentials Section -->
 <div class="section">
 	<div class="settings-section-title">

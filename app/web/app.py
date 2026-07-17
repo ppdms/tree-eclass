@@ -26,6 +26,7 @@ from app.services.tree_builder import Node, File
 from app.services.checker import run_checker, check_single_course, print_tree
 from app.services.webdav_uploader import WebDAVUploader
 from app.services.announcements_scraper import GLOBAL_FEEDS
+from app.services.study_planner import build_exam_calendar
 
 # Configure logging for systemd
 logging.basicConfig(
@@ -232,7 +233,7 @@ async def index(request: Request,
             if course_id_int:
                 selected_course = next((c for c in courses if c['id'] == course_id_int), None)
 
-        return templates.TemplateResponse("timeline.html", {
+        return templates.TemplateResponse(request=request, name="timeline.html", context={
             "request": request,
             "active_view": active_view,
             "courses": courses,
@@ -268,11 +269,11 @@ async def reorder_courses(request: Request):
 
 @app.get("/courses", response_class=HTMLResponse)
 async def list_courses(request: Request):
-    """List all courses."""
+    """List visible courses."""
     try:
         courses = db_manager.get_courses()
         study_summaries = {c['id']: db_manager.get_course_study_summary(c['id']) for c in courses}
-        return templates.TemplateResponse("courses.html", {
+        return templates.TemplateResponse(request=request, name="courses.html", context={
             "request": request,
             "courses": courses,
             "study_summaries": study_summaries,
@@ -286,8 +287,7 @@ async def list_courses(request: Request):
 async def view_course(request: Request, course_id: int):
     """View a specific course with its file tree."""
     try:
-        courses = db_manager.get_courses()
-        course = next((c for c in courses if c['id'] == course_id), None)
+        course = db_manager.get_course(course_id)
 
         if not course:
             logging.warning(f"Course {course_id} not found")
@@ -310,7 +310,7 @@ async def view_course(request: Request, course_id: int):
         folders_with_deleted = db_manager.get_folders_with_deleted(course_id)
         study_levels = db_manager.get_file_study_levels(course_id)
 
-        return templates.TemplateResponse("course_detail.html", {
+        return templates.TemplateResponse(request=request, name="course_detail.html", context={
             "request": request,
             "course": course,
             "tree": tree,
@@ -352,6 +352,36 @@ async def delete_course(course_id: int):
         return RedirectResponse(url="/courses", status_code=303)
     except Exception as e:
         logging.error(f"Error deleting course {course_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/courses/{course_id}/hide")
+async def hide_course(course_id: int):
+    """Remove a course from the UI and notifications while keeping it synchronized."""
+    try:
+        if not db_manager.set_course_hidden(course_id, True):
+            raise HTTPException(status_code=404, detail="Course not found")
+        logging.info(f"Hidden course ID: {course_id}")
+        return RedirectResponse(url="/courses", status_code=303)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error hiding course {course_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/courses/{course_id}/show")
+async def show_course(course_id: int):
+    """Restore a hidden course to the UI and notifications."""
+    try:
+        if not db_manager.set_course_hidden(course_id, False):
+            raise HTTPException(status_code=404, detail="Course not found")
+        logging.info(f"Restored course ID: {course_id}")
+        return RedirectResponse(url="/settings", status_code=303)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error restoring course {course_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -633,7 +663,7 @@ async def list_exercises(request: Request, course_id: Optional[int] = None):
 
         exercises.sort(key=_sort_key)
 
-        return templates.TemplateResponse("exercises.html", {
+        return templates.TemplateResponse(request=request, name="exercises.html", context={
             "request": request,
             "exercises": exercises,
             "courses": courses,
@@ -676,13 +706,19 @@ async def view_settings(request: Request):
             webdav_config["password"] = ""
 
         preferences = db_manager.get_preferences()
-        return templates.TemplateResponse("settings.html", {
+        hidden_courses = [
+            course
+            for course in db_manager.get_courses(include_hidden=True)
+            if course["hidden"]
+        ]
+        return templates.TemplateResponse(request=request, name="settings.html", context={
             "request": request,
             "credentials": safe_credentials,
             "webhook_config": webhook_config,
             "webdav_config": webdav_config,
             "preferences": preferences,
             "global_feeds": GLOBAL_FEEDS,
+            "hidden_courses": hidden_courses,
         })
     except Exception as e:
         logging.error(f"Error viewing settings: {e}", exc_info=True)
@@ -810,7 +846,7 @@ async def view_change_record(request: Request, course_id: int, change_no: str):
         course = next((c for c in db_manager.get_courses() if c['id'] == course_id), None)
         webdav_folder = course['webdav_folder'] if course else ''
 
-        return templates.TemplateResponse("change_detail.html", {
+        return templates.TemplateResponse(request=request, name="change_detail.html", context={
             "request": request,
             "change_record": change_record,
             "changes": changes,
@@ -937,8 +973,12 @@ async def run_check(background_tasks: BackgroundTasks):
 async def api_file_versions(course_id: int, file_path: str):
     """Return all archived versions of a specific file (modified history)."""
     try:
+        if not db_manager.get_course(course_id):
+            raise HTTPException(status_code=404, detail="Course not found")
         versions = db_manager.get_file_versions(course_id, file_path=file_path, change_type='modified')
         return JSONResponse(content={"versions": versions})
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"API error getting file versions for course {course_id} path {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -948,6 +988,8 @@ async def api_file_versions(course_id: int, file_path: str):
 async def api_deleted_files(course_id: int, folder: Optional[str] = None):
     """Return all deleted files for a course, optionally filtered to a folder subtree."""
     try:
+        if not db_manager.get_course(course_id):
+            raise HTTPException(status_code=404, detail="Course not found")
         deleted = db_manager.get_file_versions(course_id, change_type='deleted')
         if folder is not None:
             prefix = folder.rstrip('/') + '/' if folder else ''
@@ -957,6 +999,8 @@ async def api_deleted_files(course_id: int, folder: Optional[str] = None):
                     d['file_path'] == folder)
             ]
         return JSONResponse(content={"deleted": deleted})
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"API error getting deleted files for course {course_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -976,10 +1020,14 @@ async def api_list_courses():
 async def api_get_tree(course_id: int):
     """API endpoint to get course tree."""
     try:
+        if not db_manager.get_course(course_id):
+            raise HTTPException(status_code=404, detail="Course not found")
         tree = db_manager.load_tree(course_id)
         if not tree:
             return None
         return node_to_dict(tree)
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"API error getting tree for course {course_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1018,17 +1066,82 @@ async def api_check_status():
 
 @app.get("/study", response_class=HTMLResponse)
 async def study_inbox(request: Request):
-    """Study inbox: priority-sorted list of unmastered files + session log."""
+    """Study inbox plus an exam calendar with a countdown to each exam."""
     try:
         courses = db_manager.get_courses()
         inbox = db_manager.get_study_inbox(limit=60)
-        return templates.TemplateResponse("study.html", {
+        planner_rows = db_manager.get_course_exam_plans()
+        enabled_exams = [
+            {**row, "course_name": row["short_name"] or row["course_name"]}
+            for row in planner_rows if row["enabled"] and row["exam_at"]
+        ]
+        planner = build_exam_calendar(
+            enabled_exams,
+            start_date=datetime.now(ZoneInfo("Europe/Athens")).date(),
+        )
+        return templates.TemplateResponse(request=request, name="study.html", context={
             "request": request,
             "inbox": inbox,
             "courses": courses,
+            "planner_rows": planner_rows,
+            "planner": planner,
+            "planner_saved": request.query_params.get("planner_saved") == "1",
+            "planner_error": request.query_params.get("planner_error", ""),
         })
     except Exception as e:
         logging.error(f"Error loading study inbox: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/study/planner")
+async def save_study_planner(request: Request):
+    """Validate and persist the included exams."""
+    try:
+        form = await request.form()
+        courses = db_manager.get_courses()
+        existing_plans = {
+            row["course_id"]: row for row in db_manager.get_course_exam_plans()
+        }
+
+        rows = []
+        short_names = {}
+        errors = []
+        for course in courses:
+            suffix = str(course["id"])
+            enabled = f"enabled_{suffix}" in form
+            exam_at = str(form.get(f"exam_at_{suffix}", "")).strip() or None
+            if exam_at:
+                try:
+                    datetime.fromisoformat(exam_at)
+                except ValueError:
+                    errors.append(f"{course['name']} has an invalid exam date.")
+            if enabled and not exam_at:
+                errors.append(f"{course['name']} needs an exam date when enabled.")
+            existing = existing_plans.get(course["id"], {})
+            rows.append({
+                "course_id": course["id"],
+                "exam_at": exam_at,
+                # Keep legacy advanced values intact for database compatibility.
+                "remaining_blocks": existing.get("remaining_blocks", 0),
+                "importance": existing.get("importance", 1.0),
+                "max_daily_blocks": existing.get("max_daily_blocks", 3),
+                "enabled": enabled,
+            })
+            short_names[course["id"]] = str(form.get(f"short_name_{suffix}", "")).strip() or None
+
+        if errors:
+            return RedirectResponse(
+                url=f"/study?planner_error={quote(' '.join(errors))}",
+                status_code=303,
+            )
+
+        for row in rows:
+            db_manager.save_course_exam_plan(**row)
+        for course_id, short_name in short_names.items():
+            db_manager.set_course_short_name(course_id, short_name)
+        return RedirectResponse(url="/study?planner_saved=1", status_code=303)
+    except Exception as e:
+        logging.error(f"Error saving study planner: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1047,6 +1160,8 @@ async def api_study_inbox(limit: int = 50):
 async def set_study_level(course_id: int, request: Request):
     """Set the comprehension level (0-4) for a file."""
     try:
+        if not db_manager.get_course(course_id):
+            raise HTTPException(status_code=404, detail="Course not found")
         body = await request.json()
         file_path = body.get("file_path")
         level = body.get("level")
@@ -1073,4 +1188,3 @@ if __name__ == "__main__":
         reload=True,
         log_level="info"
     )
-
