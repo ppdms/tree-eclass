@@ -26,7 +26,7 @@ from app.services.tree_builder import Node, File
 from app.services.checker import run_checker, check_single_course, print_tree
 from app.services.webdav_uploader import WebDAVUploader
 from app.services.announcements_scraper import GLOBAL_FEEDS
-from app.services.study_planner import build_study_plan
+from app.services.study_planner import build_exam_calendar
 
 # Configure logging for systemd
 logging.basicConfig(
@@ -269,7 +269,7 @@ async def reorder_courses(request: Request):
 
 @app.get("/courses", response_class=HTMLResponse)
 async def list_courses(request: Request):
-    """List all courses."""
+    """List visible courses."""
     try:
         courses = db_manager.get_courses()
         study_summaries = {c['id']: db_manager.get_course_study_summary(c['id']) for c in courses}
@@ -287,8 +287,7 @@ async def list_courses(request: Request):
 async def view_course(request: Request, course_id: int):
     """View a specific course with its file tree."""
     try:
-        courses = db_manager.get_courses()
-        course = next((c for c in courses if c['id'] == course_id), None)
+        course = db_manager.get_course(course_id)
 
         if not course:
             logging.warning(f"Course {course_id} not found")
@@ -353,6 +352,36 @@ async def delete_course(course_id: int):
         return RedirectResponse(url="/courses", status_code=303)
     except Exception as e:
         logging.error(f"Error deleting course {course_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/courses/{course_id}/hide")
+async def hide_course(course_id: int):
+    """Remove a course from the UI and notifications while keeping it synchronized."""
+    try:
+        if not db_manager.set_course_hidden(course_id, True):
+            raise HTTPException(status_code=404, detail="Course not found")
+        logging.info(f"Hidden course ID: {course_id}")
+        return RedirectResponse(url="/courses", status_code=303)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error hiding course {course_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/courses/{course_id}/show")
+async def show_course(course_id: int):
+    """Restore a hidden course to the UI and notifications."""
+    try:
+        if not db_manager.set_course_hidden(course_id, False):
+            raise HTTPException(status_code=404, detail="Course not found")
+        logging.info(f"Restored course ID: {course_id}")
+        return RedirectResponse(url="/settings", status_code=303)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error restoring course {course_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -677,6 +706,11 @@ async def view_settings(request: Request):
             webdav_config["password"] = ""
 
         preferences = db_manager.get_preferences()
+        hidden_courses = [
+            course
+            for course in db_manager.get_courses(include_hidden=True)
+            if course["hidden"]
+        ]
         return templates.TemplateResponse(request=request, name="settings.html", context={
             "request": request,
             "credentials": safe_credentials,
@@ -684,6 +718,7 @@ async def view_settings(request: Request):
             "webdav_config": webdav_config,
             "preferences": preferences,
             "global_feeds": GLOBAL_FEEDS,
+            "hidden_courses": hidden_courses,
         })
     except Exception as e:
         logging.error(f"Error viewing settings: {e}", exc_info=True)
@@ -938,8 +973,12 @@ async def run_check(background_tasks: BackgroundTasks):
 async def api_file_versions(course_id: int, file_path: str):
     """Return all archived versions of a specific file (modified history)."""
     try:
+        if not db_manager.get_course(course_id):
+            raise HTTPException(status_code=404, detail="Course not found")
         versions = db_manager.get_file_versions(course_id, file_path=file_path, change_type='modified')
         return JSONResponse(content={"versions": versions})
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"API error getting file versions for course {course_id} path {file_path}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -949,6 +988,8 @@ async def api_file_versions(course_id: int, file_path: str):
 async def api_deleted_files(course_id: int, folder: Optional[str] = None):
     """Return all deleted files for a course, optionally filtered to a folder subtree."""
     try:
+        if not db_manager.get_course(course_id):
+            raise HTTPException(status_code=404, detail="Course not found")
         deleted = db_manager.get_file_versions(course_id, change_type='deleted')
         if folder is not None:
             prefix = folder.rstrip('/') + '/' if folder else ''
@@ -958,6 +999,8 @@ async def api_deleted_files(course_id: int, folder: Optional[str] = None):
                     d['file_path'] == folder)
             ]
         return JSONResponse(content={"deleted": deleted})
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"API error getting deleted files for course {course_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -977,10 +1020,14 @@ async def api_list_courses():
 async def api_get_tree(course_id: int):
     """API endpoint to get course tree."""
     try:
+        if not db_manager.get_course(course_id):
+            raise HTTPException(status_code=404, detail="Course not found")
         tree = db_manager.load_tree(course_id)
         if not tree:
             return None
         return node_to_dict(tree)
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"API error getting tree for course {course_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1019,23 +1066,19 @@ async def api_check_status():
 
 @app.get("/study", response_class=HTMLResponse)
 async def study_inbox(request: Request):
-    """Study inbox plus deadline-aware exam planner."""
+    """Study inbox plus an exam calendar with a countdown to each exam."""
     try:
         courses = db_manager.get_courses()
         inbox = db_manager.get_study_inbox(limit=60)
         planner_rows = db_manager.get_course_exam_plans()
-        enabled_exams = [row for row in planner_rows if row["enabled"] and row["exam_at"]]
-        review_overrides = db_manager.get_study_review_overrides()
-        planner = build_study_plan(
+        enabled_exams = [
+            {**row, "course_name": row["short_name"] or row["course_name"]}
+            for row in planner_rows if row["enabled"] and row["exam_at"]
+        ]
+        planner = build_exam_calendar(
             enabled_exams,
             start_date=datetime.now(ZoneInfo("Europe/Athens")).date(),
-            review_overrides=review_overrides,
         )
-        items_by_date = {}
-        for item in db_manager.get_study_plan_items():
-            items_by_date.setdefault(item["scheduled_date"], []).append(item)
-        for day in planner["days"]:
-            day["sessions"] = items_by_date.get(day["date"].isoformat(), [])
         return templates.TemplateResponse(request=request, name="study.html", context={
             "request": request,
             "inbox": inbox,
@@ -1050,62 +1093,6 @@ async def study_inbox(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.post("/api/study/plan-items")
-async def add_study_plan_item(request: Request):
-    try:
-        body = await request.json()
-        course_id = int(body["course_id"])
-        scheduled_date = date.fromisoformat(str(body["scheduled_date"])).isoformat()
-        kind = str(body.get("kind", "study"))
-        if not any(c["id"] == course_id for c in db_manager.get_courses()):
-            raise HTTPException(status_code=404, detail="Course not found")
-        item_id = db_manager.add_study_plan_item(course_id, scheduled_date, kind)
-        return JSONResponse(content={"ok": True, "id": item_id})
-    except HTTPException:
-        raise
-    except (KeyError, TypeError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
-
-@app.patch("/api/study/plan-items/{item_id}")
-async def update_study_plan_item(request: Request, item_id: int):
-    try:
-        body = await request.json()
-        scheduled_date = body.get("scheduled_date")
-        if scheduled_date is not None:
-            scheduled_date = date.fromisoformat(str(scheduled_date)).isoformat()
-        completed = body.get("completed")
-        if completed is not None and not isinstance(completed, bool):
-            raise ValueError("completed must be a boolean")
-        if not db_manager.update_study_plan_item(item_id, scheduled_date, completed):
-            raise HTTPException(status_code=404, detail="Session not found")
-        return {"ok": True}
-    except HTTPException:
-        raise
-    except (TypeError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
-
-@app.delete("/api/study/plan-items/{item_id}")
-async def delete_study_plan_item(item_id: int):
-    if not db_manager.delete_study_plan_item(item_id):
-        raise HTTPException(status_code=404, detail="Session not found")
-    return {"ok": True}
-
-
-@app.put("/api/study/review-override")
-async def move_study_review(request: Request):
-    try:
-        body = await request.json()
-        course_id = int(body["course_id"])
-        offset = int(body["offset"])
-        scheduled_date = date.fromisoformat(str(body["scheduled_date"])).isoformat()
-        db_manager.save_study_review_override(course_id, offset, scheduled_date)
-        return {"ok": True}
-    except (KeyError, TypeError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
-
 @app.post("/study/planner")
 async def save_study_planner(request: Request):
     """Validate and persist the included exams."""
@@ -1117,6 +1104,7 @@ async def save_study_planner(request: Request):
         }
 
         rows = []
+        short_names = {}
         errors = []
         for course in courses:
             suffix = str(course["id"])
@@ -1139,6 +1127,7 @@ async def save_study_planner(request: Request):
                 "max_daily_blocks": existing.get("max_daily_blocks", 3),
                 "enabled": enabled,
             })
+            short_names[course["id"]] = str(form.get(f"short_name_{suffix}", "")).strip() or None
 
         if errors:
             return RedirectResponse(
@@ -1148,6 +1137,8 @@ async def save_study_planner(request: Request):
 
         for row in rows:
             db_manager.save_course_exam_plan(**row)
+        for course_id, short_name in short_names.items():
+            db_manager.set_course_short_name(course_id, short_name)
         return RedirectResponse(url="/study?planner_saved=1", status_code=303)
     except Exception as e:
         logging.error(f"Error saving study planner: {e}", exc_info=True)
@@ -1169,6 +1160,8 @@ async def api_study_inbox(limit: int = 50):
 async def set_study_level(course_id: int, request: Request):
     """Set the comprehension level (0-4) for a file."""
     try:
+        if not db_manager.get_course(course_id):
+            raise HTTPException(status_code=404, detail="Course not found")
         body = await request.json()
         file_path = body.get("file_path")
         level = body.get("level")

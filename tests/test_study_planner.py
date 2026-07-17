@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import sys
 import tempfile
 import types
@@ -137,6 +138,110 @@ class StudyPlannerPersistenceTests(unittest.TestCase):
         self.assertEqual(self.db.get_study_review_overrides()[(10, 3)], "2026-09-20")
         self.assertTrue(self.db.delete_study_plan_item(item_id))
         self.assertEqual(self.db.get_study_plan_items(), [])
+
+    def test_hidden_courses_are_preserved_but_excluded_from_ui_reads(self):
+        self.db.save_course(10, "Visible", "/Visible")
+        self.db.save_course(20, "Hidden", "/Hidden")
+        self.assertTrue(self.db.set_course_hidden(20, True))
+
+        self.assertEqual([c["id"] for c in self.db.get_courses()], [10])
+        all_courses = self.db.get_courses(include_hidden=True)
+        self.assertEqual([c["id"] for c in all_courses], [10, 20])
+        self.assertTrue(all_courses[1]["hidden"])
+        self.assertIsNone(self.db.get_course(20))
+        self.assertEqual(self.db.get_course(20, include_hidden=True)["name"], "Hidden")
+
+        # Ordinary course updates must not accidentally reveal it.
+        self.db.save_course(20, "Hidden II", "/Hidden-II")
+        self.assertTrue(self.db.get_course(20, include_hidden=True)["hidden"])
+
+        cursor = self.db.conn.cursor()
+        for course_id in (10, 20):
+            cursor.execute(
+                """INSERT INTO change_records
+                   (course_id, change_no, message, changes_count)
+                   VALUES (?, ?, '+ 1 − 0 ~ 0', 1)""",
+                (course_id, f"2026-07-15T10:00:0{course_id // 10}"),
+            )
+            cursor.execute(
+                """INSERT INTO announcements
+                   (course_id, announcement_id, title, link, pub_date)
+                   VALUES (?, ?, ?, 'https://example.test', '2026-07-15T10:00:00')""",
+                (course_id, f"ann-{course_id}", f"Announcement {course_id}"),
+            )
+            cursor.execute(
+                """INSERT INTO exercises
+                   (course_id, exercise_id, title, link)
+                   VALUES (?, ?, ?, 'https://example.test')""",
+                (course_id, f"ex-{course_id}", f"Exercise {course_id}"),
+            )
+        self.db.conn.commit()
+
+        self.assertEqual(
+            {row["course_id"] for row in self.db.get_change_records()}, {10}
+        )
+        self.assertEqual(
+            {row["course_id"] for row in self.db.get_timeline_data()}, {10}
+        )
+        self.assertEqual(
+            {row["course_id"] for row in self.db.get_announcements()}, {10}
+        )
+        self.assertEqual(
+            {row["course_id"] for row in self.db.get_exercises()}, {10}
+        )
+
+        # Synchronization reads can still see hidden-course exercise state.
+        synced = self.db.get_exercises(
+            course_id=20,
+            include_ignored=True,
+            include_hidden_courses=True,
+        )
+        self.assertEqual([row["exercise_id"] for row in synced], ["ex-20"])
+
+        self.db.set_check_status(True, 20)
+        status = self.db.get_check_status()
+        self.assertTrue(status["is_checking"])
+        self.assertIsNone(status["current_course_id"])
+        self.assertIsNone(status["course_name"])
+
+
+class CourseVisibilityMigrationTests(unittest.TestCase):
+    def test_version_23_database_migrates_existing_courses_to_visible(self):
+        handle, path = tempfile.mkstemp(suffix=".db")
+        os.close(handle)
+        try:
+            conn = sqlite3.connect(path)
+            conn.execute("""
+                CREATE TABLE schema_version (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    version INTEGER NOT NULL,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("INSERT INTO schema_version (id, version) VALUES (1, 23)")
+            conn.execute("""
+                CREATE TABLE courses (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    webdav_folder TEXT NOT NULL,
+                    sort_order INTEGER DEFAULT 0
+                )
+            """)
+            conn.execute(
+                "INSERT INTO courses (id, name, webdav_folder) VALUES (1, 'Legacy', '/Legacy')"
+            )
+            conn.commit()
+            conn.close()
+
+            db = DatabaseManager(path)
+            try:
+                self.assertEqual(db._get_schema_version(), SCHEMA_VERSION)
+                self.assertEqual(db.get_courses()[0]["name"], "Legacy")
+                self.assertFalse(db.get_courses()[0]["hidden"])
+            finally:
+                db.close()
+        finally:
+            os.unlink(path)
 
 
 if __name__ == "__main__":

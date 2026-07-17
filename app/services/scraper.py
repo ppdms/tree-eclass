@@ -87,6 +87,8 @@ def download_google_drive_file(file_url: str, destination: str, webdav_uploader=
     from app.services import google_drive_downloader
     try:
         return google_drive_downloader.download_file(file_url, destination, webdav_uploader)
+    except google_drive_downloader.GoogleDriveDownloadError:
+        raise
     except Exception as e:
         raise RuntimeError(f"Failed to download Google Drive file: {file_url} - {e}")
 
@@ -355,4 +357,3 @@ class Scraper:
             raise RuntimeError(f"Failed to download file: {file_url} - {e}")
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Failed to download file: {file_url} - {e}")
-

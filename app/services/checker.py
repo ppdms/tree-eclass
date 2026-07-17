@@ -441,7 +441,14 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
         graded_exercises = []
         file_updated_exercises = []
         try:
-            stored = {ex['exercise_id']: ex for ex in db_manager.get_exercises(course_id=course_id, include_ignored=True)}
+            stored = {
+                ex['exercise_id']: ex
+                for ex in db_manager.get_exercises(
+                    course_id=course_id,
+                    include_ignored=True,
+                    include_hidden_courses=True,
+                )
+            }
             exercises_scraper = ExercisesScraper(scraper_instance.session)
             exercises = exercises_scraper.fetch_exercises(course_id)
             if exercises:
@@ -503,7 +510,8 @@ def run_checker(db_manager: DatabaseManager):
         # Set check status to active
         db_manager.set_check_status(True)
         
-        courses = db_manager.get_courses()
+        # Hidden courses still synchronize exactly like visible courses.
+        courses = db_manager.get_courses(include_hidden=True)
         if not courses:
             logging.warning("No courses found in the database. Nothing to do.")
             db_manager.set_check_status(False)
@@ -533,14 +541,14 @@ def run_checker(db_manager: DatabaseManager):
             db_manager.set_check_status(True, course['id'])
             changes, new_announcements, exercise_events, success = process_course(db_manager, course, scraper_instance)
             if success:
-                if changes:
-                    all_changes[course['name']] = changes
-                if new_announcements:
-                    all_announcements[course['name']] = new_announcements
-                n_ex = sum(len(v) for v in exercise_events.values())
-                if n_ex:
-                    all_exercise_events[course['name']] = exercise_events
-
+                if not course.get('hidden', False):
+                    if changes:
+                        all_changes[course['name']] = changes
+                    if new_announcements:
+                        all_announcements[course['name']] = new_announcements
+                    n_ex = sum(len(v) for v in exercise_events.values())
+                    if n_ex:
+                        all_exercise_events[course['name']] = exercise_events
             else:
                 logging.warning(f"Failed to process course: {course['name']}")
 
@@ -596,7 +604,7 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
         db_manager.set_check_status(True, course_id)
         
         # Get course info
-        courses = db_manager.get_courses()
+        courses = db_manager.get_courses(include_hidden=True)
         course = next((c for c in courses if c['id'] == course_id), None)
         
         if not course:
@@ -639,7 +647,7 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
 
         n_ex = sum(len(v) for v in exercise_events.values())
         # Send webhook if there are any updates
-        if changes or new_announcements or n_ex:
+        if not course.get('hidden', False) and (changes or new_announcements or n_ex):
             try:
                 all_changes = {course_name: changes} if changes else {}
                 all_announcements = {course_name: new_announcements} if new_announcements else {}
@@ -670,5 +678,3 @@ def check_single_course(db_manager: DatabaseManager, course_id: int) -> dict:
             'success': False,
             'error': str(e)
         }
-
-

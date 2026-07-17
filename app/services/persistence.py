@@ -13,7 +13,7 @@ from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 23  # Current schema version
+SCHEMA_VERSION = 25  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -60,7 +60,9 @@ class DatabaseManager:
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 webdav_folder TEXT NOT NULL,
-                sort_order INTEGER DEFAULT 0
+                sort_order INTEGER DEFAULT 0,
+                hidden INTEGER NOT NULL DEFAULT 0,
+                short_name TEXT
             )
         """)
         cursor.execute("""
@@ -224,26 +226,6 @@ class DatabaseManager:
             )
         """)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS study_plan_items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                course_id INTEGER NOT NULL,
-                scheduled_date TEXT NOT NULL,
-                kind TEXT NOT NULL CHECK(kind IN ('study', 'review')),
-                completed INTEGER NOT NULL DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS study_review_overrides (
-                course_id INTEGER NOT NULL,
-                review_offset INTEGER NOT NULL,
-                scheduled_date TEXT NOT NULL,
-                PRIMARY KEY (course_id, review_offset),
-                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
-            )
-        """)
-        cursor.execute("""
             CREATE TABLE IF NOT EXISTS global_announcements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 feed_key TEXT NOT NULL,
@@ -398,6 +380,14 @@ class DatabaseManager:
         if current_version < 23:
             self._migration_22_to_23()
             self._set_schema_version(23)
+
+        if current_version < 24:
+            self._migration_23_to_24()
+            self._set_schema_version(24)
+
+        if current_version < 25:
+            self._migration_24_to_25()
+            self._set_schema_version(25)
 
         logging.info("All migrations completed successfully")
 
@@ -874,6 +864,30 @@ class DatabaseManager:
         """)
         self.conn.commit()
 
+    def _migration_23_to_24(self):
+        """Migration: Add per-course UI visibility."""
+        logging.info("Running migration 23 -> 24: Adding course visibility")
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(courses)")
+        existing = {row[1] for row in cursor.fetchall()}
+        if 'hidden' not in existing:
+            cursor.execute(
+                "ALTER TABLE courses ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"
+            )
+            logging.info("Added hidden column to courses table")
+        self.conn.commit()
+
+    def _migration_24_to_25(self):
+        """Migration: Add an optional short name for each course."""
+        logging.info("Running migration 24 -> 25: Adding course short_name")
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(courses)")
+        existing = {row[1] for row in cursor.fetchall()}
+        if 'short_name' not in existing:
+            cursor.execute("ALTER TABLE courses ADD COLUMN short_name TEXT")
+            logging.info("Added short_name column to courses table")
+        self.conn.commit()
+
     def _migration_18_to_19(self):
         """Migration: Add exercises table."""
         logging.info("Running migration 18 -> 19: Adding exercises table")
@@ -1130,14 +1144,85 @@ class DatabaseManager:
             logging.error(f"Failed to save course {name} (ID: {course_id}): {e}", exc_info=True)
             raise
 
-    def get_courses(self) -> List[Dict]:
+    def get_courses(self, include_hidden: bool = False) -> List[Dict]:
+        """Return configured courses, excluding hidden courses by default."""
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT id, name, webdav_folder FROM courses ORDER BY sort_order ASC, id ASC")
+            query = """
+                SELECT id, name, webdav_folder, hidden, short_name
+                FROM courses
+            """
+            if not include_hidden:
+                query += " WHERE hidden = 0"
+            query += " ORDER BY sort_order ASC, id ASC"
+            cursor.execute(query)
             rows = cursor.fetchall()
-            return [{"id": row[0], "name": row[1], "webdav_folder": row[2]} for row in rows]
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "webdav_folder": row[2],
+                    "hidden": bool(row[3]),
+                    "short_name": row[4],
+                }
+                for row in rows
+            ]
         except Exception as e:
             logging.error(f"Failed to get courses: {e}", exc_info=True)
+            raise
+
+    def get_course(self, course_id: int, include_hidden: bool = False) -> Optional[Dict]:
+        """Return one course, respecting UI visibility unless explicitly overridden."""
+        try:
+            cursor = self.conn.cursor()
+            query = """
+                SELECT id, name, webdav_folder, hidden
+                FROM courses
+                WHERE id = ?
+            """
+            params: list = [course_id]
+            if not include_hidden:
+                query += " AND hidden = 0"
+            cursor.execute(query, params)
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row[0],
+                "name": row[1],
+                "webdav_folder": row[2],
+                "hidden": bool(row[3]),
+            }
+        except Exception as e:
+            logging.error(f"Failed to get course {course_id}: {e}", exc_info=True)
+            raise
+
+    def set_course_hidden(self, course_id: int, hidden: bool) -> bool:
+        """Hide or show a course without changing any synchronized data."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE courses SET hidden = ? WHERE id = ?",
+                (1 if hidden else 0, course_id),
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"Failed to update visibility for course {course_id}: {e}", exc_info=True)
+            raise
+
+    def set_course_short_name(self, course_id: int, short_name: Optional[str]) -> bool:
+        """Set (or clear) a course's short display name, shown in place of the full name in the exam calendar."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE courses SET short_name = ? WHERE id = ?",
+                (short_name or None, course_id),
+            )
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logging.error(f"Failed to update short name for course {course_id}: {e}", exc_info=True)
             raise
 
     def reorder_courses(self, course_ids: list):
@@ -1333,7 +1418,7 @@ class DatabaseManager:
                 SELECT cr.id, cr.course_id, c.name, cr.change_no, cr.timestamp, cr.message, cr.changes_count 
                 FROM change_records cr
                 JOIN courses c ON cr.course_id = c.id
-                WHERE cr.course_id = ? AND cr.change_no = ?
+                WHERE cr.course_id = ? AND cr.change_no = ? AND c.hidden = 0
             """, (course_id, change_no))
             row = cursor.fetchone()
             if not row:
@@ -1366,7 +1451,7 @@ class DatabaseManager:
                 SELECT c.id, c.course_id, co.name, c.change_no, c.timestamp, c.message, c.changes_count
                 FROM change_records c
                 JOIN courses co ON c.course_id = co.id
-                WHERE 1=1
+                WHERE co.hidden = 0
             """
             params = []
             
@@ -1441,7 +1526,7 @@ class DatabaseManager:
                     SELECT cr.id, cr.course_id, co.name, cr.change_no, cr.timestamp, cr.message
                     FROM change_records cr
                     JOIN courses co ON cr.course_id = co.id
-                    WHERE cr.course_id = ?
+                    WHERE cr.course_id = ? AND co.hidden = 0
                     ORDER BY cr.timestamp DESC
                     LIMIT ?
                 """, (course_id, limit))
@@ -1450,6 +1535,7 @@ class DatabaseManager:
                     SELECT cr.id, cr.course_id, co.name, cr.change_no, cr.timestamp, cr.message
                     FROM change_records cr
                     JOIN courses co ON cr.course_id = co.id
+                    WHERE co.hidden = 0
                     ORDER BY cr.timestamp DESC
                     LIMIT ?
                 """, (limit,))
@@ -1490,7 +1576,7 @@ class DatabaseManager:
                     SELECT a.id, a.course_id, co.name, a.title, a.link, a.description, a.pub_date
                     FROM announcements a
                     JOIN courses co ON a.course_id = co.id
-                    WHERE a.course_id = ?
+                    WHERE a.course_id = ? AND co.hidden = 0
                     ORDER BY a.pub_date DESC
                     LIMIT ?
                 """, (course_id, limit))
@@ -1499,6 +1585,7 @@ class DatabaseManager:
                     SELECT a.id, a.course_id, co.name, a.title, a.link, a.description, a.pub_date
                     FROM announcements a
                     JOIN courses co ON a.course_id = co.id
+                    WHERE co.hidden = 0
                     ORDER BY a.pub_date DESC
                     LIMIT ?
                 """, (limit,))
@@ -1574,9 +1661,11 @@ class DatabaseManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
-                SELECT cs.is_checking, cs.started_at, cs.current_course_id, c.name as course_name
+                SELECT cs.is_checking, cs.started_at,
+                       CASE WHEN c.id IS NOT NULL THEN cs.current_course_id END,
+                       c.name as course_name
                 FROM check_status cs
-                LEFT JOIN courses c ON cs.current_course_id = c.id
+                LEFT JOIN courses c ON cs.current_course_id = c.id AND c.hidden = 0
                 WHERE cs.id = 1
             """)
             row = cursor.fetchone()
@@ -1652,7 +1741,7 @@ class DatabaseManager:
                            a.title, a.link, a.description, a.pub_date, a.fetched_at
                     FROM announcements a
                     JOIN courses c ON a.course_id = c.id
-                    WHERE a.course_id = ?
+                    WHERE a.course_id = ? AND c.hidden = 0
                     ORDER BY a.pub_date DESC
                     LIMIT ?
                 """, (course_id, limit))
@@ -1662,6 +1751,7 @@ class DatabaseManager:
                            a.title, a.link, a.description, a.pub_date, a.fetched_at
                     FROM announcements a
                     JOIN courses c ON a.course_id = c.id
+                    WHERE c.hidden = 0
                     ORDER BY a.pub_date DESC
                     LIMIT ?
                 """, (limit,))
@@ -1834,9 +1924,11 @@ class DatabaseManager:
                        COALESCE(cep.remaining_blocks, 0),
                        COALESCE(cep.importance, 1.0),
                        COALESCE(cep.max_daily_blocks, 3),
-                       COALESCE(cep.enabled, 0)
+                       COALESCE(cep.enabled, 0),
+                       c.short_name
                 FROM courses c
                 LEFT JOIN course_exam_plans cep ON cep.course_id = c.id
+                WHERE c.hidden = 0
                 ORDER BY c.sort_order ASC, c.id ASC
             """)
             return [
@@ -1848,6 +1940,7 @@ class DatabaseManager:
                     "importance": row[4],
                     "max_daily_blocks": row[5],
                     "enabled": bool(row[6]),
+                    "short_name": row[7],
                 }
                 for row in cursor.fetchall()
             ]
@@ -1891,78 +1984,6 @@ class DatabaseManager:
         except Exception as e:
             logging.error(f"Failed to save course exam plan for {course_id}: {e}", exc_info=True)
             raise
-
-    def get_study_plan_items(self) -> List[Dict]:
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT spi.id, spi.course_id, c.name, spi.scheduled_date,
-                   spi.kind, spi.completed
-            FROM study_plan_items spi
-            JOIN courses c ON c.id = spi.course_id
-            ORDER BY spi.scheduled_date, spi.id
-        """)
-        return [
-            {"id": row[0], "course_id": row[1], "course_name": row[2],
-             "scheduled_date": row[3], "kind": row[4], "completed": bool(row[5])}
-            for row in cursor.fetchall()
-        ]
-
-    def add_study_plan_item(self, course_id: int, scheduled_date: str, kind: str) -> int:
-        if kind not in {"study", "review"}:
-            raise ValueError("Invalid study plan item kind")
-        datetime.fromisoformat(scheduled_date)
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "INSERT INTO study_plan_items (course_id, scheduled_date, kind) VALUES (?, ?, ?)",
-            (course_id, scheduled_date, kind),
-        )
-        self.conn.commit()
-        return int(cursor.lastrowid)
-
-    def update_study_plan_item(
-        self, item_id: int, scheduled_date: Optional[str] = None,
-        completed: Optional[bool] = None,
-    ) -> bool:
-        updates, values = [], []
-        if scheduled_date is not None:
-            datetime.fromisoformat(scheduled_date)
-            updates.append("scheduled_date = ?")
-            values.append(scheduled_date)
-        if completed is not None:
-            updates.append("completed = ?")
-            values.append(1 if completed else 0)
-        if not updates:
-            return False
-        values.append(item_id)
-        cursor = self.conn.cursor()
-        cursor.execute(f"UPDATE study_plan_items SET {', '.join(updates)} WHERE id = ?", values)
-        self.conn.commit()
-        return cursor.rowcount > 0
-
-    def delete_study_plan_item(self, item_id: int) -> bool:
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM study_plan_items WHERE id = ?", (item_id,))
-        self.conn.commit()
-        return cursor.rowcount > 0
-
-    def get_study_review_overrides(self) -> Dict[Tuple[int, int], str]:
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT course_id, review_offset, scheduled_date FROM study_review_overrides")
-        return {(row[0], row[1]): row[2] for row in cursor.fetchall()}
-
-    def save_study_review_override(
-        self, course_id: int, review_offset: int, scheduled_date: str,
-    ):
-        if review_offset not in {1, 3, 7}:
-            raise ValueError("Invalid review offset")
-        datetime.fromisoformat(scheduled_date)
-        self.conn.execute("""
-            INSERT INTO study_review_overrides (course_id, review_offset, scheduled_date)
-            VALUES (?, ?, ?)
-            ON CONFLICT(course_id, review_offset) DO UPDATE SET
-                scheduled_date = excluded.scheduled_date
-        """, (course_id, review_offset, scheduled_date))
-        self.conn.commit()
 
     def set_file_study_level(self, course_id: int, file_path: str, level: int):
         """Upsert the comprehension level (0-5) for a file. Level 5 means ignored."""
@@ -2054,7 +2075,7 @@ class DatabaseManager:
                     SELECT ss.id, ss.course_id, c.name, ss.timestamp, ss.note
                     FROM study_sessions ss
                     JOIN courses c ON ss.course_id = c.id
-                    WHERE ss.course_id = ?
+                    WHERE ss.course_id = ? AND c.hidden = 0
                     ORDER BY ss.timestamp DESC LIMIT ?
                 """, (course_id, limit))
             else:
@@ -2062,6 +2083,7 @@ class DatabaseManager:
                     SELECT ss.id, ss.course_id, c.name, ss.timestamp, ss.note
                     FROM study_sessions ss
                     JOIN courses c ON ss.course_id = c.id
+                    WHERE c.hidden = 0
                     ORDER BY ss.timestamp DESC LIMIT ?
                 """, (limit,))
             return [
@@ -2104,6 +2126,7 @@ class DatabaseManager:
                     ON fs.course_id = n.course_id AND fs.file_path = f.local_path
                 WHERE COALESCE(fs.level, 0) < 4
                 AND f.local_path IS NOT NULL
+                AND c.hidden = 0
             """)
             rows = cursor.fetchall()
 
@@ -2288,9 +2311,11 @@ class DatabaseManager:
             raise
 
     def get_exercises(self, course_id: Optional[int] = None, limit: int = 200,
-                      include_ignored: bool = False) -> List[Dict]:
+                      include_ignored: bool = False,
+                      include_hidden_courses: bool = False) -> List[Dict]:
         """Return exercises, optionally filtered by course, newest fetched first.
-        Ignored exercises are excluded by default; pass include_ignored=True to include them."""
+        Ignored exercises and exercises from hidden courses are excluded by default.
+        The checker opts into both when comparing newly fetched data."""
         try:
             cursor = self.conn.cursor()
             sql = """
@@ -2306,14 +2331,19 @@ class DatabaseManager:
                 ORDER BY e.course_id, e.id DESC
                 LIMIT ?
             """
-            ignored_clause = "" if include_ignored else "AND e.ignored = 0"
+            clauses = []
+            if not include_ignored:
+                clauses.append("e.ignored = 0")
+            if not include_hidden_courses:
+                clauses.append("c.hidden = 0")
             if course_id:
+                where_clauses = ["e.course_id = ?", *clauses]
                 cursor.execute(
-                    sql.format(where=f"WHERE e.course_id = ? {ignored_clause}"),
+                    sql.format(where=f"WHERE {' AND '.join(where_clauses)}"),
                     (course_id, limit),
                 )
             else:
-                where = f"WHERE e.ignored = 0" if not include_ignored else ""
+                where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
                 cursor.execute(sql.format(where=where), (limit,))
             rows = cursor.fetchall()
             return [

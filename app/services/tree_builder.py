@@ -11,6 +11,7 @@ from typing import List
 from datetime import datetime, timezone
 
 from app.services.scraper import Scraper, compute_md5, compute_md5_from_bytes
+from app.services.google_drive_downloader import GoogleDriveDownloadError
 
 
 # Data models
@@ -178,11 +179,26 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str,
 
         if "google" in file_url:
             # Google Drive files: always download and compute hash
-            local_path, file_hash, actual_file_name, redirect_url = scraper.download_file(file_url, webdav_path)
-            last_updated = datetime.now(timezone.utc).isoformat()
-            # Use the actual downloaded file name if the scraped one is empty
-            if not file_name or not file_name.strip():
-                file_name = actual_file_name
+            try:
+                local_path, file_hash, actual_file_name, redirect_url = scraper.download_file(file_url, webdav_path)
+                last_updated = datetime.now(timezone.utc).isoformat()
+                # Use the actual downloaded file name if the scraped one is empty
+                if not file_name or not file_name.strip():
+                    file_name = actual_file_name
+            except GoogleDriveDownloadError as e:
+                logging.warning(
+                    f"Skipping unavailable Google Drive file '{file_name}' ({file_url}): {e}"
+                )
+                if old_file:
+                    # A transient or permanent source failure must not erase a
+                    # previously downloaded WebDAV file from the saved tree.
+                    file_hash = old_file.md5_hash
+                    etag = old_file.etag
+                    last_updated = old_file.last_updated
+                    local_path = old_file.local_path
+                    redirect_url = old_file.redirect_url
+                    if not file_name or not file_name.strip():
+                        file_name = old_file.name
         else:
             etag = scraper.fetch_etag(file_url)
             # Download if new, or etag has changed

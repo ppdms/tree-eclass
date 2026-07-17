@@ -106,6 +106,12 @@
 		<hr style="border: none; border-top: 1px solid var(--border); margin: var(--spacing-lg) 0;">
 		<div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
 			<button data-course-id="{{ course.id }}" onclick="checkCourseFromButton(this)" class="btn btn-primary"><i class="bi bi-arrow-clockwise"></i> Check Now</button>
+			<form method="POST" action="/courses/{{ course.id }}/hide" style="display: inline;"
+				data-confirm-title="Hide Course"
+				data-confirm-message="Hide this course from the interface and stop its notifications? Its files, announcements, exercises, and history will continue to synchronize."
+				onsubmit="return handleConfirmForm(event, this);">
+				<button type="submit" class="btn btn-secondary"><i class="bi bi-eye-slash"></i> Hide Course</button>
+			</form>
 			<form method="POST" action="/courses/{{ course.id }}/reset" style="display: inline;"
 				data-confirm-title="Reset Course Data"
 				data-confirm-message="Reset all data for this course? This will clear the file tree and change history but keep the course configuration."
