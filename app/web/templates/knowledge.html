@@ -1,0 +1,724 @@
+{% extends "base.html" %}
+
+{% block title %}Search Course Material – tree-eClass{% endblock %}
+
+{% block extra_head %}
+<style>
+.knowledge-page { --knowledge-accent: #6ee7b7; }
+
+.knowledge-hero {
+	position: relative;
+	overflow: hidden;
+	padding: clamp(1.4rem, 4vw, 2.5rem);
+	border: 1px solid rgba(74, 222, 128, 0.24);
+	border-radius: var(--radius-lg);
+	background:
+		radial-gradient(circle at 88% 18%, rgba(74, 222, 128, 0.14), transparent 28rem),
+		linear-gradient(135deg, #16231e 0%, var(--surface) 54%, #141b24 100%);
+	box-shadow: var(--shadow-lg);
+}
+
+.knowledge-hero::after {
+	content: "";
+	position: absolute;
+	right: -4rem;
+	bottom: -7rem;
+	width: 20rem;
+	height: 20rem;
+	border: 1px solid rgba(110, 231, 183, 0.12);
+	border-radius: 50%;
+	box-shadow: 0 0 0 3rem rgba(110, 231, 183, 0.025), 0 0 0 6rem rgba(110, 231, 183, 0.018);
+	pointer-events: none;
+}
+
+.knowledge-eyebrow {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	margin-bottom: 0.45rem;
+	color: var(--knowledge-accent);
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+}
+
+.knowledge-hero h1 {
+	position: relative;
+	z-index: 1;
+	max-width: 47rem;
+	margin: 0;
+	font-size: clamp(1.65rem, 4vw, 2.55rem);
+	line-height: 1.12;
+	letter-spacing: -0.045em;
+}
+
+.knowledge-hero-copy {
+	position: relative;
+	z-index: 1;
+	max-width: 43rem;
+	margin: 0.65rem 0 1.35rem;
+	color: var(--text-primary-soft);
+	font-size: 0.96rem;
+}
+
+.knowledge-search-form {
+	position: relative;
+	z-index: 2;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	max-width: 58rem;
+	padding: 0.35rem;
+	border: 1px solid rgba(148, 163, 184, 0.34);
+	border-radius: 10px;
+	background: rgba(13, 17, 23, 0.88);
+	box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+.knowledge-query-wrap {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
+
+.knowledge-query-wrap > i {
+	margin-left: 0.65rem;
+	color: var(--text-secondary);
+	font-size: 1.05rem;
+}
+
+#knowledge-query {
+	width: 100%;
+	min-width: 0;
+	height: 42px;
+	padding: 0 0.75rem;
+	border: 0;
+	outline: 0;
+	background: transparent;
+	color: var(--text-primary);
+	font: inherit;
+	font-size: 0.92rem;
+}
+
+#knowledge-query::placeholder { color: #6f7884; }
+
+#knowledge-course {
+	max-width: 14rem;
+	height: 42px;
+	padding: 0 2.2rem 0 0.75rem;
+	border: 0;
+	border-left: 1px solid var(--border);
+	outline: 0;
+	background-color: transparent;
+	color: var(--text-primary-soft);
+	font: inherit;
+	font-size: 0.82rem;
+}
+
+.knowledge-search-form .btn { height: 42px; border-radius: 7px; }
+
+.knowledge-prompts {
+	position: relative;
+	z-index: 2;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.45rem;
+	margin-top: 0.8rem;
+}
+
+.knowledge-prompts > span { color: var(--text-secondary); font-size: 0.75rem; }
+
+.knowledge-prompt {
+	padding: 0.28rem 0.55rem;
+	border: 1px solid rgba(148, 163, 184, 0.24);
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.035);
+	color: var(--text-primary-soft);
+	cursor: pointer;
+	font: inherit;
+	font-size: 0.75rem;
+	transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.knowledge-prompt:hover {
+	border-color: rgba(110, 231, 183, 0.5);
+	background: rgba(74, 222, 128, 0.08);
+	color: var(--text-primary);
+}
+
+.knowledge-body { margin-top: 1.3rem; }
+
+.knowledge-results-head,
+.knowledge-section-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 0.65rem;
+}
+
+.knowledge-results-head h2,
+.knowledge-section-head h2 {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 650;
+}
+
+.knowledge-section-head a,
+.knowledge-clear {
+	border: 0;
+	background: none;
+	color: var(--text-secondary);
+	font: inherit;
+	font-size: 0.76rem;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.knowledge-section-head a:hover,
+.knowledge-clear:hover { color: var(--primary-color); }
+
+.knowledge-result-list { display: grid; gap: 0.65rem; }
+
+.knowledge-result-card {
+	padding: 1rem 1.05rem;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+	transition: transform 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.knowledge-result-card:hover {
+	transform: translateY(-1px);
+	border-color: #3d4a53;
+	background: #182029;
+}
+
+.knowledge-result-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.38rem;
+	margin-bottom: 0.35rem;
+	color: var(--text-secondary);
+	font-size: 0.72rem;
+}
+
+.knowledge-kind {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.28rem;
+	color: var(--knowledge-accent);
+	font-weight: 650;
+	text-transform: uppercase;
+}
+
+.knowledge-course-link { color: var(--text-primary-soft); text-decoration: none; }
+.knowledge-course-link:hover { color: var(--primary-color); }
+.knowledge-meta-dot::before { content: "·"; margin-right: 0.38rem; color: #4b5563; }
+
+.knowledge-result-card h3 {
+	margin: 0;
+	font-size: 0.96rem;
+	font-weight: 650;
+	line-height: 1.3;
+}
+
+.knowledge-heading {
+	margin-top: 0.2rem;
+	color: #b7c1cc;
+	font-size: 0.78rem;
+	font-weight: 550;
+}
+
+.knowledge-excerpt {
+	max-width: 68rem;
+	margin: 0.55rem 0 0;
+	color: var(--text-primary-soft);
+	font-size: 0.84rem;
+	line-height: 1.55;
+}
+
+.knowledge-result-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.45rem;
+	margin-top: 0.75rem;
+}
+
+.knowledge-result-actions .btn { height: 29px; font-size: 0.76rem; }
+.knowledge-study-control { margin-left: auto; }
+.knowledge-study-control .study-level-btn { padding-right: 0.3rem; font-size: 1.08rem; }
+.knowledge-study-label { color: var(--text-secondary); font-size: 0.72rem; }
+
+.knowledge-discovery-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1.65fr) minmax(17rem, 0.85fr);
+	gap: 1rem;
+	align-items: start;
+}
+
+.knowledge-stack { display: grid; gap: 1rem; }
+
+.knowledge-panel {
+	padding: 1rem;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+
+.knowledge-course-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.55rem;
+}
+
+.knowledge-course-card {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 0.7rem;
+	padding: 0.75rem;
+	border: 1px solid var(--border-light);
+	border-radius: 7px;
+	background: rgba(255, 255, 255, 0.018);
+}
+
+.knowledge-course-icon {
+	display: grid;
+	place-items: center;
+	width: 2rem;
+	height: 2rem;
+	border-radius: 7px;
+	background: rgba(74, 222, 128, 0.1);
+	color: var(--primary-color);
+}
+
+.knowledge-course-name {
+	display: block;
+	overflow: hidden;
+	color: var(--text-primary);
+	font-size: 0.83rem;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-decoration: none;
+}
+
+.knowledge-course-sub { color: var(--text-secondary); font-size: 0.7rem; }
+
+.knowledge-mini-progress {
+	width: 100%;
+	height: 3px;
+	margin-top: 0.35rem;
+	overflow: hidden;
+	border-radius: 999px;
+	background: var(--border-light);
+}
+
+.knowledge-mini-progress span {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: var(--primary-color);
+}
+
+.knowledge-course-search {
+	display: grid;
+	place-items: center;
+	width: 1.9rem;
+	height: 1.9rem;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
+}
+
+.knowledge-course-search:hover { background: rgba(255, 255, 255, 0.06); color: var(--primary-color); }
+
+.knowledge-material-list,
+.knowledge-task-list { display: grid; }
+
+.knowledge-material,
+.knowledge-task {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 0.6rem;
+	padding: 0.58rem 0;
+	border-top: 1px solid var(--border-light);
+}
+
+.knowledge-material:first-child,
+.knowledge-task:first-child { padding-top: 0; border-top: 0; }
+.knowledge-material:last-child,
+.knowledge-task:last-child { padding-bottom: 0; }
+
+.knowledge-file-icon {
+	display: grid;
+	place-items: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	border-radius: 5px;
+	background: var(--surface-raised);
+	color: #a8b3bf;
+	font-size: 0.82rem;
+}
+
+.knowledge-material-name,
+.knowledge-task-name {
+	display: block;
+	overflow: hidden;
+	color: var(--text-primary);
+	font-size: 0.79rem;
+	font-weight: 550;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-decoration: none;
+}
+
+.knowledge-material-name:hover,
+.knowledge-task-name:hover { color: var(--primary-color); }
+.knowledge-material-meta,
+.knowledge-task-meta { color: var(--text-secondary); font-size: 0.68rem; }
+.knowledge-material .study-level-btn { padding: 0; }
+
+.knowledge-empty,
+.knowledge-search-state {
+	padding: 2rem 1rem;
+	border: 1px dashed var(--border);
+	border-radius: var(--radius);
+	color: var(--text-secondary);
+	text-align: center;
+}
+
+.knowledge-empty i,
+.knowledge-search-state > i {
+	display: block;
+	margin-bottom: 0.45rem;
+	color: #4b5563;
+	font-size: 1.4rem;
+}
+
+.knowledge-empty strong,
+.knowledge-search-state strong { display: block; color: var(--text-primary); font-size: 0.9rem; }
+.knowledge-empty p,
+.knowledge-search-state p { max-width: 30rem; margin: 0.25rem auto 0; font-size: 0.78rem; }
+
+.knowledge-task-status {
+	padding: 0.16rem 0.42rem;
+	border-radius: 999px;
+	background: rgba(251, 191, 36, 0.1);
+	color: #fcd34d;
+	font-size: 0.65rem;
+	white-space: nowrap;
+}
+
+.knowledge-loading-icon { animation: knowledge-spin 0.8s linear infinite; }
+@keyframes knowledge-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 850px) {
+	.knowledge-discovery-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 650px) {
+	.knowledge-hero { padding: 1.15rem; }
+	.knowledge-search-form { grid-template-columns: 1fr auto; }
+	#knowledge-course {
+		grid-column: 1 / -1;
+		grid-row: 2;
+		max-width: none;
+		width: 100%;
+		border-top: 1px solid var(--border);
+		border-left: 0;
+	}
+	.knowledge-course-grid { grid-template-columns: 1fr; }
+	.knowledge-study-control { width: 100%; margin-left: 0; }
+}
+</style>
+{% endblock %}
+
+{% macro study_control(course_id, file_path, level, label=true) %}
+<span class="study-wrap knowledge-study-control">
+	{% if label %}<span class="knowledge-study-label">Study status</span>{% endif %}
+	<button class="study-level-btn{% if level == 5 %} study-ignored{% endif %}"
+		data-local-path="{{ file_path | e }}" data-course-id="{{ course_id }}" data-level="{{ level }}"
+		onclick="cycleStudyLevel(this, event)"
+		title="{{ ['Not studied — click to advance','Glanced — click to advance','Familiar — click to advance','Studied — click to advance','Mastered','Ignored — Shift+click to unignore'][level] }}">{{ ['○','◔','◑','◕','●','—'][level] }}</button>
+	<span class="study-picker">
+		{% for i in range(5) %}<button class="sp-opt{% if level == i %} sp-opt--active{% endif %}" data-level="{{ i }}" onclick="setStudyLevel(this, Number(this.dataset.level))" title="{{ ['Not studied','Glanced','Familiar','Studied','Mastered'][i] }}">{{ ['○','◔','◑','◕','●'][i] }}</button>{% endfor %}
+	</span>
+</span>
+{% endmacro %}
+
+{% block content %}
+<div class="knowledge-page">
+	<section class="knowledge-hero">
+		<div class="knowledge-eyebrow"><i class="bi bi-stars"></i> Your course library</div>
+		<h1>Find anything in your course material.</h1>
+		<p class="knowledge-hero-copy">Search across notes, slides, readings, and handouts. Jump straight to the source, then keep your study progress up to date.</p>
+
+		<form class="knowledge-search-form" id="knowledge-search-form" role="search">
+			<label class="knowledge-query-wrap" for="knowledge-query">
+				<i class="bi bi-search"></i>
+				<input id="knowledge-query" type="search" value="{{ initial_query | e }}" placeholder="Try “dynamic programming” or “grading policy”" autocomplete="off">
+			</label>
+			<select id="knowledge-course" aria-label="Course">
+				<option value="">All courses</option>
+				{% for course in knowledge_courses %}<option value="{{ course.course_id }}"{% if course_id == course.course_id %} selected{% endif %}>{{ course.short_name or course.name }}</option>{% endfor %}
+			</select>
+			<button class="btn btn-primary" type="submit"><span>Search</span><i class="bi bi-arrow-right"></i></button>
+		</form>
+
+		<div class="knowledge-prompts" aria-label="Search ideas">
+			<span>Try:</span>
+			<button class="knowledge-prompt" type="button" data-query="exam topics">Exam topics</button>
+			<button class="knowledge-prompt" type="button" data-query="worked examples">Worked examples</button>
+			<button class="knowledge-prompt" type="button" data-query="definitions and key concepts">Key concepts</button>
+			<button class="knowledge-prompt" type="button" data-query="grading policy">Grading policy</button>
+		</div>
+	</section>
+
+	<div class="knowledge-body">
+		<section id="knowledge-results-section" hidden aria-live="polite">
+			<div class="knowledge-results-head">
+				<h2 id="knowledge-results-title">Search results</h2>
+				<button class="knowledge-clear" id="knowledge-clear" type="button"><i class="bi bi-x"></i> Clear search</button>
+			</div>
+			<div class="knowledge-result-list" id="knowledge-results"></div>
+		</section>
+
+		<section id="knowledge-discovery">
+			<div class="knowledge-discovery-grid">
+				<div class="knowledge-stack">
+					<div class="knowledge-panel">
+						<div class="knowledge-section-head">
+							<h2>Browse by course</h2>
+							<a href="/courses">All courses <i class="bi bi-arrow-right"></i></a>
+						</div>
+						{% if knowledge_courses %}
+						<div class="knowledge-course-grid">
+							{% for course in knowledge_courses %}
+							{% set summary = study_summaries[course.course_id|string] %}
+							{% set progress = (summary.completion_ratio * 100) | round(0) | int %}
+							<div class="knowledge-course-card">
+								<span class="knowledge-course-icon"><i class="bi bi-journal-text"></i></span>
+								<div>
+									<a class="knowledge-course-name" href="/courses/{{ course.course_id }}">{{ course.name }}</a>
+									<span class="knowledge-course-sub">{{ course.indexed_documents }} searchable · {{ progress }}% studied</span>
+									<div class="knowledge-mini-progress" title="{{ progress }}% study progress"><span style="width: {{ progress }}%"></span></div>
+								</div>
+								<button class="knowledge-course-search" type="button" data-course-id="{{ course.course_id }}" title="Search {{ course.name }}"><i class="bi bi-search"></i></button>
+							</div>
+							{% endfor %}
+						</div>
+						{% else %}
+						<div class="knowledge-empty"><i class="bi bi-journal-x"></i><strong>No courses yet</strong><p>Add a course and run a check to start building your library.</p></div>
+						{% endif %}
+					</div>
+
+					<div class="knowledge-panel">
+						<div class="knowledge-section-head">
+							<h2>Recently available</h2>
+							{% if course_id %}<a href="/courses/{{ course_id }}">Course files <i class="bi bi-arrow-right"></i></a>{% else %}<a href="/courses">Course files <i class="bi bi-arrow-right"></i></a>{% endif %}
+						</div>
+						{% if recent_materials %}
+						<div class="knowledge-material-list">
+							{% for material in recent_materials %}
+							{% set level = study_levels[material.course_id|string].get(material.source_path, 0) %}
+							<div class="knowledge-material">
+								<span class="knowledge-file-icon"><i class="bi bi-file-earmark-text"></i></span>
+								<div>
+									<a class="knowledge-material-name" href="/files{{ material.source_path | urlencode }}" target="_blank">{{ material.display_name }}</a>
+									<span class="knowledge-material-meta">{{ material.course_name }}{% if material.indexed_at %} · added to search {{ material.indexed_at | athens_time }}{% endif %}</span>
+								</div>
+								{{ study_control(material.course_id, material.source_path, level, false) }}
+							</div>
+							{% endfor %}
+						</div>
+						{% else %}
+						<div class="knowledge-empty"><i class="bi bi-search"></i><strong>No searchable material yet</strong><p>Run a course check after your files are configured. Notes, PDFs, slides, and other supported material will appear here automatically.</p></div>
+						{% endif %}
+					</div>
+				</div>
+
+				<aside class="knowledge-stack">
+					<div class="knowledge-panel">
+						<div class="knowledge-section-head">
+							<h2>Continue studying</h2>
+							<a href="/study">Study inbox <i class="bi bi-arrow-right"></i></a>
+						</div>
+						{% if study_inbox %}
+						<div class="knowledge-material-list">
+							{% for item in study_inbox %}
+							<div class="knowledge-material">
+								{{ study_control(item.course_id, item.file_path, item.level, false) }}
+								<div>
+									<a class="knowledge-material-name" href="/files{{ item.file_path | urlencode }}" target="_blank">{{ item.file_name }}</a>
+									<span class="knowledge-material-meta">{{ item.course_name }} · {{ ['Not started','Glanced','Familiar','Studied'][item.level] }}</span>
+								</div>
+								<a class="knowledge-course-link" href="/courses/{{ item.course_id }}" aria-label="Open {{ item.course_name }}"><i class="bi bi-chevron-right"></i></a>
+							</div>
+							{% endfor %}
+						</div>
+						{% else %}
+						<div class="knowledge-empty"><i class="bi bi-check2-circle"></i><strong>You’re caught up</strong><p>Your next unmastered course files will appear here.</p></div>
+						{% endif %}
+					</div>
+
+					<div class="knowledge-panel">
+						<div class="knowledge-section-head">
+							<h2>Upcoming work</h2>
+							<a href="/exercises{% if course_id %}?course_id={{ course_id }}{% endif %}">Exercises <i class="bi bi-arrow-right"></i></a>
+						</div>
+						{% if upcoming_exercises %}
+						<div class="knowledge-task-list">
+							{% for exercise in upcoming_exercises %}
+							<div class="knowledge-task">
+								<span class="knowledge-file-icon"><i class="bi bi-check2-square"></i></span>
+								<div>
+									<a class="knowledge-task-name" href="{{ exercise.link }}" target="_blank">{{ exercise.title }}</a>
+									<span class="knowledge-task-meta">{{ exercise.course_name }}{% if exercise._deadline_short %} · {{ exercise._deadline_short }}{% endif %}</span>
+								</div>
+								{% if exercise._time_label %}<span class="knowledge-task-status">{{ exercise._time_label }}</span>{% endif %}
+							</div>
+							{% endfor %}
+						</div>
+						{% else %}
+						<div class="knowledge-empty"><i class="bi bi-calendar-check"></i><strong>No open exercises</strong><p>New course work will show up here after a check.</p></div>
+						{% endif %}
+					</div>
+				</aside>
+			</div>
+		</section>
+	</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const knowledgeStudyLevels = {{ study_levels | tojson }};
+const knowledgeEscape = value => String(value ?? '').replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[character]));
+const knowledgeForm = document.getElementById('knowledge-search-form');
+const knowledgeQuery = document.getElementById('knowledge-query');
+const knowledgeCourse = document.getElementById('knowledge-course');
+const knowledgeResultsSection = document.getElementById('knowledge-results-section');
+const knowledgeResults = document.getElementById('knowledge-results');
+const knowledgeDiscovery = document.getElementById('knowledge-discovery');
+
+const knowledgeKind = kind => ({
+	pdf: ['bi-file-earmark-pdf', 'PDF'], pptx: ['bi-file-earmark-slides', 'Slides'],
+	docx: ['bi-file-earmark-word', 'Document'], xlsx: ['bi-file-earmark-spreadsheet', 'Spreadsheet'],
+	text: ['bi-file-earmark-text', 'Text'], html: ['bi-filetype-html', 'Web page'],
+	notebook: ['bi-journal-code', 'Notebook'], archive: ['bi-file-earmark-zip', 'Archive'],
+}[kind] || ['bi-file-earmark-text', String(kind || 'Material')]);
+
+function knowledgeFileUrl(path) {
+	return '/files/' + String(path || '').split('/').filter(Boolean).map(encodeURIComponent).join('/');
+}
+
+function knowledgeLocator(result) {
+	const label = ({page: 'Page', slide: 'Slide', sheet: 'Sheet', line: 'Line', cell: 'Cell', section: 'Section'})[result.locator_type] || result.locator_type;
+	if (!label || result.locator_start === null || result.locator_start === undefined || result.locator_start === '') return '';
+	return `${label} ${result.locator_start}`;
+}
+
+function knowledgeStudyControl(result) {
+	const levels = knowledgeStudyLevels[String(result.course_id)] || {};
+	const level = Number(levels[result.source_path] ?? 0);
+	const icons = ['○','◔','◑','◕','●','—'];
+	const labels = ['Not studied','Glanced','Familiar','Studied','Mastered','Ignored'];
+	return `<span class="study-wrap knowledge-study-control"><span class="knowledge-study-label">Study status</span>
+		<button class="study-level-btn${level === 5 ? ' study-ignored' : ''}" data-local-path="${knowledgeEscape(result.source_path)}" data-course-id="${Number(result.course_id)}" data-level="${level}" onclick="cycleStudyLevel(this, event)" title="${labels[level]} — click to change">${icons[level]}</button>
+		<span class="study-picker">${icons.slice(0, 5).map((icon, index) => `<button class="sp-opt${level === index ? ' sp-opt--active' : ''}" data-level="${index}" onclick="setStudyLevel(this, Number(this.dataset.level))" title="${labels[index]}">${icon}</button>`).join('')}</span></span>`;
+}
+
+function renderKnowledgeResults(data) {
+	const results = data.results || [];
+	const scope = knowledgeCourse.options[knowledgeCourse.selectedIndex]?.text || 'All courses';
+	document.getElementById('knowledge-results-title').textContent = results.length === 1
+		? `1 result in ${scope}` : `${results.length} results in ${scope}`;
+	if (!results.length) {
+		knowledgeResults.innerHTML = `<div class="knowledge-search-state"><i class="bi bi-search"></i><strong>No matching material</strong><p>Try a broader phrase, a related term, or search across all courses.</p></div>`;
+		return;
+	}
+	knowledgeResults.innerHTML = results.map(result => {
+		const [kindIcon, kindLabel] = knowledgeKind(result.document_kind);
+		const locator = knowledgeLocator(result);
+		const heading = result.heading && result.heading !== result.display_name
+			? `<div class="knowledge-heading">${knowledgeEscape(result.heading)}</div>` : '';
+		return `<article class="knowledge-result-card">
+			<div class="knowledge-result-meta"><span class="knowledge-kind"><i class="bi ${kindIcon}"></i> ${knowledgeEscape(kindLabel)}</span><a class="knowledge-course-link knowledge-meta-dot" href="/courses/${Number(result.course_id)}">${knowledgeEscape(result.course_short_name || result.course_name)}</a>${locator ? `<span class="knowledge-meta-dot">${knowledgeEscape(locator)}</span>` : ''}</div>
+			<h3>${knowledgeEscape(result.display_name)}</h3>${heading}
+			<p class="knowledge-excerpt">${knowledgeEscape(result.excerpt)}</p>
+			<div class="knowledge-result-actions"><a class="btn btn-primary btn-sm" href="${knowledgeFileUrl(result.source_path)}" target="_blank"><i class="bi bi-box-arrow-up-right"></i> Open material</a><a class="btn btn-secondary btn-sm" href="/courses/${Number(result.course_id)}"><i class="bi bi-folder2-open"></i> Course files</a>${knowledgeStudyControl(result)}</div>
+		</article>`;
+	}).join('');
+}
+
+async function searchKnowledge() {
+	const query = knowledgeQuery.value.trim();
+	if (!query) {
+		knowledgeQuery.focus();
+		return;
+	}
+	knowledgeDiscovery.hidden = true;
+	knowledgeResultsSection.hidden = false;
+	knowledgeResults.innerHTML = `<div class="knowledge-search-state"><i class="bi bi-arrow-repeat knowledge-loading-icon"></i><strong>Searching your material…</strong></div>`;
+	const params = new URLSearchParams({q: query, mode: 'hybrid', limit: '12'});
+	if (knowledgeCourse.value) params.set('course_id', knowledgeCourse.value);
+	const pageParams = new URLSearchParams({q: query});
+	if (knowledgeCourse.value) pageParams.set('course_id', knowledgeCourse.value);
+	history.replaceState(null, '', `/knowledge?${pageParams}`);
+	try {
+		const response = await fetch(`/api/knowledge/search?${params}`);
+		if (!response.ok) throw new Error('Search is temporarily unavailable.');
+		renderKnowledgeResults(await response.json());
+	} catch (error) {
+		knowledgeResults.innerHTML = `<div class="knowledge-search-state"><i class="bi bi-exclamation-circle"></i><strong>Couldn’t search right now</strong><p>${knowledgeEscape(error.message)}</p></div>`;
+	}
+}
+
+knowledgeForm.addEventListener('submit', event => {
+	event.preventDefault();
+	searchKnowledge();
+});
+
+knowledgeCourse.addEventListener('change', () => {
+	if (knowledgeQuery.value.trim()) {
+		searchKnowledge();
+		return;
+	}
+	const params = new URLSearchParams();
+	if (knowledgeCourse.value) params.set('course_id', knowledgeCourse.value);
+	window.location.href = params.size ? `/knowledge?${params}` : '/knowledge';
+});
+
+document.getElementById('knowledge-clear').addEventListener('click', () => {
+	knowledgeQuery.value = '';
+	knowledgeResultsSection.hidden = true;
+	knowledgeDiscovery.hidden = false;
+	const params = new URLSearchParams();
+	if (knowledgeCourse.value) params.set('course_id', knowledgeCourse.value);
+	history.replaceState(null, '', params.size ? `/knowledge?${params}` : '/knowledge');
+	knowledgeQuery.focus();
+});
+
+document.querySelectorAll('.knowledge-prompt').forEach(button => button.addEventListener('click', () => {
+	knowledgeQuery.value = button.dataset.query;
+	searchKnowledge();
+}));
+
+document.querySelectorAll('.knowledge-course-search').forEach(button => button.addEventListener('click', () => {
+	knowledgeCourse.value = button.dataset.courseId;
+	knowledgeQuery.focus();
+	knowledgeQuery.select();
+	window.scrollTo({top: 0, behavior: 'smooth'});
+}));
+
+if (knowledgeQuery.value.trim()) searchKnowledge();
+</script>
+{% endblock %}

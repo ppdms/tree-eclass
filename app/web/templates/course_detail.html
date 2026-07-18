@@ -90,10 +90,8 @@
 				<dd>{{ course.id }}</dd>
 				<dt>Name:</dt>
 				<dd><input type="text" name="name" required value="{{ course.name }}" style="width: 100%;"></dd>
-				<dt>WebDAV Folder:</dt>
-				<dd><input type="text" name="webdav_folder" required
-					value="{% if course.webdav_folder %}{{ course.webdav_folder }}{% endif %}"
-					placeholder="e.g., /Algorithms" style="width: 100%;"></dd>
+				<dt>Download Folder:</dt>
+				<dd><code>{{ course.webdav_folder }}</code><br><small>Constructed from the global download base path.</small></dd>
 				<dt>URL:</dt>
 				<dd><a href="https://eclass.aueb.gr/modules/document/index.php?course=INF{{ course.id }}" target="_blank">View on eClass</a></dd>
 			</dl>

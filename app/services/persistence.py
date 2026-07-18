@@ -11,9 +11,14 @@ from zoneinfo import ZoneInfo
 
 from app.services.tree_builder import Node, File
 from app.services.differ import ChangeItem
+from app.services.download_paths import (
+    DEFAULT_DOWNLOAD_BASE_PATH,
+    course_download_path,
+    normalize_download_base_path,
+)
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 25  # Current schema version
+SCHEMA_VERSION = 26  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -147,7 +152,8 @@ class DatabaseManager:
                 request_timeout_seconds INTEGER DEFAULT 30,
                 retry_attempts INTEGER DEFAULT 3,
                 notification_enabled INTEGER DEFAULT 1,
-                notification_on_error INTEGER DEFAULT 1
+                notification_on_error INTEGER DEFAULT 1,
+                download_base_path TEXT NOT NULL DEFAULT '/University'
             )
         """)
         cursor.execute("""
@@ -388,6 +394,10 @@ class DatabaseManager:
         if current_version < 25:
             self._migration_24_to_25()
             self._set_schema_version(25)
+
+        if current_version < 26:
+            self._migration_25_to_26()
+            self._set_schema_version(26)
 
         logging.info("All migrations completed successfully")
 
@@ -888,6 +898,19 @@ class DatabaseManager:
             logging.info("Added short_name column to courses table")
         self.conn.commit()
 
+    def _migration_25_to_26(self):
+        """Migration: Add the global base path for course downloads."""
+        logging.info("Running migration 25 -> 26: Adding global download base path")
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA table_info(preferences)")
+        existing = {row[1] for row in cursor.fetchall()}
+        if 'download_base_path' not in existing:
+            cursor.execute(
+                "ALTER TABLE preferences ADD COLUMN download_base_path TEXT NOT NULL DEFAULT '/University'"
+            )
+            logging.info("Added download_base_path column to preferences")
+        self.conn.commit()
+
     def _migration_18_to_19(self):
         """Migration: Add exercises table."""
         logging.info("Running migration 18 -> 19: Adding exercises table")
@@ -1009,20 +1032,22 @@ class DatabaseManager:
                         global_feed_undergrad_enabled: bool = False,
                         global_feed_rector_enabled: bool = False,
                         semester_start: Optional[str] = None,
-                        semester_end: Optional[str] = None):
+                        semester_end: Optional[str] = None,
+                        download_base_path: str = DEFAULT_DOWNLOAD_BASE_PATH):
         try:
             cursor = self.conn.cursor()
+            download_base_path = normalize_download_base_path(download_base_path)
             cursor.execute("""
                 INSERT OR REPLACE INTO preferences 
                 (id, check_interval_minutes, max_concurrent_downloads, request_timeout_seconds, 
                  retry_attempts, notification_enabled, notification_on_error,
                  global_feed_dept_enabled, global_feed_undergrad_enabled, global_feed_rector_enabled,
-                 semester_start, semester_end) 
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 semester_start, semester_end, download_base_path)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (check_interval_minutes, max_concurrent_downloads, request_timeout_seconds,
                   retry_attempts, int(notification_enabled), int(notification_on_error),
                   int(global_feed_dept_enabled), int(global_feed_undergrad_enabled), int(global_feed_rector_enabled),
-                  semester_start or None, semester_end or None))
+                  semester_start or None, semester_end or None, download_base_path))
             self.conn.commit()
             logging.debug("Preferences saved successfully")
         except Exception as e:
@@ -1036,7 +1061,7 @@ class DatabaseManager:
                 SELECT check_interval_minutes, max_concurrent_downloads, request_timeout_seconds,
                        retry_attempts, notification_enabled, notification_on_error,
                        global_feed_dept_enabled, global_feed_undergrad_enabled, global_feed_rector_enabled,
-                       semester_start, semester_end
+                       semester_start, semester_end, download_base_path
                 FROM preferences WHERE id = 1
             """)
             row = cursor.fetchone()
@@ -1053,6 +1078,7 @@ class DatabaseManager:
                     'global_feed_rector_enabled': bool(row[8]),
                     'semester_start': row[9],
                     'semester_end': row[10],
+                    'download_base_path': normalize_download_base_path(row[11]),
                 }
             # Return defaults if no preferences set
             return {
@@ -1067,6 +1093,7 @@ class DatabaseManager:
                 'global_feed_rector_enabled': False,
                 'semester_start': None,
                 'semester_end': None,
+                'download_base_path': DEFAULT_DOWNLOAD_BASE_PATH,
             }
         except Exception as e:
             logging.error(f"Failed to get preferences: {e}", exc_info=True)
@@ -1128,9 +1155,15 @@ class DatabaseManager:
         return None
 
     # --- Course methods ---
-    def save_course(self, course_id: int, name: str, webdav_folder: str):
+    def save_course(self, course_id: int, name: str, webdav_folder: Optional[str] = None):
         try:
             cursor = self.conn.cursor()
+            if webdav_folder is None:
+                cursor.execute("SELECT webdav_folder FROM courses WHERE id = ?", (course_id,))
+                existing = cursor.fetchone()
+                webdav_folder = existing[0] if existing else course_download_path(
+                    self.get_download_base_path(), name
+                )
             cursor.execute("""
                 INSERT INTO courses (id, name, webdav_folder)
                 VALUES (?, ?, ?)
@@ -1142,6 +1175,19 @@ class DatabaseManager:
             logging.debug(f"Saved course: {name} (ID: {course_id})")
         except Exception as e:
             logging.error(f"Failed to save course {name} (ID: {course_id}): {e}", exc_info=True)
+            raise
+
+    def update_course_webdav_folder(self, course_id: int, webdav_folder: str):
+        """Record the last effective WebDAV root used by synchronization."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE courses SET webdav_folder = ? WHERE id = ?",
+                (webdav_folder, course_id),
+            )
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to update WebDAV folder for course {course_id}: {e}", exc_info=True)
             raise
 
     def get_courses(self, include_hidden: bool = False) -> List[Dict]:
@@ -1157,11 +1203,13 @@ class DatabaseManager:
             query += " ORDER BY sort_order ASC, id ASC"
             cursor.execute(query)
             rows = cursor.fetchall()
+            base_path = self.get_download_base_path()
             return [
                 {
                     "id": row[0],
                     "name": row[1],
-                    "webdav_folder": row[2],
+                    "webdav_folder": course_download_path(base_path, row[1], bool(row[3])),
+                    "stored_webdav_folder": row[2],
                     "hidden": bool(row[3]),
                     "short_name": row[4],
                 }
@@ -1187,15 +1235,29 @@ class DatabaseManager:
             row = cursor.fetchone()
             if not row:
                 return None
+            base_path = self.get_download_base_path()
             return {
                 "id": row[0],
                 "name": row[1],
-                "webdav_folder": row[2],
+                "webdav_folder": course_download_path(base_path, row[1], bool(row[3])),
+                "stored_webdav_folder": row[2],
                 "hidden": bool(row[3]),
             }
         except Exception as e:
             logging.error(f"Failed to get course {course_id}: {e}", exc_info=True)
             raise
+
+    def get_download_base_path(self) -> str:
+        """Return the global course-download base path, with legacy fallback."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT download_base_path FROM preferences WHERE id = 1")
+            row = cursor.fetchone()
+            return normalize_download_base_path(row[0] if row else DEFAULT_DOWNLOAD_BASE_PATH)
+        except sqlite3.OperationalError:
+            # Some minimal legacy databases did not include the full preferences
+            # schema even though their recorded schema version was newer.
+            return DEFAULT_DOWNLOAD_BASE_PATH
 
     def set_course_hidden(self, course_id: int, hidden: bool) -> bool:
         """Hide or show a course without changing any synchronized data."""
@@ -2012,6 +2074,35 @@ class DatabaseManager:
             logging.error(f"Failed to get study levels for course {course_id}: {e}", exc_info=True)
             raise
 
+    def rebase_file_study_paths(self, course_id: int, old_root: str, new_root: str):
+        """Keep study-level metadata attached when a course root is relocated."""
+        old_prefix = old_root.strip('/') + '/'
+        new_prefix = new_root.rstrip('/') + '/'
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT file_path, level, last_updated FROM file_study WHERE course_id = ?",
+                (course_id,),
+            )
+            rows = cursor.fetchall()
+            for file_path, level, last_updated in rows:
+                normalized = (file_path or '').lstrip('/')
+                if not normalized.startswith(old_prefix):
+                    continue
+                rebased = '/' + new_prefix + normalized[len(old_prefix):]
+                cursor.execute(
+                    "INSERT OR REPLACE INTO file_study (course_id, file_path, level, last_updated) VALUES (?, ?, ?, ?)",
+                    (course_id, rebased, level, last_updated),
+                )
+                cursor.execute(
+                    "DELETE FROM file_study WHERE course_id = ? AND file_path = ?",
+                    (course_id, file_path),
+                )
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to rebase study paths for course {course_id}: {e}", exc_info=True)
+            raise
+
     def get_course_study_summary(self, course_id: int) -> Dict:
         """Return study level distribution for a course.
 
@@ -2113,7 +2204,7 @@ class DatabaseManager:
                     f.last_updated,
                     n.course_id,
                     c.name AS course_name,
-                    c.webdav_folder,
+                    c.hidden,
                     COALESCE(fs.level, 0) AS level,
                     COALESCE(
                         (julianday('now') - julianday(f.last_updated)),
@@ -2129,6 +2220,7 @@ class DatabaseManager:
                 AND c.hidden = 0
             """)
             rows = cursor.fetchall()
+            base_path = self.get_download_base_path()
 
             # Completion ratio per course
             cursor.execute("""
@@ -2151,7 +2243,8 @@ class DatabaseManager:
             results = []
             for row in rows:
                 local_path, name, url, redirect_url, last_updated, course_id, \
-                    course_name, webdav_folder, level, age_days = row
+                    course_name, hidden, level, age_days = row
+                webdav_folder = course_download_path(base_path, course_name, bool(hidden))
                 completion_ratio = course_stats.get(course_id, 0.0)
                 age_capped = min(float(age_days), 90.0)
                 priority = age_capped * (1.0 - completion_ratio)

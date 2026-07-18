@@ -202,7 +202,12 @@ def build_tree(scraper: Scraper, url: str, webdav_path: str, name: str,
         else:
             etag = scraper.fetch_etag(file_url)
             # Download if new, or etag has changed
-            if not old_file or not etag or old_file.etag != etag:
+            old_file_needs_relocation = (
+                bool(old_file and old_file.local_path)
+                and not old_file.local_path.strip('/').startswith(webdav_path.strip('/') + '/')
+                and old_file.local_path.strip('/') != webdav_path.strip('/')
+            )
+            if not old_file or not etag or old_file.etag != etag or old_file_needs_relocation:
                 # Archive old version before it gets overwritten (only when file existed and etag changed)
                 archived_version_path = None
                 if old_file and etag and old_file.etag != etag:

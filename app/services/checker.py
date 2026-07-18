@@ -3,6 +3,7 @@ Main entry point for the tree-eclass checker application.
 Orchestrates the scraping, diffing, and notification process.
 """
 import logging
+import posixpath
 import re
 import sys
 import time
@@ -323,6 +324,38 @@ def _flatten_files(node) -> dict:
     return result
 
 
+def _path_under_root(path: str, root: str) -> bool:
+    """Return whether a WebDAV path belongs to the given course root."""
+    path = (path or '').strip('/')
+    root = (root or '').strip('/')
+    return bool(root) and (path == root or path.startswith(root + '/'))
+
+
+def _relocate_course_tree(old_root, new_root_path: str, webdav_uploader) -> None:
+    """Move existing course files when its derived WebDAV root changes.
+
+    The database tree is rewritten even when an individual remote move fails;
+    tree_builder will then redownload that file at the new destination.
+    """
+    old_root_path = old_root.local_path
+    if old_root_path.strip('/') == new_root_path.strip('/'):
+        return
+
+    def relocate_node(node):
+        node.local_path = new_root_path + node.local_path[len(old_root_path):]
+        for file in node.files:
+            if not file.local_path or not _path_under_root(file.local_path, old_root_path):
+                continue
+            relative = file.local_path.strip('/')[len(old_root_path.strip('/')):].lstrip('/')
+            destination = posixpath.join(new_root_path, relative)
+            if webdav_uploader.move_file(file.local_path, destination):
+                file.local_path = destination
+        for child in node.children:
+            relocate_node(child)
+
+    relocate_node(old_root)
+
+
 def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: Scraper) -> tuple[list, list, dict, bool]:
     """
     Process a single course: check for changes, update tree, and log changes.
@@ -350,6 +383,18 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
         except Exception as e:
             logging.error(f"Failed to load tree for course {course_name}: {e}", exc_info=True)
             old_root = None
+
+        if old_root and old_root.local_path.strip('/') != webdav_folder.strip('/'):
+            try:
+                previous_root_path = old_root.local_path
+                logging.info(
+                    "Moving course '%s' from %s to %s",
+                    course_name, old_root.local_path, webdav_folder,
+                )
+                _relocate_course_tree(old_root, webdav_folder, scraper_instance.webdav_uploader)
+                db_manager.rebase_file_study_paths(course_id, previous_root_path, webdav_folder)
+            except Exception as e:
+                logging.warning("Could not fully relocate course %s: %s", course_name, e)
         
         # Build new tree
         try:
@@ -375,9 +420,17 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
                     wf = '/' + webdav_folder.strip('/')
                     for change in changes:
                         if change.change_type == 'deleted_file':
-                            full_path = '/' + (wf.rstrip('/') + '/' + change.file_path.lstrip('/')).strip('/')
                             dst_path = f"{wf}/.versions/_deleted/{change.file_path.lstrip('/')}"
-                            old_file = old_files_by_path.get(full_path)
+                            expected_path = '/' + (wf.rstrip('/') + '/' + change.file_path.lstrip('/')).strip('/')
+                            old_file = old_files_by_path.get(expected_path)
+                            if old_file is None:
+                                relative_deleted_path = change.file_path.strip('/')
+                                old_file = next(
+                                    (candidate for path, candidate in old_files_by_path.items()
+                                     if path.strip('/').endswith('/' + relative_deleted_path)),
+                                    None,
+                                )
+                            full_path = old_file.local_path if old_file and old_file.local_path else expected_path
                             moved = scraper_instance.webdav_uploader.move_file(full_path, dst_path)
                             try:
                                 db_manager.save_file_version(
@@ -492,10 +545,19 @@ def process_course(db_manager: DatabaseManager, course: dict, scraper_instance: 
 
         try:
             db_manager.save_tree(course_id, new_root)
+            db_manager.update_course_webdav_folder(course_id, webdav_folder)
             logging.info(f"Successfully saved tree for course {course_name}")
         except Exception as e:
             logging.error(f"Failed to save tree for course {course_name}: {e}", exc_info=True)
             return changes, new_announcements, exercise_events, False
+
+        # This hook only compares metadata and enqueues durable work. It is
+        # deliberately best-effort so indexing can never fail synchronization.
+        try:
+            from app.knowledge.reconcile import reconcile_after_save
+            reconcile_after_save(course_id, new_root)
+        except Exception as e:
+            logging.warning("Could not enqueue knowledge indexing for %s: %s", course_name, e)
 
         return changes, new_announcements, exercise_events, True
 

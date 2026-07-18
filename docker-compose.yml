@@ -9,6 +9,19 @@ services:
       - ./data:/data
     environment:
       - DB_FILE=/data/eclass.db
+      - KNOWLEDGE_DB_FILE=/data/knowledge.db
+      - KNOWLEDGE_ENABLED=true
+      - KNOWLEDGE_WORKER_ENABLED=true
+      - KNOWLEDGE_MAX_EXTRACTED_CHARS=10000000
+      - KNOWLEDGE_OCR_ENABLED=true
+      - KNOWLEDGE_OCR_LANGUAGES=ell+eng
+      - KNOWLEDGE_EMBEDDING_BACKEND=openrouter
+      - KNOWLEDGE_EMBEDDING_MODEL=openai/text-embedding-3-small
+      - KNOWLEDGE_EMBEDDING_LOCAL_FALLBACK=true
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - "MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-127.0.0.1:*,localhost:*,[::1]:*,uni.lan,uni.lan:*}"
+      - "MCP_ALLOWED_ORIGINS=${MCP_ALLOWED_ORIGINS:-http://127.0.0.1:*,http://localhost:*,http://[::1]:*,https://uni.lan,https://uni.lan:*}"
+      - MCP_HTTP_ENABLED=true
       # - LOG_LEVEL=DEBUG
     restart: unless-stopped
     healthcheck:

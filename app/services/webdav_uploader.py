@@ -8,6 +8,7 @@ import urllib3
 from typing import Optional
 from webdav3.client import Client
 from webdav3.exceptions import WebDavException
+from webdav3.urn import Urn
 
 
 class WebDAVUploader:
@@ -16,7 +17,7 @@ class WebDAVUploader:
     def __init__(self, webdav_config: Optional[dict] = None):
         """Initialize WebDAV client with configuration."""
         self.client = None
-        
+
         if webdav_config:
             self.configure(webdav_config)
 
@@ -222,40 +223,44 @@ class WebDAVUploader:
         Returns:
             File contents as bytes, or None if file doesn't exist or error occurs
         """
+        file_data, _ = self.download_file_with_metadata(remote_path)
+        return file_data
+
+    def download_file_with_metadata(self, remote_path: str) -> tuple[Optional[bytes], dict[str, str]]:
+        """Download a file and retain response headers useful for content detection."""
         if not self.is_configured():
             logging.error("WebDAV client is not configured")
-            return None
-        
+            return None, {}
+
         try:
             # Check if file exists
             if not self.client.check(remote_path):
                 logging.warning(f"File does not exist on WebDAV: {remote_path}")
-                return None
-            
-            # Download to temporary file and read contents
+                return None, {}
+
+            # Use the same authenticated WebDAV request as Client.download_file,
+            # but retain headers before streaming the body to disk.
+            response = self.client.execute_request("download", Urn(remote_path).quote())
+            headers = {str(key).lower(): str(value) for key, value in response.headers.items()}
             with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
                 tmp_file_path = tmp_file.name
-            
             try:
-                self.client.download_sync(remote_path=remote_path, local_path=tmp_file_path)
-                logging.debug(f"Downloaded file from WebDAV: {remote_path}")
-                
-                # Read the file contents
-                with open(tmp_file_path, 'rb') as f:
-                    file_data = f.read()
-                
-                return file_data
+                with open(tmp_file_path, "wb") as output:
+                    for block in response.iter_content(chunk_size=self.client.chunk_size):
+                        output.write(block)
+                with open(tmp_file_path, "rb") as handle:
+                    return handle.read(), headers
             finally:
-                # Clean up temporary file
+                response.close()
                 if os.path.exists(tmp_file_path):
                     os.unlink(tmp_file_path)
-                    
+
         except WebDavException as e:
             logging.error(f"WebDAV error downloading file {remote_path}: {e}", exc_info=True)
-            return None
+            return None, {}
         except Exception as e:
             logging.error(f"Failed to download file from WebDAV {remote_path}: {e}", exc_info=True)
-            return None
+            return None, {}
 
     def copy_file(self, src_path: str, dst_path: str) -> bool:
         """Server-side copy a file on WebDAV. Ensures destination directory exists first."""
