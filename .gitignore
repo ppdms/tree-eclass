@@ -5,3 +5,7 @@ data/
 Downloads/
 **.DS_Store
 .vscode/settings.json
+.venv/
+.env
+.codex
+.agents

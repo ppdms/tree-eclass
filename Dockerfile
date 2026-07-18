@@ -7,6 +7,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     curl \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-ell \
     && rm -rf /var/lib/apt/lists/*
 
 # Build and install diff-pdf from source
@@ -78,6 +82,7 @@ RUN chmod +x docker-entrypoint.sh
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV DB_FILE=/data/eclass.db
+ENV KNOWLEDGE_DB_FILE=/data/knowledge.db
 
 # Expose port
 EXPOSE 8000

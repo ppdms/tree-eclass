@@ -4,6 +4,7 @@ Provides UI for viewing and managing courses, credentials, and file history.
 """
 import logging
 import asyncio
+from contextlib import asynccontextmanager
 import mimetypes
 import os
 import re
@@ -27,6 +28,14 @@ from app.services.checker import run_checker, check_single_course, print_tree
 from app.services.webdav_uploader import WebDAVUploader
 from app.services.announcements_scraper import GLOBAL_FEEDS
 from app.services.study_planner import build_exam_calendar
+from app.knowledge.config import KnowledgeConfig
+from app.knowledge.embeddings import EmbeddingProvider
+from app.knowledge.models import SearchRequest
+from app.knowledge.service import KnowledgeService
+from app.knowledge.worker import KnowledgeWorker
+from app.knowledge.reconcile import KnowledgeReconciler
+from app.knowledge.store import KnowledgeStore
+from app.mcp.server import knowledge_mcp
 
 # Configure logging for systemd
 logging.basicConfig(
@@ -35,7 +44,46 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 
-app = FastAPI(title="tree-eClass Manager", version="1.0.0")
+_knowledge_worker = None
+_knowledge_worker_thread = None
+_knowledge_admin_lock = threading.RLock()
+
+
+@asynccontextmanager
+async def app_lifespan(_app: FastAPI):
+    """Compose the checker, optional worker, and MCP session-manager lifecycles."""
+    global _knowledge_worker, _knowledge_worker_thread
+    start_scheduled_checker()
+    config = KnowledgeConfig.from_env()
+    if config.enabled and config.worker_enabled:
+        try:
+            _knowledge_worker = KnowledgeWorker(config)
+            _knowledge_worker_thread = threading.Thread(
+                target=_knowledge_worker.run_forever, daemon=True, name="knowledge-worker"
+            )
+            _knowledge_worker_thread.start()
+            logging.info("Knowledge worker started")
+        except Exception:
+            _knowledge_worker = None
+            _knowledge_worker_thread = None
+            logging.exception("Knowledge worker could not start; the web service will continue")
+    try:
+        if config.enabled and config.mcp_http_enabled:
+            async with knowledge_mcp.session_manager.run():
+                yield
+        else:
+            yield
+    finally:
+        stop_scheduled_checker()
+        if _knowledge_worker:
+            _knowledge_worker.stop()
+        if _knowledge_worker_thread:
+            await asyncio.to_thread(_knowledge_worker_thread.join, 10)
+        _knowledge_worker = None
+        _knowledge_worker_thread = None
+
+
+app = FastAPI(title="tree-eClass Manager", version="1.0.0", lifespan=app_lifespan)
 
 # Global lock to prevent parallel checks (threading.Lock works across threads and event loops)
 check_lock = threading.Lock()
@@ -158,12 +206,156 @@ templates.env.globals["semester_progress"] = _get_semester_progress
 static_dir = BASE_DIR / "static"
 static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+if KnowledgeConfig.from_env().enabled and KnowledgeConfig.from_env().mcp_http_enabled:
+    app.mount("/mcp", knowledge_mcp.streamable_http_app())
 
 # Initialize database
 db_manager = DatabaseManager()
 
 
 # ===== HELPER FUNCTIONS =====
+
+@app.get("/api/knowledge/status")
+def knowledge_status(course_id: Optional[int] = None):
+    """Read-only index diagnostics for the local UI and operators."""
+    try:
+        return KnowledgeService().index_status([course_id] if course_id is not None else None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/knowledge/search")
+def knowledge_search(q: str, course_id: Optional[int] = None, limit: int = 8,
+                     mode: str = "hybrid"):
+    """Search the local index using lexical, semantic, or hybrid ranking."""
+    try:
+        return KnowledgeService().search(SearchRequest(
+            query=q, course_ids=[course_id] if course_id is not None else None, limit=limit,
+            retrieval_mode=mode,
+        ))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _knowledge_exercise_preview(course_id: Optional[int], limit: int = 3) -> list[dict]:
+    """Return the most pressing unfinished exercises for the knowledge landing page."""
+    exercises = db_manager.get_exercises(course_id=course_id, limit=200)
+    urgency_order = {
+        "ex-overdue": 0, "ex-critical": 1, "ex-warning": 2,
+        "ex-moderate": 3, "ex-ok": 4, "ex-unknown": 5,
+    }
+    preview = []
+    for exercise in exercises:
+        if exercise.get("submission_status") == "submitted":
+            continue
+        deadline = _parse_greek_deadline(exercise.get("deadline", ""))
+        urgency, time_label = _deadline_urgency(deadline, False)
+        preview.append({
+            **exercise,
+            "_urgency": urgency,
+            "_time_label": time_label,
+            "_deadline_short": deadline.strftime("%-d %b · %H:%M") if deadline else "",
+            "_deadline_dt": deadline,
+        })
+    fallback = datetime.max.replace(tzinfo=ZoneInfo("Europe/Athens"))
+    preview.sort(key=lambda item: (
+        urgency_order.get(item["_urgency"], 9), item["_deadline_dt"] or fallback
+    ))
+    return preview[:limit]
+
+
+@app.get("/knowledge", response_class=HTMLResponse)
+async def knowledge_admin(request: Request, course_id: Optional[int] = None):
+    """Render the student-facing course-material search and discovery page."""
+    try:
+        service = KnowledgeService()
+        knowledge_courses = [course.to_dict() for course in service.list_courses()]
+        course_ids = {course["course_id"] for course in knowledge_courses}
+        study_summaries = {
+            str(course["course_id"]): db_manager.get_course_study_summary(course["course_id"])
+            for course in knowledge_courses
+        }
+        study_levels = {
+            str(course["course_id"]): db_manager.get_file_study_levels(course["course_id"])
+            for course in knowledge_courses
+        }
+        study_inbox = [
+            item for item in db_manager.get_study_inbox(limit=60)
+            if item["course_id"] in course_ids
+            and (course_id is None or item["course_id"] == course_id)
+        ][:5]
+        recent_materials = [
+            document for document in service.admin_documents(
+                course_id=course_id, status="ready", limit=200
+            )
+            if document.get("is_current") and document.get("status") == "ready"
+        ][:6]
+        return templates.TemplateResponse(request=request, name="knowledge.html", context={
+            "request": request,
+            "knowledge_courses": knowledge_courses,
+            "course_id": course_id,
+            "initial_query": request.query_params.get("q", "").strip(),
+            "study_summaries": study_summaries,
+            "study_levels": study_levels,
+            "study_inbox": study_inbox,
+            "recent_materials": recent_materials,
+            "upcoming_exercises": _knowledge_exercise_preview(course_id),
+        })
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/knowledge/overview")
+def knowledge_overview(course_id: Optional[int] = None):
+    try:
+        return KnowledgeService().admin_overview(course_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/knowledge/documents")
+def knowledge_documents(course_id: Optional[int] = None, status: Optional[str] = None,
+                        q: Optional[str] = None, limit: int = 200):
+    try:
+        return {"documents": KnowledgeService().admin_documents(course_id, status, q, limit)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _reconcile_knowledge(rebuild: bool = False) -> None:
+    config = KnowledgeConfig.from_env()
+    with _knowledge_admin_lock:
+        worker_lock = getattr(_knowledge_worker, "operation_lock", None)
+        if worker_lock is None:
+            worker_lock = threading.RLock()
+        with worker_lock:
+            store = KnowledgeStore(
+                config.db_file, embedding_provider=EmbeddingProvider.from_config(config)
+            )
+            if rebuild:
+                store.rebuild()
+            KnowledgeReconciler(store, config.source_db_file).reconcile_all()
+
+
+@app.post("/api/knowledge/reconcile")
+def knowledge_reconcile(background_tasks: BackgroundTasks):
+    background_tasks.add_task(_reconcile_knowledge)
+    return {"status": "queued", "action": "reconcile"}
+
+
+@app.post("/api/knowledge/rebuild")
+def knowledge_rebuild(background_tasks: BackgroundTasks):
+    background_tasks.add_task(_reconcile_knowledge, True)
+    return {"status": "queued", "action": "rebuild"}
+
+
+@app.post("/api/knowledge/retry-failed")
+def knowledge_retry_failed():
+    config = KnowledgeConfig.from_env()
+    released = KnowledgeStore(
+        config.db_file, embedding_provider=EmbeddingProvider.from_config(config)
+    ).release_failed()
+    return {"status": "queued", "released": released}
 
 def node_to_dict(node: Node, parent_path: str = "") -> dict:
     """Convert a Node to a dictionary for JSON serialization."""
@@ -330,12 +522,11 @@ async def view_course(request: Request, course_id: int):
 @app.post("/courses/add")
 async def add_course(
     course_id: int = Form(...),
-    name: str = Form(...),
-    webdav_folder: str = Form(...)
+    name: str = Form(...)
 ):
     """Add a new course."""
     try:
-        db_manager.save_course(course_id, name, webdav_folder)
+        db_manager.save_course(course_id, name)
         logging.info(f"Added course: {name} (ID: {course_id})")
         return RedirectResponse(url="/courses", status_code=303)
     except Exception as e:
@@ -400,12 +591,11 @@ async def reset_course(course_id: int):
 @app.post("/courses/{course_id}/update")
 async def update_course(
     course_id: int,
-    name: str = Form(...),
-    webdav_folder: str = Form(...)
+    name: str = Form(...)
 ):
     """Update a course."""
     try:
-        db_manager.save_course(course_id, name, webdav_folder)
+        db_manager.save_course(course_id, name)
         logging.info(f"Updated course: {name} (ID: {course_id})")
         return RedirectResponse(url=f"/courses/{course_id}", status_code=303)
     except Exception as e:
@@ -805,6 +995,7 @@ async def update_preferences(
     global_feed_rector_enabled: Optional[bool] = Form(False),
     semester_start: Optional[str] = Form(None),
     semester_end: Optional[str] = Form(None),
+    download_base_path: str = Form("/University"),
 ):
     """Update application preferences."""
     try:
@@ -820,6 +1011,7 @@ async def update_preferences(
             global_feed_rector_enabled=global_feed_rector_enabled,
             semester_start=semester_start or None,
             semester_end=semester_end or None,
+            download_base_path=download_base_path,
         )
         logging.info("Updated preferences")
         return RedirectResponse(url="/settings", status_code=303)
@@ -919,7 +1111,6 @@ def _scheduled_checker_loop():
             logging.info("Scheduled check skipped — a check is already in progress")
 
 
-@app.on_event("startup")
 def start_scheduled_checker():
     """Start the scheduled checker thread when the app starts."""
     _scheduler_stop.clear()
@@ -928,7 +1119,6 @@ def start_scheduled_checker():
     logging.info("Scheduled checker started")
 
 
-@app.on_event("shutdown")
 def stop_scheduled_checker():
     """Stop the scheduled checker thread when the app shuts down."""
     _scheduler_stop.set()

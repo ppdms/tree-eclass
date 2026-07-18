@@ -26,12 +26,8 @@
 				<input type="text" id="name" name="name" required placeholder="e.g., Algorithms">
 			</div>
 			</div>
-			<div class="form-group">
-				<label for="webdav_folder">WebDAV Folder</label>
-				<input type="text" id="webdav_folder" name="webdav_folder" required
-					placeholder="Destination path on WebDAV server. Examples: /Algorithms, /courses/Algorithms">
-			</div>
-		</form>
+				<p class="settings-section-description">The course will be downloaded automatically to the global base path shown below, followed by its name and <code>/eclass</code>.</p>
+			</form>
 	</div>
 </div>
 
@@ -45,7 +41,7 @@
 		<div style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
 			{% for course in hidden_courses %}
 			<div style="display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md);">
-				<span>{{ course.name }}</span>
+				<span>{{ course.name }} <small style="color: var(--text-secondary);">{{ course.webdav_folder }}</small></span>
 				<form method="POST" action="/courses/{{ course.id }}/show">
 					<button type="submit" class="btn btn-secondary"><i class="bi bi-eye"></i> Show</button>
 				</form>
@@ -183,8 +179,16 @@
 
 	<div class="form-card">
 		<form method="POST" action="/settings/preferences" id="preferencesForm" data-dirty-watch>
-			<div class="settings-matrix settings-matrix--2x2">
-			<div class="form-group">
+				<div class="settings-matrix settings-matrix--2x2">
+				<div class="form-group">
+					<label for="download_base_path">Course Download Base Path</label>
+					<input type="text" id="download_base_path" name="download_base_path"
+						value="{{ preferences.download_base_path }}" required
+						placeholder="/University">
+					<small>Courses use <code>BASE_PATH/COURSE_NAME/eclass</code>; hidden courses use <code>BASE_PATH/.hidden/COURSE_NAME/eclass</code>.</small>
+				</div>
+
+				<div class="form-group">
 				<label for="check_interval_minutes">Check Interval (minutes)</label>
 				<input type="number" id="check_interval_minutes" name="check_interval_minutes"
 					value="{{ preferences.check_interval_minutes }}" required min="5" max="1440">
