@@ -7,7 +7,6 @@ class ListMaterialsInput(BaseModel):
     course_id: int
     path_prefix: str | None = None
     document_kinds: list[str] | None = None
-    academic_year: str | None = None
     changed_since: str | None = None
     cursor: str | None = None
     limit: int = Field(default=50, ge=1, le=100)
@@ -17,7 +16,6 @@ class SearchMaterialsInput(BaseModel):
     query: str = Field(min_length=1, max_length=1000)
     course_ids: list[int] | None = None
     document_kinds: list[str] | None = None
-    academic_year: str | None = None
     folder_prefix: str | None = None
     limit: int = Field(default=8, ge=1, le=100)
     retrieval_mode: str = Field(default="hybrid", pattern="^(lexical|semantic|hybrid)$")

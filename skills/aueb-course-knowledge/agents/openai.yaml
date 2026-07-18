@@ -1,0 +1,4 @@
+interface:
+  display_name: "AUEB Course Knowledge"
+  short_description: "Search and explore your eClass course library"
+  default_prompt: "Use $aueb-course-knowledge to search my course library for notes, slides, readings, exam topics, worked examples, or key concepts."

@@ -96,7 +96,7 @@ class KnowledgeService:
         limit = min(max(1, request.limit), 100)
         rows = self.store.list_materials(
             request.course_id, limit + 1, request.cursor, request.path_prefix,
-            request.document_kinds, request.academic_year, request.changed_since,
+            request.document_kinds, request.changed_since,
         )
         more = len(rows) > limit
         rows = rows[:limit]
@@ -119,7 +119,7 @@ class KnowledgeService:
         limit = min(max(1, request.limit), configured_limit)
         rows = self.store.search(query, {
             "course_ids": course_ids, "document_kinds": request.document_kinds,
-            "academic_year": request.academic_year, "folder_prefix": request.folder_prefix,
+            "folder_prefix": request.folder_prefix,
         }, limit, mode=request.retrieval_mode)
         results = []
         for rank, row in enumerate(rows, 1):
@@ -131,7 +131,9 @@ class KnowledgeService:
                 "course_id": row["course_id"], "course_name": row["course_name"],
                 "course_short_name": row["course_short_name"], "display_name": row["display_name"],
                 "source_path": row["source_path"], "source_url": row["source_url"],
-                "document_kind": row["document_kind"], "locator_type": row["locator_type"],
+                "document_kind": row["document_kind"], "academic_year": row.get("academic_year"),
+                "source_modified_at": row.get("source_modified_at"),
+                "locator_type": row["locator_type"],
                 "locator_start": row["locator_start"], "locator_end": row["locator_end"],
                 "heading": row["heading"], "excerpt": row.get("excerpt", row.get("text", "")),
                 "embedding_model": row.get("embedding_model"),
@@ -178,7 +180,7 @@ class KnowledgeService:
         return {
             "document": {key: document[key] for key in (
                 "id", "course_id", "course_name", "display_name", "source_path", "source_url",
-                "source_hash", "document_kind", "indexed_at")},
+                "source_hash", "document_kind", "academic_year", "source_modified_at", "indexed_at")},
             "units": units, "characters": used, "truncated": truncated,
             "untrusted_content_notice": UNTRUSTED_NOTICE,
         }

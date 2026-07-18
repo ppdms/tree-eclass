@@ -35,6 +35,7 @@ class SourceMetadata:
     mime_type: Optional[str] = None
     academic_year: Optional[str] = None
     response_mime_type: Optional[str] = None
+    source_modified_at: Optional[str] = None
 
 
 @dataclass
@@ -78,7 +79,6 @@ class ListMaterialsRequest:
     course_id: int
     path_prefix: Optional[str] = None
     document_kinds: Optional[list[str]] = None
-    academic_year: Optional[str] = None
     changed_since: Optional[str] = None
     cursor: Optional[str] = None
     limit: int = 50
@@ -89,7 +89,6 @@ class SearchRequest:
     query: str
     course_ids: Optional[list[int]] = None
     document_kinds: Optional[list[str]] = None
-    academic_year: Optional[str] = None
     folder_prefix: Optional[str] = None
     limit: int = 8
     retrieval_mode: str = "hybrid"

@@ -38,7 +38,7 @@ def _current_source(db: DatabaseManager, course_id: int, path: str) -> SourceMet
                 course_id=course_id, course_name=course["name"], course_short_name=course.get("short_name"),
                 source_path=item_path, source_url=item.url, display_name=item.name,
                 source_hash=item.md5_hash or "", mime_type=guess_mime(item.name) or guess_mime(item_path),
-                academic_year=_academic_year(item_path),
+                academic_year=_academic_year(item_path), source_modified_at=item.last_updated,
             )
     return None
 

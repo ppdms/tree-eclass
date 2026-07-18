@@ -2,11 +2,11 @@
 
 import logging
 import os
-import re
 from typing import Iterator
 
 from app.services.tree_builder import File, Node
 
+from .academic_years import academic_year_from_path
 from .config import KnowledgeConfig
 from .extractors import guess_mime, source_kind
 from .models import SourceMetadata
@@ -31,8 +31,7 @@ def unsupported_reason(name: str, mime_type: str | None = None) -> str:
 
 
 def _academic_year(path: str) -> str | None:
-    match = re.search(r"(?<!\d)(20\d{2})\s*[-_/]\s*(20\d{2}|\d{2})(?!\d)", path)
-    return f"{match.group(1)}-{match.group(2)}" if match else None
+    return academic_year_from_path(path)
 
 
 def iter_tree_files(root: Node) -> Iterator[tuple[File, str]]:
@@ -73,6 +72,7 @@ class KnowledgeReconciler:
                 course_id=course_id, course_name=course["name"], course_short_name=course.get("short_name"),
                 source_path=path, source_url=item.url, display_name=item.name,
                 source_hash=item.md5_hash or "", mime_type=mime, academic_year=_academic_year(path),
+                source_modified_at=item.last_updated,
             )
             existing = self.store.get_document_by_path(course_id, path)
             if item.redirect_url:
@@ -89,6 +89,7 @@ class KnowledgeReconciler:
                 if (existing and existing["source_hash"] == source.source_hash
                         and existing["status"] not in {"failed", "pending", "skipped_limit"}
                         and not legacy_unsupported):
+                    self.store.refresh_source_metadata(source)
                     counts["unchanged"] += 1
                 elif item.local_path:
                     self.store.record_manifest_document(
@@ -110,6 +111,7 @@ class KnowledgeReconciler:
                 if self.store.enqueue(course_id, path, source.source_hash, "upsert"):
                     counts["enqueued"] += 1
             else:
+                self.store.refresh_source_metadata(source)
                 counts["unchanged"] += 1
         missing = self.store.mark_missing(course_id, current_paths)
         counts["deleted"] = len(missing)

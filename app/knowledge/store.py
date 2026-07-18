@@ -14,7 +14,7 @@ from .embeddings import (LOCAL_MODEL_NAME, EmbeddingProvider, cosine, embed_text
 from .normalization import document_id, normalize_path, search_normalize
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 POLICY_KEYWORDS = tuple(search_normalize(value) for value in (
     "intro", "introduction", "course", "description", "syllabus", "grading",
@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS documents (
     response_mime_type TEXT,
     document_kind TEXT NOT NULL,
     academic_year TEXT,
+    source_modified_at TEXT,
     is_current INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL,
     page_count INTEGER,
@@ -141,6 +142,8 @@ class KnowledgeStore:
                 conn.execute("ALTER TABLE documents ADD COLUMN diagnostic_reason TEXT")
             if "response_mime_type" not in document_columns:
                 conn.execute("ALTER TABLE documents ADD COLUMN response_mime_type TEXT")
+            if "source_modified_at" not in document_columns:
+                conn.execute("ALTER TABLE documents ADD COLUMN source_modified_at TEXT")
             embedding_primary_key = [row[1] for row in conn.execute("PRAGMA table_info(chunk_embeddings)")
                                      if row[5]]
             if embedding_primary_key == ["chunk_id"]:
@@ -303,6 +306,22 @@ class KnowledgeStore:
             row = conn.execute(sql, (opaque_id,)).fetchone()
             return dict(row) if row else None
 
+    def refresh_source_metadata(self, source: SourceMetadata) -> None:
+        """Refresh manifest metadata without changing index status or extracted content."""
+        with self.connection() as conn:
+            conn.execute(
+                """UPDATE documents SET
+                       course_name=?,course_short_name=?,source_path=?,source_url=?,display_name=?,
+                       academic_year=?,source_modified_at=?
+                   WHERE course_id=? AND normalized_path=?""",
+                (
+                    source.course_name, source.course_short_name, source.source_path, source.source_url,
+                    source.display_name, source.academic_year, source.source_modified_at,
+                    source.course_id, normalize_path(source.source_path),
+                ),
+            )
+            conn.commit()
+
     def record_manifest_document(self, source: SourceMetadata, kind: str, status: str,
                                  error: Optional[str] = None,
                                  diagnostic_reason: Optional[str] = None) -> str:
@@ -311,18 +330,21 @@ class KnowledgeStore:
             conn.execute(
                 """INSERT INTO documents(
                     id,course_id,course_name,course_short_name,source_path,normalized_path,source_url,
-                    display_name,source_hash,mime_type,response_mime_type,document_kind,academic_year,is_current,status,error,diagnostic_reason)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)
+                    display_name,source_hash,mime_type,response_mime_type,document_kind,academic_year,
+                    source_modified_at,is_current,status,error,diagnostic_reason)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET
                     course_name=excluded.course_name,course_short_name=excluded.course_short_name,
                     source_path=excluded.source_path,source_url=excluded.source_url,display_name=excluded.display_name,
                     source_hash=excluded.source_hash,mime_type=excluded.mime_type,response_mime_type=excluded.response_mime_type,
                     document_kind=excluded.document_kind,
-                    academic_year=excluded.academic_year,is_current=1,status=excluded.status,error=excluded.error,
+                    academic_year=excluded.academic_year,source_modified_at=excluded.source_modified_at,
+                    is_current=1,status=excluded.status,error=excluded.error,
                     diagnostic_reason=excluded.diagnostic_reason""",
                 (doc_id, source.course_id, source.course_name, source.course_short_name, source.source_path,
                  normalize_path(source.source_path), source.source_url, source.display_name, source.source_hash or "",
-                 source.mime_type, source.response_mime_type, kind, source.academic_year, status, error, diagnostic_reason),
+                 source.mime_type, source.response_mime_type, kind, source.academic_year,
+                 source.source_modified_at, status, error, diagnostic_reason),
             )
             conn.commit()
         return doc_id
@@ -342,21 +364,24 @@ class KnowledgeStore:
             conn.execute(
                 """INSERT INTO documents(
                     id,course_id,course_name,course_short_name,source_path,normalized_path,source_url,
-                    display_name,source_hash,mime_type,response_mime_type,document_kind,academic_year,is_current,status,page_count,
+                    display_name,source_hash,mime_type,response_mime_type,document_kind,academic_year,
+                    source_modified_at,is_current,status,page_count,
                     extractor_name,extractor_version,indexed_at,error,diagnostic_reason,warnings_json)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1,'ready',?,?,?,?,NULL,NULL,?)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'ready',?,?,?,?,NULL,NULL,?)
                    ON CONFLICT(id) DO UPDATE SET
                     course_name=excluded.course_name,course_short_name=excluded.course_short_name,
                     source_path=excluded.source_path,source_url=excluded.source_url,display_name=excluded.display_name,
                     source_hash=excluded.source_hash,mime_type=excluded.mime_type,response_mime_type=excluded.response_mime_type,
                     document_kind=excluded.document_kind,
-                    academic_year=excluded.academic_year,is_current=1,status='ready',page_count=excluded.page_count,
+                    academic_year=excluded.academic_year,source_modified_at=excluded.source_modified_at,
+                    is_current=1,status='ready',page_count=excluded.page_count,
                     extractor_name=excluded.extractor_name,extractor_version=excluded.extractor_version,
                     indexed_at=excluded.indexed_at,error=NULL,diagnostic_reason=NULL,warnings_json=excluded.warnings_json""",
                 (doc_id, source.course_id, source.course_name, source.course_short_name, source.source_path,
                  normalize_path(source.source_path), source.source_url, source.display_name, source.source_hash,
-                 source.mime_type, source.response_mime_type, kind, source.academic_year, page_count, extractor_name, extractor_version,
-                 indexed_at, json.dumps(warnings or [], ensure_ascii=False)),
+                 source.mime_type, source.response_mime_type, kind, source.academic_year,
+                 source.source_modified_at, page_count, extractor_name, extractor_version, indexed_at,
+                 json.dumps(warnings or [], ensure_ascii=False)),
             )
             for index, chunk in enumerate(chunks):
                 conn.execute(
@@ -472,16 +497,14 @@ class KnowledgeStore:
         if kinds:
             clauses.append(f"d.document_kind IN ({','.join('?' for _ in kinds)})")
             params.extend(kinds)
-        if filters.get("academic_year"):
-            clauses.append("d.academic_year=?")
-            params.append(filters["academic_year"])
         if filters.get("folder_prefix"):
             clauses.append("d.normalized_path LIKE ? ESCAPE '\\'")
             prefix = normalize_path(filters["folder_prefix"]).replace("%", "\\%").replace("_", "\\_")
             params.append(prefix.rstrip("/") + "/%")
         params.append(limit)
         sql = f"""SELECT c.*, d.course_id,d.course_name,d.course_short_name,d.source_path,d.source_url,
-                         d.display_name,d.source_hash,d.document_kind,d.academic_year,d.response_mime_type,d.indexed_at,
+                         d.display_name,d.source_hash,d.document_kind,d.academic_year,d.source_modified_at,
+                         d.response_mime_type,d.indexed_at,
                          bm25(chunks_fts,0,1,0.6,0.3,0.2,0.2,0.2) AS score,
                          snippet(chunks_fts,1,'[',']',' … ',24) AS excerpt
                   FROM chunks_fts JOIN chunks c ON c.id=chunks_fts.chunk_id
@@ -505,9 +528,6 @@ class KnowledgeStore:
         if kinds:
             clauses.append(f"d.document_kind IN ({','.join('?' for _ in kinds)})")
             params.extend(kinds)
-        if filters.get("academic_year"):
-            clauses.append("d.academic_year=?")
-            params.append(filters["academic_year"])
         if filters.get("folder_prefix"):
             clauses.append("d.normalized_path LIKE ? ESCAPE '\\'")
             prefix = normalize_path(filters["folder_prefix"]).replace("%", "\\%").replace("_", "\\_")
@@ -515,7 +535,8 @@ class KnowledgeStore:
         with self.connection() as conn:
             rows = conn.execute(
                 f"""SELECT c.*, d.course_id,d.course_name,d.course_short_name,d.source_path,d.source_url,
-                           d.display_name,d.source_hash,d.document_kind,d.academic_year,d.response_mime_type,d.indexed_at,
+                           d.display_name,d.source_hash,d.document_kind,d.academic_year,d.source_modified_at,
+                           d.response_mime_type,d.indexed_at,
                            e.vector,e.dimensions,e.model AS embedding_model
                     FROM chunk_embeddings e JOIN chunks c ON c.id=e.chunk_id
                     JOIN documents d ON d.id=c.document_id
@@ -617,7 +638,7 @@ class KnowledgeStore:
 
     def list_materials(self, course_id: int, limit: int, cursor: Optional[str] = None,
                        path_prefix: Optional[str] = None, kinds: Optional[list[str]] = None,
-                       academic_year: Optional[str] = None, changed_since: Optional[str] = None) -> list[dict[str, Any]]:
+                       changed_since: Optional[str] = None) -> list[dict[str, Any]]:
         clauses = ["course_id=?", "is_current=1"]
         params: list[Any] = [course_id]
         if cursor:
@@ -629,16 +650,13 @@ class KnowledgeStore:
         if kinds:
             clauses.append(f"document_kind IN ({','.join('?' for _ in kinds)})")
             params.extend(kinds)
-        if academic_year:
-            clauses.append("academic_year=?")
-            params.append(academic_year)
         if changed_since:
             clauses.append("indexed_at>=?")
             params.append(changed_since)
         params.append(limit)
         with self.connection() as conn:
             rows = conn.execute(
-                f"SELECT * FROM documents WHERE {' AND '.join(clauses)} ORDER BY id LIMIT ?", params
+                f"SELECT d.* FROM documents d WHERE {' AND '.join(clauses)} ORDER BY d.id LIMIT ?", params
             ).fetchall()
             return [dict(row) for row in rows]
 

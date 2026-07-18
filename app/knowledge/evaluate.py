@@ -55,7 +55,6 @@ def evaluate_rows(service: KnowledgeService, rows: Iterable[dict[str, Any]], k: 
             query=query,
             course_ids=row.get("course_ids") or ([row["course_id"]] if row.get("course_id") is not None else None),
             document_kinds=row.get("document_kinds"),
-            academic_year=row.get("academic_year"),
             folder_prefix=row.get("folder_prefix"),
             limit=k,
             retrieval_mode=retrieval_mode,
