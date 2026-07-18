@@ -166,10 +166,21 @@ def format_timestamp(timestamp_str: str) -> str:
         logging.warning(f"Failed to format timestamp {timestamp_str}: {e}")
         return ""
 
+def format_file_size(value: int | None) -> str:
+    if value is None:
+        return ""
+    size = float(value)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{int(size)} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return ""
+
 templates.env.filters["athens_time"] = format_datetime_athens
 templates.env.filters["change_counts"] = format_change_counts
 templates.env.filters["change_no_date"] = format_change_no_date
 templates.env.filters["format_timestamp"] = format_timestamp
+templates.env.filters["file_size"] = format_file_size
 
 def _get_nav_courses():
     try:
@@ -290,6 +301,14 @@ async def knowledge_admin(request: Request, course_id: Optional[int] = None):
             )
             if document.get("is_current") and document.get("status") == "ready"
         ][:6]
+        try:
+            study_intelligence = service.study_intelligence(course_id)
+        except Exception:
+            logging.exception("Could not build study intelligence for /knowledge")
+            study_intelligence = {
+                "focus_queue": [], "exam_runways": [],
+                "exam_collisions": [], "coverage": {"enriched": 0, "total": 0, "percent": 0},
+            }
         return templates.TemplateResponse(request=request, name="knowledge.html", context={
             "request": request,
             "knowledge_courses": knowledge_courses,
@@ -300,6 +319,8 @@ async def knowledge_admin(request: Request, course_id: Optional[int] = None):
             "study_inbox": study_inbox,
             "recent_materials": recent_materials,
             "upcoming_exercises": _knowledge_exercise_preview(course_id),
+            "study_intelligence": study_intelligence,
+            "ollama_quota": service.quota_status(),
         })
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -352,10 +373,19 @@ def knowledge_rebuild(background_tasks: BackgroundTasks):
 @app.post("/api/knowledge/retry-failed")
 def knowledge_retry_failed():
     config = KnowledgeConfig.from_env()
-    released = KnowledgeStore(
+    store = KnowledgeStore(
         config.db_file, embedding_provider=EmbeddingProvider.from_config(config)
-    ).release_failed()
-    return {"status": "queued", "released": released}
+    )
+    index_released = store.release_failed()
+    enrichment_released = store.release_failed_enrichments()
+    page_enrichment_released = store.release_failed_page_enrichments()
+    return {
+        "status": "queued",
+        "released": index_released + enrichment_released + page_enrichment_released,
+        "index_released": index_released,
+        "enrichment_released": enrichment_released,
+        "page_enrichment_released": page_enrichment_released,
+    }
 
 def node_to_dict(node: Node, parent_path: str = "") -> dict:
     """Convert a Node to a dictionary for JSON serialization."""
@@ -501,6 +531,15 @@ async def view_course(request: Request, course_id: int):
         files_with_versions = db_manager.get_files_with_versions(course_id)
         folders_with_deleted = db_manager.get_folders_with_deleted(course_id)
         study_levels = db_manager.get_file_study_levels(course_id)
+        knowledge_config = KnowledgeConfig.from_env()
+        file_insights = {}
+        if knowledge_config.enabled:
+            try:
+                file_insights = KnowledgeService(config=knowledge_config).course_file_insights(course_id)
+            except Exception:
+                # File browsing must remain available even if the rebuildable
+                # knowledge index is temporarily unavailable.
+                logging.exception("Could not load file insights for course %s", course_id)
 
         return templates.TemplateResponse(request=request, name="course_detail.html", context={
             "request": request,
@@ -511,6 +550,10 @@ async def view_course(request: Request, course_id: int):
             "files_with_versions": files_with_versions,
             "folders_with_deleted": folders_with_deleted,
             "study_levels": study_levels,
+            "file_insights": file_insights,
+            "ai_enrichment_configured": bool(
+                knowledge_config.ai_enrichment_enabled and knowledge_config.ai_api_key
+            ),
         })
     except HTTPException:
         raise
@@ -1284,7 +1327,7 @@ async def study_inbox(request: Request):
 
 
 @app.post("/study/planner")
-async def save_study_planner(request: Request):
+async def save_study_planner(request: Request, background_tasks: BackgroundTasks):
     """Validate and persist the included exams."""
     try:
         form = await request.form()
@@ -1329,6 +1372,8 @@ async def save_study_planner(request: Request):
             db_manager.save_course_exam_plan(**row)
         for course_id, short_name in short_names.items():
             db_manager.set_course_short_name(course_id, short_name)
+        if _knowledge_worker is not None:
+            background_tasks.add_task(_knowledge_worker.refresh_enrichment_priorities)
         return RedirectResponse(url="/study?planner_saved=1", status_code=303)
     except Exception as e:
         logging.error(f"Error saving study planner: {e}", exc_info=True)

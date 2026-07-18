@@ -8,6 +8,7 @@ class ListMaterialsInput(BaseModel):
     path_prefix: str | None = None
     document_kinds: list[str] | None = None
     changed_since: str | None = None
+    include_insights: bool = False
     cursor: str | None = None
     limit: int = Field(default=50, ge=1, le=100)
 

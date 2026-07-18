@@ -149,6 +149,52 @@
 
 .knowledge-body { margin-top: 1.3rem; }
 
+.knowledge-quota {
+	display: grid;
+	grid-template-columns: minmax(14rem, 1.25fr) repeat(2, minmax(9rem, 0.7fr));
+	gap: 0.9rem;
+	align-items: center;
+	margin-top: 0.75rem;
+	padding: 0.72rem 0.9rem;
+	border: 1px solid rgba(110, 231, 183, 0.24);
+	border-radius: 9px;
+	background: rgba(22, 32, 41, 0.86);
+}
+
+.knowledge-quota--paused,
+.knowledge-quota--rate_limited {
+	border-color: rgba(251, 191, 36, 0.32);
+	background: rgba(251, 191, 36, 0.055);
+}
+
+.knowledge-quota--configuration_error,
+.knowledge-quota--check_failed {
+	border-color: rgba(248, 113, 113, 0.28);
+	background: rgba(248, 113, 113, 0.05);
+}
+
+.knowledge-quota-state { display: flex; align-items: flex-start; gap: 0.65rem; min-width: 0; }
+.knowledge-quota-state > i { margin-top: 0.1rem; color: var(--knowledge-accent); }
+.knowledge-quota--paused .knowledge-quota-state > i,
+.knowledge-quota--rate_limited .knowledge-quota-state > i { color: #fcd34d; }
+.knowledge-quota--configuration_error .knowledge-quota-state > i,
+.knowledge-quota--check_failed .knowledge-quota-state > i { color: #fca5a5; }
+.knowledge-quota-state strong { display: block; color: var(--text-primary); font-size: 0.8rem; }
+.knowledge-quota-state p { margin: 0.12rem 0 0; color: var(--text-secondary); font-size: 0.7rem; line-height: 1.4; }
+.knowledge-quota-window { min-width: 0; }
+.knowledge-quota-label { display: flex; justify-content: space-between; gap: 0.4rem; color: var(--text-secondary); font-size: 0.67rem; }
+.knowledge-quota-label strong { color: var(--text-primary-soft); font-weight: 650; }
+.knowledge-quota-meter { height: 4px; margin-top: 0.32rem; overflow: hidden; border-radius: 99px; background: #29323b; }
+.knowledge-quota-meter span { display: block; width: var(--quota-width); height: 100%; border-radius: inherit; background: var(--knowledge-accent); }
+.knowledge-quota--paused .knowledge-quota-meter span,
+.knowledge-quota--rate_limited .knowledge-quota-meter span { background: #fbbf24; }
+.knowledge-quota-reset { margin-top: 0.25rem; color: #737f8d; font-size: 0.62rem; }
+
+@media (max-width: 720px) {
+	.knowledge-quota { grid-template-columns: 1fr 1fr; }
+	.knowledge-quota-state { grid-column: 1 / -1; }
+}
+
 .knowledge-results-head,
 .knowledge-section-head {
 	display: flex;
@@ -417,11 +463,98 @@
 	white-space: nowrap;
 }
 
+.knowledge-intelligence { display: grid; gap: 1rem; margin-bottom: 1rem; }
+
+.knowledge-intelligence-head {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.knowledge-intelligence-head h2 { margin: 0; font-size: 1.08rem; }
+.knowledge-intelligence-head p { margin: 0.2rem 0 0; color: var(--text-secondary); font-size: 0.78rem; }
+
+.knowledge-coverage {
+	flex: 0 0 auto;
+	padding: 0.28rem 0.55rem;
+	border: 1px solid rgba(110, 231, 183, 0.3);
+	border-radius: 999px;
+	color: var(--knowledge-accent);
+	font-size: 0.7rem;
+}
+
+.knowledge-collision-list { display: grid; gap: 0.45rem; }
+.knowledge-collision {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: 0.6rem;
+	padding: 0.7rem 0.8rem;
+	border: 1px solid rgba(251, 191, 36, 0.3);
+	border-radius: 8px;
+	background: rgba(251, 191, 36, 0.055);
+	font-size: 0.76rem;
+}
+.knowledge-collision>i { color: #fcd34d; }
+.knowledge-collision strong { color: var(--text-primary); }
+.knowledge-collision p { margin: 0.16rem 0 0; color: var(--text-secondary); }
+
+.knowledge-runway-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+	gap: 0.55rem;
+}
+
+.knowledge-runway {
+	padding: 0.8rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: linear-gradient(145deg, rgba(74, 222, 128, 0.055), rgba(255,255,255,0.012));
+}
+
+.knowledge-runway-top { display: flex; justify-content: space-between; gap: 0.5rem; }
+.knowledge-runway-course { color: var(--text-primary); font-size: 0.8rem; font-weight: 650; }
+.knowledge-runway-days { color: var(--knowledge-accent); font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+.knowledge-runway-meta { margin-top: 0.32rem; color: var(--text-secondary); font-size: 0.68rem; }
+.knowledge-readiness { height: 4px; margin-top: 0.48rem; overflow: hidden; border-radius: 999px; background: var(--border-light); }
+.knowledge-readiness span { display: block; height: 100%; border-radius: inherit; background: var(--primary-color); }
+
+.knowledge-intelligence-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 1rem;
+	align-items: start;
+}
+
+.knowledge-focus-list { display: grid; }
+.knowledge-focus-item {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: start;
+	gap: 0.62rem;
+	padding: 0.68rem 0;
+	border-top: 1px solid var(--border-light);
+}
+.knowledge-focus-item:first-child { padding-top: 0; border-top: 0; }
+.knowledge-focus-item:last-child { padding-bottom: 0; }
+.knowledge-focus-action { display: block; margin-top: 0.18rem; color: var(--text-primary-soft); font-size: 0.72rem; line-height: 1.35; }
+.knowledge-focus-signals { display: flex; flex-wrap: wrap; gap: 0.28rem; margin-top: 0.28rem; }
+.knowledge-signal {
+	padding: 0.12rem 0.36rem;
+	border: 1px solid var(--border-light);
+	border-radius: 999px;
+	color: var(--text-secondary);
+	font-size: 0.62rem;
+}
+.knowledge-signal--urgent { border-color: rgba(248,113,113,0.36); color: #fca5a5; }
+.knowledge-signal--essential { border-color: rgba(251,191,36,0.35); color: #fcd34d; }
+
 .knowledge-loading-icon { animation: knowledge-spin 0.8s linear infinite; }
 @keyframes knowledge-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 850px) {
 	.knowledge-discovery-grid { grid-template-columns: 1fr; }
+	.knowledge-intelligence-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 650px) {
@@ -458,8 +591,8 @@
 <div class="knowledge-page">
 	<section class="knowledge-hero">
 		<div class="knowledge-eyebrow"><i class="bi bi-stars"></i> Your course library</div>
-		<h1>Find anything in your course material.</h1>
-		<p class="knowledge-hero-copy">Search across notes, slides, readings, and handouts. Jump straight to the source, then keep your study progress up to date.</p>
+		<h1>Turn your course library into leverage.</h1>
+		<p class="knowledge-hero-copy">Find anything, surface what matters before each exam, and coordinate your workload across courses.</p>
 
 		<form class="knowledge-search-form" id="knowledge-search-form" role="search">
 			<label class="knowledge-query-wrap" for="knowledge-query">
@@ -482,6 +615,28 @@
 		</div>
 	</section>
 
+	{% if ollama_quota and ollama_quota.enabled %}
+	<aside class="knowledge-quota knowledge-quota--{{ ollama_quota.status | e }}" aria-live="polite">
+		<div class="knowledge-quota-state">
+			<i class="bi {% if ollama_quota.status == 'available' %}bi-cloud-check{% elif ollama_quota.status in ['paused', 'rate_limited'] %}bi-pause-circle{% else %}bi-cloud-slash{% endif %}"></i>
+			<div>
+				<strong>{% if ollama_quota.status == 'available' %}Ollama analysis active{% elif ollama_quota.status in ['paused', 'rate_limited'] %}Ollama analysis paused{% else %}Ollama analysis waiting{% endif %}{% if ollama_quota.plan %} · {{ ollama_quota.plan }}{% endif %}</strong>
+				<p>{{ ollama_quota.message or 'Checking Ollama Cloud quota before processing.' }}{% if ollama_quota.blocked_until %} Recheck after {{ ollama_quota.blocked_until | athens_time }}.{% endif %}</p>
+			</div>
+		</div>
+		<div class="knowledge-quota-window">
+			<div class="knowledge-quota-label"><span>Session</span><strong>{% if ollama_quota.session_used_percent is not none %}{{ '%.1f' | format(ollama_quota.session_used_percent) }}%{% else %}—{% endif %}</strong></div>
+			<div class="knowledge-quota-meter"><span style="--quota-width: {{ ollama_quota.session_used_percent or 0 }}%"></span></div>
+			{% if ollama_quota.session_resets_at %}<div class="knowledge-quota-reset">Resets {{ ollama_quota.session_resets_at | athens_time }}</div>{% endif %}
+		</div>
+		<div class="knowledge-quota-window">
+			<div class="knowledge-quota-label"><span>Weekly</span><strong>{% if ollama_quota.weekly_used_percent is not none %}{{ '%.1f' | format(ollama_quota.weekly_used_percent) }}%{% else %}—{% endif %}</strong></div>
+			<div class="knowledge-quota-meter"><span style="--quota-width: {{ ollama_quota.weekly_used_percent or 0 }}%"></span></div>
+			{% if ollama_quota.weekly_resets_at %}<div class="knowledge-quota-reset">Resets {{ ollama_quota.weekly_resets_at | athens_time }}</div>{% endif %}
+		</div>
+	</aside>
+	{% endif %}
+
 	<div class="knowledge-body">
 		<section id="knowledge-results-section" hidden aria-live="polite">
 			<div class="knowledge-results-head">
@@ -492,6 +647,76 @@
 		</section>
 
 		<section id="knowledge-discovery">
+			<div class="knowledge-intelligence">
+				<div class="knowledge-intelligence-head">
+					<div>
+						<h2><i class="bi bi-stars"></i> Study leverage</h2>
+						<p>Live priorities from exam dates and comprehension, powered by reusable material analysis.</p>
+					</div>
+					<span class="knowledge-coverage">{{ study_intelligence.coverage.enriched }}/{{ study_intelligence.coverage.total }} analyzed · {{ study_intelligence.coverage.percent }}%</span>
+				</div>
+
+				{% if study_intelligence.exam_collisions %}
+				<div class="knowledge-collision-list">
+					{% for collision in study_intelligence.exam_collisions %}
+					<div class="knowledge-collision">
+						<i class="bi bi-exclamation-diamond"></i>
+						<div>
+							<strong>{{ collision.first.course_name }} → {{ collision.second.course_name }} · {{ collision.gap_days }} {{ 'day' if collision.gap_days == 1 else 'days' }} apart</strong>
+							<p>{{ collision.message }}</p>
+						</div>
+					</div>
+					{% endfor %}
+				</div>
+				{% endif %}
+
+				{% if study_intelligence.exam_runways %}
+				<div class="knowledge-runway-grid">
+					{% for runway in study_intelligence.exam_runways %}
+					<a class="knowledge-runway" href="/courses/{{ runway.course_id }}" style="text-decoration:none;">
+						<div class="knowledge-runway-top">
+							<span class="knowledge-runway-course">{{ runway.course_name }}</span>
+							<span class="knowledge-runway-days">{% if runway.days_left == 0 %}today{% else %}{{ runway.days_left }}d left{% endif %}</span>
+						</div>
+						<div class="knowledge-runway-meta">{{ runway.readiness }}% ready · {{ runway.remaining_count }} remaining{% if runway.essential_remaining %} · {{ runway.essential_remaining }} essential{% endif %}</div>
+						<div class="knowledge-readiness"><span style="width:{{ runway.readiness }}%"></span></div>
+					</a>
+					{% endfor %}
+				</div>
+				{% endif %}
+
+				<div class="knowledge-intelligence-grid">
+					<div class="knowledge-panel">
+						<div class="knowledge-section-head">
+							<h2>Study next</h2>
+							<a href="/study">Full inbox <i class="bi bi-arrow-right"></i></a>
+						</div>
+						{% if study_intelligence.focus_queue %}
+						<div class="knowledge-focus-list">
+							{% for item in study_intelligence.focus_queue %}
+							<div class="knowledge-focus-item">
+								{{ study_control(item.course_id, item.source_path, item.level, false) }}
+								<div>
+									<a class="knowledge-material-name" href="/files{{ item.source_path | urlencode }}" target="_blank">{{ item.display_name }}</a>
+									<span class="knowledge-material-meta">{{ item.course_name }}</span>
+									<span class="knowledge-focus-action">{{ item.recommended_action }}</span>
+									<div class="knowledge-focus-signals">
+										{% if item.days_left is not none %}<span class="knowledge-signal{% if item.days_left <= 7 %} knowledge-signal--urgent{% endif %}">{{ item.days_left }}d to exam</span>{% endif %}
+										{% if item.ai.importance %}<span class="knowledge-signal{% if item.ai.importance == 'essential' %} knowledge-signal--essential{% endif %}">{{ item.ai.importance }}</span>{% endif %}
+										{% if item.ai.difficulty %}<span class="knowledge-signal">{{ item.ai.difficulty }}</span>{% endif %}
+									</div>
+								</div>
+								<a class="knowledge-course-link" href="/courses/{{ item.course_id }}"><i class="bi bi-chevron-right"></i></a>
+							</div>
+							{% endfor %}
+						</div>
+						{% else %}
+						<div class="knowledge-empty"><i class="bi bi-hourglass-split"></i><strong>Building your priorities</strong><p>Recommendations appear as materials are analyzed and exam dates are configured.</p></div>
+						{% endif %}
+					</div>
+				</div>
+			</div>
+
 			<div class="knowledge-discovery-grid">
 				<div class="knowledge-stack">
 					<div class="knowledge-panel">

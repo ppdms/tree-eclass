@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import json
+import hashlib
 import os
 import re
 import sqlite3
@@ -14,7 +15,7 @@ from .embeddings import (LOCAL_MODEL_NAME, EmbeddingProvider, cosine, embed_text
 from .normalization import document_id, normalize_path, search_normalize
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 10
 
 POLICY_KEYWORDS = tuple(search_normalize(value) for value in (
     "intro", "introduction", "course", "description", "syllabus", "grading",
@@ -48,6 +49,12 @@ CREATE TABLE IF NOT EXISTS documents (
     is_current INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL,
     page_count INTEGER,
+    source_size_bytes INTEGER,
+    character_count INTEGER,
+    word_count INTEGER,
+    reading_minutes INTEGER,
+    complexity_score INTEGER,
+    complexity_label TEXT,
     language_hint TEXT,
     extractor_name TEXT,
     extractor_version TEXT,
@@ -103,6 +110,45 @@ CREATE TABLE IF NOT EXISTS chunk_embeddings (
     PRIMARY KEY(chunk_id, model),
     FOREIGN KEY(chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS document_enrichments (
+    document_id TEXT PRIMARY KEY,
+    source_hash TEXT NOT NULL,
+    context_hash TEXT NOT NULL DEFAULT '',
+    analysis_version TEXT NOT NULL DEFAULT '1',
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'running', 'ready', 'failed')),
+    model TEXT NOT NULL,
+    payload_json TEXT,
+    priority INTEGER NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    available_at TEXT NOT NULL,
+    claimed_at TEXT,
+    generated_at TEXT,
+    error TEXT,
+    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_document_enrichments_claim
+    ON document_enrichments(status, available_at, document_id);
+CREATE TABLE IF NOT EXISTS page_enrichments (
+    document_id TEXT NOT NULL,
+    page_number INTEGER NOT NULL CHECK(page_number > 0),
+    source_hash TEXT NOT NULL,
+    analysis_version TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'running', 'ready', 'failed')),
+    model TEXT NOT NULL,
+    payload_json TEXT,
+    priority INTEGER NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    available_at TEXT NOT NULL,
+    claimed_at TEXT,
+    generated_at TEXT,
+    error TEXT,
+    PRIMARY KEY(document_id, page_number),
+    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_page_enrichments_claim
+    ON page_enrichments(status, priority DESC, available_at, document_id, page_number);
 """
 
 
@@ -144,6 +190,24 @@ class KnowledgeStore:
                 conn.execute("ALTER TABLE documents ADD COLUMN response_mime_type TEXT")
             if "source_modified_at" not in document_columns:
                 conn.execute("ALTER TABLE documents ADD COLUMN source_modified_at TEXT")
+            metric_columns = {
+                "source_size_bytes": "INTEGER",
+                "character_count": "INTEGER",
+                "word_count": "INTEGER",
+                "reading_minutes": "INTEGER",
+                "complexity_score": "INTEGER",
+                "complexity_label": "TEXT",
+            }
+            for name, kind in metric_columns.items():
+                if name not in document_columns:
+                    conn.execute(f"ALTER TABLE documents ADD COLUMN {name} {kind}")
+            enrichment_columns = {row[1] for row in conn.execute("PRAGMA table_info(document_enrichments)")}
+            if "context_hash" not in enrichment_columns:
+                conn.execute("ALTER TABLE document_enrichments ADD COLUMN context_hash TEXT NOT NULL DEFAULT ''")
+            if "analysis_version" not in enrichment_columns:
+                conn.execute("ALTER TABLE document_enrichments ADD COLUMN analysis_version TEXT NOT NULL DEFAULT '1'")
+            if "priority" not in enrichment_columns:
+                conn.execute("ALTER TABLE document_enrichments ADD COLUMN priority INTEGER NOT NULL DEFAULT 0")
             embedding_primary_key = [row[1] for row in conn.execute("PRAGMA table_info(chunk_embeddings)")
                                      if row[5]]
             if embedding_primary_key == ["chunk_id"]:
@@ -170,6 +234,7 @@ class KnowledgeStore:
             )
             conn.commit()
         self.backfill_embeddings()
+        self.backfill_document_metrics()
 
     def backfill_embeddings(self) -> int:
         """Populate vectors for chunks that have no embedding record at all."""
@@ -191,6 +256,39 @@ class KnowledgeStore:
             conn.commit()
             return len(rows)
 
+    def backfill_document_metrics(self) -> int:
+        """Populate deterministic metrics for documents indexed by older versions."""
+        from .metrics import document_metrics, merge_chunk_texts
+
+        with self.connection() as conn:
+            documents = conn.execute(
+                "SELECT id FROM documents WHERE status='ready' AND word_count IS NULL"
+            ).fetchall()
+        for document in documents:
+            with self.connection() as conn:
+                rows = conn.execute(
+                    "SELECT locator_type,locator_start,text FROM chunks "
+                    "WHERE document_id=? ORDER BY ordinal",
+                    (document["id"],),
+                ).fetchall()
+            metrics = document_metrics(merge_chunk_texts([dict(row) for row in rows]))
+            self.set_document_metrics(document["id"], metrics)
+        return len(documents)
+
+    def set_document_metrics(self, opaque_id: str, metrics: dict[str, Any]) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                """UPDATE documents SET source_size_bytes=?,character_count=?,word_count=?,
+                          reading_minutes=?,complexity_score=?,complexity_label=?
+                   WHERE id=?""",
+                (
+                    metrics.get("source_size_bytes"), metrics.get("character_count"),
+                    metrics.get("word_count"), metrics.get("reading_minutes"),
+                    metrics.get("complexity_score"), metrics.get("complexity_label"), opaque_id,
+                ),
+            )
+            conn.commit()
+
     def _embedding_sets(self, texts: list[str]) -> list[tuple[str, list[list[float]]]]:
         batch = self.embedding_provider.embed_texts(texts)
         result = [(batch.model, batch.vectors)]
@@ -202,6 +300,8 @@ class KnowledgeStore:
         with self.connection() as conn:
             conn.executescript("""
                 DROP TABLE IF EXISTS chunks_fts;
+                DROP TABLE IF EXISTS page_enrichments;
+                DROP TABLE IF EXISTS document_enrichments;
                 DROP TABLE IF EXISTS chunk_embeddings;
                 DROP TABLE IF EXISTS chunks;
                 DROP TABLE IF EXISTS documents;
@@ -222,6 +322,20 @@ class KnowledgeStore:
             )
             conn.commit()
 
+    def get_state(self, key: str, default: Any = None) -> Any:
+        """Read a worker state value, decoding JSON when it was stored as JSON."""
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT value FROM knowledge_state WHERE key=?", (key,)
+            ).fetchone()
+        if not row:
+            return default
+        value = row["value"]
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return value
+
     def enqueue(self, course_id: int, source_path: str, requested_hash: Optional[str], action: str) -> bool:
         path = normalize_path(source_path)
         with self.connection() as conn:
@@ -241,6 +355,16 @@ class KnowledgeStore:
             cursor = conn.execute(
                 "UPDATE index_jobs SET status='pending',available_at=?,claimed_at=NULL,error=NULL "
                 "WHERE status='failed'",
+                (utc_now(),),
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def release_failed_enrichments(self) -> int:
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "UPDATE document_enrichments SET status='pending',attempts=0,available_at=?,"
+                "claimed_at=NULL,error=NULL WHERE status='failed'",
                 (utc_now(),),
             )
             conn.commit()
@@ -289,6 +413,486 @@ class KnowledgeStore:
                     (status, utc_now(), error, job_id),
                 )
             conn.commit()
+
+    def course_context_hash(self, course_id: int) -> str:
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT normalized_path,source_hash FROM documents "
+                "WHERE course_id=? AND is_current=1 AND status='ready' ORDER BY normalized_path",
+                (course_id,),
+            ).fetchall()
+        value = "\n".join(f"{row['normalized_path']}\0{row['source_hash']}" for row in rows)
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    def queue_enrichment(self, opaque_id: str, source_hash: str, model: str,
+                         context_hash: str = "", analysis_version: str = "1",
+                         priority: int = 0) -> bool:
+        """Queue AI analysis once per document, course-context, and model version."""
+        with self.connection() as conn:
+            cursor = conn.execute(
+                """INSERT INTO document_enrichments(
+                       document_id,source_hash,context_hash,analysis_version,status,model,priority,available_at)
+                   VALUES(?,?,?,?,'pending',?,?,?)
+                   ON CONFLICT(document_id) DO UPDATE SET
+                       source_hash=excluded.source_hash,context_hash=excluded.context_hash,
+                       analysis_version=excluded.analysis_version,status='pending',model=excluded.model,
+                       payload_json=NULL,attempts=0,available_at=excluded.available_at,
+                       claimed_at=NULL,generated_at=NULL,error=NULL
+                   WHERE document_enrichments.source_hash<>excluded.source_hash
+                      OR document_enrichments.context_hash<>excluded.context_hash
+                      OR document_enrichments.analysis_version<>excluded.analysis_version
+                      OR document_enrichments.model<>excluded.model""",
+                (opaque_id, source_hash, context_hash, analysis_version, model, int(priority), utc_now()),
+            )
+            conn.execute(
+                "UPDATE document_enrichments SET priority=? WHERE document_id=? AND status='pending'",
+                (int(priority), opaque_id),
+            )
+            conn.commit()
+            return cursor.rowcount == 1
+
+    def ensure_enrichment_jobs(self, model: str, analysis_version: str = "1",
+                               course_priorities: Optional[dict[int, int]] = None,
+                               include_pdfs: bool = True) -> int:
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT id,course_id,source_hash FROM documents "
+                "WHERE is_current=1 AND status='ready' AND source_hash<>''"
+                + ("" if include_pdfs else " AND document_kind<>'pdf'")
+            ).fetchall()
+        contexts = {course_id: self.course_context_hash(course_id)
+                    for course_id in {row["course_id"] for row in rows}}
+        return sum(
+            self.queue_enrichment(
+                row["id"], row["source_hash"], model, contexts[row["course_id"]],
+                analysis_version, (course_priorities or {}).get(row["course_id"], 0),
+            )
+            for row in rows
+        )
+
+    def queue_course_enrichments(self, course_id: int, model: str,
+                                 analysis_version: str = "1", priority: int = 0,
+                                 include_pdfs: bool = True) -> int:
+        context_hash = self.course_context_hash(course_id)
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT id,source_hash FROM documents "
+                "WHERE course_id=? AND is_current=1 AND status='ready' AND source_hash<>''"
+                + ("" if include_pdfs else " AND document_kind<>'pdf'"),
+                (course_id,),
+            ).fetchall()
+        return sum(
+            self.queue_enrichment(
+                row["id"], row["source_hash"], model, context_hash, analysis_version, priority
+            ) for row in rows
+        )
+
+    def claim_enrichment(self, analysis_version: str | None = None,
+                         include_pdfs: bool = True) -> Optional[dict[str, Any]]:
+        now = utc_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            version_clause = " AND analysis_version=?" if analysis_version is not None else ""
+            kind_clause = "" if include_pdfs else (
+                " AND document_id IN (SELECT id FROM documents WHERE document_kind<>'pdf')"
+            )
+            params: list[Any] = [now]
+            if analysis_version is not None:
+                params.append(analysis_version)
+            row = conn.execute(
+                "SELECT * FROM document_enrichments "
+                f"WHERE status='pending' AND available_at<=?{version_clause}{kind_clause} "
+                "ORDER BY priority DESC,available_at,document_id LIMIT 1",
+                params,
+            ).fetchone()
+            if row is None:
+                conn.commit()
+                return None
+            conn.execute(
+                "UPDATE document_enrichments SET status='running',attempts=attempts+1,claimed_at=? "
+                "WHERE document_id=?",
+                (now, row["document_id"]),
+            )
+            claimed = conn.execute(
+                "SELECT * FROM document_enrichments WHERE document_id=?", (row["document_id"],)
+            ).fetchone()
+            conn.commit()
+            return dict(claimed)
+
+    def finish_enrichment(self, opaque_id: str, source_hash: str, context_hash: str,
+                          analysis_version: str, model: str,
+                          payload: dict[str, Any]) -> bool:
+        """Store a result only if the queued source version is still current."""
+        with self.connection() as conn:
+            cursor = conn.execute(
+                """UPDATE document_enrichments SET status='ready',model=?,payload_json=?,
+                          generated_at=?,claimed_at=NULL,error=NULL
+                   WHERE document_id=? AND source_hash=? AND context_hash=? AND analysis_version=?
+                     AND EXISTS(SELECT 1 FROM documents d WHERE d.id=document_enrichments.document_id
+                                AND d.source_hash=? AND d.is_current=1 AND d.status='ready')""",
+                (
+                    model, json.dumps(payload, ensure_ascii=False), utc_now(),
+                    opaque_id, source_hash, context_hash, analysis_version, source_hash,
+                ),
+            )
+            conn.commit()
+            return cursor.rowcount == 1
+
+    def fail_enrichment(self, opaque_id: str, error: str, retry_at: Optional[str] = None) -> None:
+        concise = error.replace("\n", " ")[:1000]
+        with self.connection() as conn:
+            if retry_at:
+                conn.execute(
+                    "UPDATE document_enrichments SET status='pending',available_at=?,claimed_at=NULL,error=? "
+                    "WHERE document_id=?",
+                    (retry_at, concise, opaque_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE document_enrichments SET status='failed',claimed_at=NULL,error=? "
+                    "WHERE document_id=?",
+                    (concise, opaque_id),
+                )
+            conn.commit()
+
+    def recover_enrichment_claims(self, older_than_seconds: int = 900) -> int:
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)).isoformat()
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "UPDATE document_enrichments SET status='pending',claimed_at=NULL "
+                "WHERE status='running' AND claimed_at<?",
+                (cutoff,),
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def queue_page_enrichments(self, opaque_id: str, source_hash: str, page_count: int,
+                               model: str, analysis_version: str = "1",
+                               priority: int = 0) -> int:
+        """Create or invalidate durable one-request-per-page analysis jobs."""
+        total_pages = max(0, int(page_count or 0))
+        if not source_hash or not total_pages:
+            return 0
+        changed = 0
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "DELETE FROM page_enrichments WHERE document_id=? AND page_number>?",
+                (opaque_id, total_pages),
+            )
+            for page_number in range(1, total_pages + 1):
+                cursor = conn.execute(
+                    """INSERT INTO page_enrichments(
+                           document_id,page_number,source_hash,analysis_version,status,model,
+                           priority,available_at)
+                       VALUES(?,?,?,?,'pending',?,?,?)
+                       ON CONFLICT(document_id,page_number) DO UPDATE SET
+                           source_hash=excluded.source_hash,
+                           analysis_version=excluded.analysis_version,status='pending',
+                           model=excluded.model,payload_json=NULL,priority=excluded.priority,
+                           attempts=0,available_at=excluded.available_at,claimed_at=NULL,
+                           generated_at=NULL,error=NULL
+                       WHERE page_enrichments.source_hash<>excluded.source_hash
+                          OR page_enrichments.analysis_version<>excluded.analysis_version
+                          OR page_enrichments.model<>excluded.model""",
+                    (
+                        opaque_id, page_number, source_hash, analysis_version, model,
+                        int(priority), utc_now(),
+                    ),
+                )
+                changed += max(0, cursor.rowcount)
+            conn.execute(
+                "UPDATE page_enrichments SET priority=? "
+                "WHERE document_id=? AND status='pending'",
+                (int(priority), opaque_id),
+            )
+            conn.commit()
+        return changed
+
+    def ensure_page_enrichment_jobs(self, model: str, analysis_version: str = "1",
+                                    course_priorities: Optional[dict[int, int]] = None) -> int:
+        if course_priorities is not None and not course_priorities:
+            return 0
+        course_clause = ""
+        params: list[Any] = []
+        if course_priorities is not None:
+            course_clause = f" AND course_id IN ({','.join('?' for _ in course_priorities)})"
+            params.extend(course_priorities)
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT id,course_id,source_hash,page_count FROM documents "
+                "WHERE is_current=1 AND status='ready' AND document_kind='pdf' "
+                f"AND source_hash<>'' AND page_count>0{course_clause} "
+                "ORDER BY course_id,normalized_path",
+                params,
+            ).fetchall()
+        return sum(
+            self.queue_page_enrichments(
+                row["id"], row["source_hash"], row["page_count"], model,
+                analysis_version, (course_priorities or {}).get(row["course_id"], 0),
+            )
+            for row in rows
+        )
+
+    def discard_pending_page_jobs_except(self, course_ids: set[int]) -> int:
+        """Remove unstarted page work outside the current upcoming-exam scope."""
+        with self.connection() as conn:
+            if course_ids:
+                placeholders = ",".join("?" for _ in course_ids)
+                cursor = conn.execute(
+                    f"""DELETE FROM page_enrichments
+                         WHERE status='pending' AND document_id IN (
+                             SELECT id FROM documents WHERE course_id NOT IN ({placeholders})
+                         )""",
+                    sorted(course_ids),
+                )
+            else:
+                cursor = conn.execute("DELETE FROM page_enrichments WHERE status='pending'")
+            conn.commit()
+            return cursor.rowcount
+
+    def claim_page_enrichment(self) -> Optional[dict[str, Any]]:
+        now = utc_now()
+        with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                """SELECT p.* FROM page_enrichments p
+                     JOIN documents d ON d.id=p.document_id
+                     WHERE p.status='pending' AND p.available_at<=?
+                       AND d.is_current=1 AND d.status='ready' AND d.document_kind='pdf'
+                       AND d.source_hash=p.source_hash
+                     ORDER BY p.priority DESC,d.normalized_path,p.page_number LIMIT 1""",
+                (now,),
+            ).fetchone()
+            if row is None:
+                conn.commit()
+                return None
+            conn.execute(
+                "UPDATE page_enrichments SET status='running',attempts=attempts+1,claimed_at=? "
+                "WHERE document_id=? AND page_number=?",
+                (now, row["document_id"], row["page_number"]),
+            )
+            claimed = conn.execute(
+                "SELECT * FROM page_enrichments WHERE document_id=? AND page_number=?",
+                (row["document_id"], row["page_number"]),
+            ).fetchone()
+            conn.commit()
+            return dict(claimed)
+
+    def finish_page_enrichment(self, opaque_id: str, page_number: int, source_hash: str,
+                               analysis_version: str, model: str,
+                               payload: dict[str, Any]) -> bool:
+        with self.connection() as conn:
+            cursor = conn.execute(
+                """UPDATE page_enrichments SET status='ready',model=?,payload_json=?,
+                          generated_at=?,claimed_at=NULL,error=NULL
+                     WHERE document_id=? AND page_number=? AND source_hash=?
+                       AND analysis_version=?
+                       AND EXISTS(SELECT 1 FROM documents d WHERE d.id=page_enrichments.document_id
+                                  AND d.source_hash=? AND d.is_current=1 AND d.status='ready')""",
+                (
+                    model, json.dumps(payload, ensure_ascii=False), utc_now(), opaque_id,
+                    int(page_number), source_hash, analysis_version, source_hash,
+                ),
+            )
+            conn.commit()
+            return cursor.rowcount == 1
+
+    def fail_page_enrichment(self, opaque_id: str, page_number: int, error: str,
+                             retry_at: Optional[str] = None) -> None:
+        concise = error.replace("\n", " ")[:1000]
+        with self.connection() as conn:
+            if retry_at:
+                conn.execute(
+                    "UPDATE page_enrichments SET status='pending',available_at=?,claimed_at=NULL,error=? "
+                    "WHERE document_id=? AND page_number=?",
+                    (retry_at, concise, opaque_id, int(page_number)),
+                )
+            else:
+                conn.execute(
+                    "UPDATE page_enrichments SET status='failed',claimed_at=NULL,error=? "
+                    "WHERE document_id=? AND page_number=?",
+                    (concise, opaque_id, int(page_number)),
+                )
+            conn.commit()
+
+    def recover_page_enrichment_claims(self, older_than_seconds: int = 900) -> int:
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)).isoformat()
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "UPDATE page_enrichments SET status='pending',claimed_at=NULL "
+                "WHERE status='running' AND claimed_at<?",
+                (cutoff,),
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def release_failed_page_enrichments(self) -> int:
+        with self.connection() as conn:
+            cursor = conn.execute(
+                "UPDATE page_enrichments SET status='pending',attempts=0,available_at=?,"
+                "claimed_at=NULL,error=NULL WHERE status='failed'",
+                (utc_now(),),
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def page_enrichment_material(self, opaque_id: str, page_number: int) \
+            -> tuple[Optional[dict[str, Any]], list[dict[str, Any]]]:
+        document = self.get_document(opaque_id)
+        if not document or document["status"] != "ready" or document["document_kind"] != "pdf":
+            return None, []
+        with self.connection() as conn:
+            rows = conn.execute(
+                """SELECT ordinal,locator_type,locator_start,locator_end,heading,text
+                     FROM chunks WHERE document_id=? AND locator_type='page'
+                       AND CAST(locator_start AS INTEGER)<=?
+                       AND CAST(coalesce(locator_end,locator_start) AS INTEGER)>=?
+                     ORDER BY ordinal""",
+                (opaque_id, int(page_number), int(page_number)),
+            ).fetchall()
+        return document, [dict(row) for row in rows]
+
+    def page_enrichment_progress(self, opaque_id: str) -> dict[str, int]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT status,count(*) AS count FROM page_enrichments "
+                "WHERE document_id=? GROUP BY status",
+                (opaque_id,),
+            ).fetchall()
+        counts = {row["status"]: row["count"] for row in rows}
+        counts["total"] = sum(counts.values())
+        return counts
+
+    def page_enrichment_records(self, opaque_id: str, ready_only: bool = False) -> list[dict[str, Any]]:
+        clause = " AND status='ready'" if ready_only else ""
+        with self.connection() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM page_enrichments WHERE document_id=?{clause} ORDER BY page_number",
+                (opaque_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def page_enrichment_record(self, opaque_id: str, page_number: int) -> Optional[dict[str, Any]]:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM page_enrichments WHERE document_id=? AND page_number=?",
+                (opaque_id, int(page_number)),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def completed_page_documents(self, analysis_version: str) -> list[dict[str, Any]]:
+        """Return PDFs whose current source has a ready analysis for every page."""
+        with self.connection() as conn:
+            rows = conn.execute(
+                """SELECT d.id,d.course_id,d.source_hash,d.page_count
+                     FROM documents d JOIN page_enrichments p ON p.document_id=d.id
+                     WHERE d.is_current=1 AND d.status='ready' AND d.document_kind='pdf'
+                       AND d.page_count>0 AND p.source_hash=d.source_hash
+                       AND p.analysis_version=?
+                     GROUP BY d.id
+                     HAVING count(*)=d.page_count
+                        AND sum(CASE WHEN p.status='ready' THEN 1 ELSE 0 END)=d.page_count
+                     ORDER BY d.course_id,d.normalized_path""",
+                (analysis_version,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def enrichment_material(self, opaque_id: str) -> tuple[Optional[dict[str, Any]],
+                                                             list[dict[str, Any]],
+                                                             list[dict[str, Any]]]:
+        document = self.get_document(opaque_id)
+        if not document or document["status"] != "ready":
+            return None, [], []
+        with self.connection() as conn:
+            chunks = [dict(row) for row in conn.execute(
+                "SELECT ordinal,locator_type,locator_start,locator_end,heading,text "
+                "FROM chunks WHERE document_id=? ORDER BY ordinal",
+                (opaque_id,),
+            )]
+            course_documents = [dict(row) for row in conn.execute(
+                "SELECT id,course_name,display_name,source_path,source_hash,document_kind "
+                "FROM documents WHERE course_id=? AND is_current=1 AND status='ready' "
+                "ORDER BY normalized_path",
+                (document["course_id"],),
+            )]
+            first_chunks = conn.execute(
+                """SELECT c.document_id,c.text FROM chunks c JOIN documents d ON d.id=c.document_id
+                   WHERE d.course_id=? AND d.is_current=1 AND d.status='ready' AND c.ordinal<3
+                   ORDER BY c.document_id,c.ordinal""",
+                (document["course_id"],),
+            ).fetchall()
+        excerpts: dict[str, list[str]] = {}
+        for row in first_chunks:
+            excerpts.setdefault(row["document_id"], []).append(row["text"])
+        for item in course_documents:
+            item["excerpt"] = "\n".join(excerpts.get(item["id"], []))[:12_000]
+        return document, chunks, course_documents
+
+    def course_file_insights(self, course_id: int) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """SELECT d.id,d.display_name,d.source_path,d.normalized_path,d.document_kind,d.page_count,
+                          d.source_size_bytes,d.character_count,d.word_count,d.reading_minutes,
+                          d.complexity_score,d.complexity_label,d.warnings_json,d.indexed_at,
+                          e.status AS enrichment_status,e.model AS enrichment_model,
+                          e.analysis_version AS enrichment_analysis_version,
+                          e.payload_json,e.generated_at AS enrichment_generated_at,e.error AS enrichment_error,
+                          coalesce(p.total,0) AS page_analysis_total,
+                          coalesce(p.ready,0) AS page_analysis_ready,
+                          coalesce(p.failed,0) AS page_analysis_failed
+                   FROM documents d LEFT JOIN document_enrichments e
+                     ON e.document_id=d.id AND e.source_hash=d.source_hash
+                   LEFT JOIN (
+                       SELECT document_id,count(*) AS total,
+                              sum(CASE WHEN status='ready' THEN 1 ELSE 0 END) AS ready,
+                              sum(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed
+                       FROM page_enrichments GROUP BY document_id
+                   ) p ON p.document_id=d.id
+                   WHERE d.course_id=? AND d.is_current=1 AND d.status='ready'
+                   ORDER BY d.normalized_path""",
+                (course_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def enrichment_records(self, document_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Return current cached enrichment records for a bounded document set."""
+        unique_ids = list(dict.fromkeys(document_ids))
+        if not unique_ids:
+            return {}
+        placeholders = ",".join("?" for _ in unique_ids)
+        with self.connection() as conn:
+            rows = conn.execute(
+                f"""SELECT e.document_id,e.status,e.model,e.analysis_version,e.payload_json,
+                            e.generated_at
+                     FROM document_enrichments e JOIN documents d ON d.id=e.document_id
+                     WHERE e.document_id IN ({placeholders}) AND d.is_current=1
+                       AND e.source_hash=d.source_hash""",
+                unique_ids,
+            ).fetchall()
+        return {row["document_id"]: dict(row) for row in rows}
+
+    def study_intelligence_rows(self, course_ids: list[int] | None = None) -> list[dict[str, Any]]:
+        clauses = ["d.is_current=1", "d.status='ready'"]
+        params: list[Any] = []
+        if course_ids is not None:
+            if not course_ids:
+                return []
+            clauses.append(f"d.course_id IN ({','.join('?' for _ in course_ids)})")
+            params.extend(course_ids)
+        with self.connection() as conn:
+            rows = conn.execute(
+                f"""SELECT d.id,d.course_id,d.course_name,d.course_short_name,d.display_name,
+                           d.source_path,d.document_kind,d.page_count,d.word_count,d.reading_minutes,
+                           d.complexity_score,d.complexity_label,d.indexed_at,
+                           e.status AS enrichment_status,e.model AS enrichment_model,e.payload_json
+                    FROM documents d LEFT JOIN document_enrichments e
+                      ON e.document_id=d.id AND e.source_hash=d.source_hash
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY d.course_id,d.normalized_path""",
+                params,
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def get_document_by_path(self, course_id: int, path: str) -> Optional[dict[str, Any]]:
         with self.connection() as conn:
@@ -671,7 +1275,7 @@ class KnowledgeStore:
         if course_ids is not None:
             if not course_ids:
                 return {"coverage": [], "documents": [], "jobs": [], "state": {},
-                        "unsupported_documents": [], "failed_documents": []}
+                        "page_enrichments": [], "unsupported_documents": [], "failed_documents": []}
             clauses.append(f"course_id IN ({','.join('?' for _ in course_ids)})")
             params.extend(course_ids)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
@@ -731,6 +1335,19 @@ class KnowledgeStore:
             jobs = [dict(row) for row in conn.execute(
                 f"SELECT course_id,status,count(*) count FROM index_jobs{job_where} GROUP BY course_id,status", params
             )]
+            page_clauses: list[str] = []
+            page_params: list[Any] = []
+            if course_ids is not None:
+                page_clauses.append(f"d.course_id IN ({','.join('?' for _ in course_ids)})")
+                page_params.extend(course_ids)
+            page_where = " WHERE " + " AND ".join(page_clauses) if page_clauses else ""
+            page_enrichments = [dict(row) for row in conn.execute(
+                f"""SELECT d.course_id,p.status,count(*) AS count
+                     FROM page_enrichments p JOIN documents d ON d.id=p.document_id
+                     {page_where}
+                     GROUP BY d.course_id,p.status ORDER BY d.course_id,p.status""",
+                page_params,
+            )]
             state = {row["key"]: row["value"] for row in conn.execute("SELECT key,value FROM knowledge_state")}
         unsupported_documents = [row for row in diagnostics if row["status"] == "unsupported"]
         failed_documents = [row for row in diagnostics if row["status"] in {"failed", "skipped_limit"}]
@@ -738,6 +1355,7 @@ class KnowledgeStore:
             "coverage": coverage,
             "documents": docs,
             "jobs": jobs,
+            "page_enrichments": page_enrichments,
             "state": state,
             "unsupported_documents": unsupported_documents,
             "failed_documents": failed_documents,

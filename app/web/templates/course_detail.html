@@ -12,7 +12,97 @@
 </span>
 {% endmacro %}
 
-{% macro render_tree_children(children, level, webdav_folder, files_with_versions, folders_with_deleted, course_id, study_levels) %}
+{% macro file_insight(insight) %}
+{% if insight %}
+<div class="file-insight">
+	<div class="file-insight-topline">
+		<div class="file-insight-meta" aria-label="Deterministic file metadata">
+			{% if insight.page_count %}<span><i class="bi bi-file-text"></i> {{ insight.page_count }} {{ insight.unit_name }}</span>{% endif %}
+			{% if insight.word_count is not none %}<span><i class="bi bi-body-text"></i> {{ "{:,}".format(insight.word_count) }} words</span>{% endif %}
+			{% if insight.reading_minutes %}<span><i class="bi bi-clock"></i> ~{{ insight.reading_minutes }} min</span>{% endif %}
+			{% if insight.source_size_bytes is not none %}<span><i class="bi bi-device-ssd"></i> {{ insight.source_size_bytes|file_size }}</span>{% endif %}
+			{% if insight.complexity_score is not none %}<span title="Deterministic text-density score based on sentence length, word length, long-word ratio, and technical-symbol density. It is not an AI difficulty rating."><i class="bi bi-speedometer2"></i> {{ insight.complexity_label }} {{ insight.complexity_score }}/100</span>{% endif %}
+			{% if insight.warnings %}<span class="file-insight-warning" title="{{ insight.warnings | join('; ') }}"><i class="bi bi-exclamation-triangle"></i> extraction warning</span>{% endif %}
+		</div>
+		{% if insight.ai.summary %}<span class="file-insight-ai-label"><i class="bi bi-stars"></i> AI guide</span>{% endif %}
+	</div>
+	{% if insight.ai.summary %}
+	<div class="file-insight-summary">
+		<i class="bi bi-stars" aria-hidden="true"></i>
+		<p class="file-insight-summary-text">{{ insight.ai.summary }}</p>
+	</div>
+	<details class="file-insight-details">
+		<summary>
+			<span class="file-insight-toggle-title"><i class="bi bi-journal-richtext"></i> Study guide</span>
+			<span class="file-insight-toggle-hint">context, exam value, and next steps</span>
+			<i class="bi bi-chevron-down file-insight-chevron" aria-hidden="true"></i>
+		</summary>
+		<div class="file-insight-panel">
+		<div class="file-insight-signals" aria-label="Study signals">
+			{% if insight.ai.importance %}<span class="file-insight-signal importance-{{ insight.ai.importance }}"><small>Priority</small>{{ insight.ai.importance }}</span>{% endif %}
+			{% if insight.ai.difficulty %}<span class="file-insight-signal difficulty-{{ insight.ai.difficulty }}"><small>Difficulty</small>{{ insight.ai.difficulty }}</span>{% endif %}
+			{% if insight.ai.assessment_relevance and insight.ai.assessment_relevance != 'unknown' %}<span class="file-insight-signal assessment-{{ insight.ai.assessment_relevance }}"><small>Assessment</small>{{ insight.ai.assessment_relevance }}</span>{% endif %}
+			{% if insight.ai.material_type %}<span class="file-insight-signal file-insight-signal--neutral"><small>Material</small>{{ insight.ai.material_type | replace('_', ' ') }}</span>{% endif %}
+		</div>
+
+		{% if insight.ai.recommended_action %}
+		<div class="file-insight-action">
+			<span class="file-insight-action-icon"><i class="bi bi-bullseye"></i></span>
+			<div><span class="file-insight-eyebrow">Best next action</span><p>{{ insight.ai.recommended_action }}</p></div>
+		</div>
+		{% endif %}
+
+		{% if insight.ai.course_role or insight.ai.importance_reason or insight.ai.assessment_reason or insight.ai.difficulty_reason or insight.ai.overlap %}
+		<div class="file-insight-facts">
+			{% if insight.ai.course_role %}<article><span class="file-insight-eyebrow">Place in the course</span><p>{{ insight.ai.course_role }}</p></article>{% endif %}
+			{% if insight.ai.importance_reason %}<article><span class="file-insight-eyebrow">Why it matters</span><p>{{ insight.ai.importance_reason }}</p></article>{% endif %}
+			{% if insight.ai.assessment_reason %}<article><span class="file-insight-eyebrow">Assessment relevance</span><p>{{ insight.ai.assessment_reason }}</p></article>{% endif %}
+			{% if insight.ai.difficulty_reason %}<article><span class="file-insight-eyebrow">Difficulty notes</span><p>{{ insight.ai.difficulty_reason }}</p></article>{% endif %}
+			{% if insight.ai.overlap %}<article><span class="file-insight-eyebrow">Overlap with other material</span><p>{{ insight.ai.overlap }}</p></article>{% endif %}
+		</div>
+		{% endif %}
+
+		{% if insight.ai.topics or insight.ai.prerequisites %}
+		<div class="file-insight-chip-groups">
+			{% if insight.ai.topics %}<section><h4>Topics</h4><div class="file-insight-chips">{% for topic in insight.ai.topics %}<span class="file-insight-topic">{{ topic }}</span>{% endfor %}</div></section>{% endif %}
+			{% if insight.ai.prerequisites %}<section><h4>Prerequisites</h4><div class="file-insight-chips">{% for item in insight.ai.prerequisites %}<span class="file-insight-topic file-insight-topic--prerequisite">{{ item }}</span>{% endfor %}</div></section>{% endif %}
+		</div>
+		{% endif %}
+
+		{% if insight.ai.learning_objectives or insight.ai.visual_content or insight.ai.notable_items %}
+		<div class="file-insight-lists">
+			{% if insight.ai.learning_objectives %}<section><h4><i class="bi bi-check2-circle"></i> Learning objectives</h4><ul>{% for item in insight.ai.learning_objectives %}<li>{{ item }}</li>{% endfor %}</ul></section>{% endif %}
+			{% if insight.ai.visual_content %}<section><h4><i class="bi bi-eye"></i> Visual evidence</h4><ul>{% for item in insight.ai.visual_content %}<li>{{ item }}</li>{% endfor %}</ul></section>{% endif %}
+			{% if insight.ai.notable_items %}<section><h4><i class="bi bi-pin-angle"></i> Important details</h4><ul>{% for item in insight.ai.notable_items %}<li>{{ item }}</li>{% endfor %}</ul></section>{% endif %}
+		</div>
+		{% endif %}
+
+		{% if insight.ai.related_materials %}
+		<section class="file-insight-related">
+			<h4>Related material</h4>
+			<div>{% for item in insight.ai.related_materials %}<a href="/files{{ item.path | urlencode }}" target="_blank"><i class="bi bi-file-earmark-text"></i> {{ item.name }}</a>{% endfor %}</div>
+		</section>
+		{% endif %}
+		<footer class="file-insight-provenance">
+			<i class="bi bi-cpu"></i> {{ insight.enrichment_model }}
+			{% if insight.page_analysis_total %}
+			<span><i class="bi bi-images"></i> {% if insight.page_analysis_ready == insight.page_analysis_total %}All {{ insight.page_analysis_total }} pages visually analyzed{% else %}Visual analysis {{ insight.page_analysis_ready }}/{{ insight.page_analysis_total }} pages{% endif %}</span>
+			{% elif insight.ai.vision_pages %}
+			<span><i class="bi bi-image"></i> Visual samples: pages {{ insight.ai.vision_pages | join(', ') }}</span>
+			{% endif %}
+		</footer>
+		</div>
+	</details>
+	{% elif insight.enrichment_status in ['pending', 'running'] %}
+	<div class="file-insight-state"><i class="bi bi-stars"></i> {% if insight.ai_processing_enabled %}AI description is being prepared…{% else %}AI analysis is paused.{% endif %}{% if insight.page_analysis_total %} <span>Visual analysis {{ insight.page_analysis_ready }}/{{ insight.page_analysis_total }} pages</span>{% endif %}</div>
+	{% elif insight.enrichment_status == 'failed' %}
+	<div class="file-insight-state"><i class="bi bi-exclamation-circle"></i> AI description is temporarily unavailable.</div>
+	{% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro render_tree_children(children, level, webdav_folder, files_with_versions, folders_with_deleted, course_id, study_levels, file_insights) %}
 {% for child in children %}
 <div class="tree-node" style="margin-left: {{ level * 20 }}px;">
 	<span class="tree-icon"><i class="bi bi-folder-fill"></i></span>
@@ -24,6 +114,7 @@
 		{% set rel_file = file.local_path[(webdav_folder|length + 1):] if file.local_path else '' %}
 		{% set study_key = file.local_path if file.local_path else file.url %}
 		{% set slevel = study_levels.get(study_key, 0) %}
+		{% set insight = file_insights.get(file.local_path) if file.local_path else none %}
 		<div class="tree-file" style="margin-left: {{ (level + 1) * 20 }}px;">
 			{{ study_btn(study_key, course_id, slevel) }}
 			<span class="tree-icon">{% if file.redirect_url %}<i class="bi bi-box-arrow-up-right"></i>{% else %}<i class="bi bi-file-earmark"></i>{% endif %}</span>
@@ -55,13 +146,14 @@
 			<span class="file-date" style="color: #64748b; font-size: 0.85em; margin-left: 8px;">{{
 				file.last_updated|format_timestamp }}</span>
 			{% endif %}
+			{{ file_insight(insight) }}
 		</div>
 		{% endfor %}
 	</div>
 	{% endif %}
 
 	{% if child.children %}
-	{{ render_tree_children(child.children, level + 1, webdav_folder, files_with_versions, folders_with_deleted, course_id, study_levels) }}
+	{{ render_tree_children(child.children, level + 1, webdav_folder, files_with_versions, folders_with_deleted, course_id, study_levels, file_insights) }}
 	{% endif %}
 </div>
 {% endfor %}
@@ -132,6 +224,9 @@
 	</h2>
 	{% if tree %}
 	<div class="tree-view" id="tree-view-container">
+		{% if not ai_enrichment_configured %}
+		<div class="file-insight-config"><i class="bi bi-info-circle"></i> File metrics are local. Set <code>OLLAMA_API_KEY</code> to add cached AI descriptions.</div>
+		{% endif %}
 		<div class="tree-node">
 			<span class="tree-icon"><i class="bi bi-folder-fill"></i></span>
 			<span class="tree-name">{{ tree.name }}</span>
@@ -148,6 +243,7 @@
 				{% set rel_file = file.local_path[(course.webdav_folder|length + 1):] if file.local_path else '' %}
 				{% set study_key = file.local_path if file.local_path else file.url %}
 				{% set slevel = study_levels.get(study_key, 0) %}
+				{% set insight = file_insights.get(file.local_path) if file.local_path else none %}
 				<div class="tree-file">
 				{{ study_btn(study_key, course.id, slevel) }}
 				<span class="tree-icon">{% if file.redirect_url %}<i class="bi bi-box-arrow-up-right"></i>{% else %}<i class="bi bi-file-earmark"></i>{% endif %}</span>
@@ -173,14 +269,15 @@
 					data-course-id="{{ course.id }}"
 					data-fp="{{ rel_file | e }}"
 					onclick="toggleFileVersions(this, Number(this.dataset.courseId), this.dataset.fp)">
-<i class="bi bi-clock-history"></i></button>
+				<i class="bi bi-clock-history"></i></button>
 				{% endif %}
+				{{ file_insight(insight) }}
 				</div>
 				{% endfor %}
 				{% endif %}
 
 				{% if tree.children %}
-				{{ render_tree_children(tree.children, 1, course.webdav_folder, files_with_versions, folders_with_deleted, course.id, study_levels) }}
+				{{ render_tree_children(tree.children, 1, course.webdav_folder, files_with_versions, folders_with_deleted, course.id, study_levels, file_insights) }}
 				{% endif %}
 			</div>
 		</div>

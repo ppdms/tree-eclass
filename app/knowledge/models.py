@@ -80,6 +80,7 @@ class ListMaterialsRequest:
     path_prefix: Optional[str] = None
     document_kinds: Optional[list[str]] = None
     changed_since: Optional[str] = None
+    include_insights: bool = False
     cursor: Optional[str] = None
     limit: int = 50
 

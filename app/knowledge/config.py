@@ -17,6 +17,13 @@ def _int(name: str, default: int, minimum: int = 0) -> int:
         return default
 
 
+def _float(name: str, default: float, minimum: float = 0.0, maximum: float = 100.0) -> float:
+    try:
+        return min(maximum, max(minimum, float(os.getenv(name, str(default)))))
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class KnowledgeConfig:
     db_file: str
@@ -48,6 +55,33 @@ class KnowledgeConfig:
     embedding_timeout_seconds: int
     embedding_batch_size: int
     embedding_local_fallback: bool
+    ai_enrichment_enabled: bool
+    ai_model: str
+    ai_api_key: Optional[str]
+    ai_base_url: str
+    ai_timeout_seconds: int
+    ai_max_input_characters: int
+    ai_max_attempts: int
+    ai_language: str
+    ai_analysis_version: str
+    ai_pdf_vision_enabled: bool
+    ai_pdf_max_images: int
+    ai_pdf_image_dpi: int
+    ai_pdf_image_max_dimension: int
+    ai_pdf_image_max_bytes: int
+    ai_pdf_render_timeout_seconds: int
+    ai_page_enrichment_enabled: bool
+    ai_page_analysis_version: str
+    ai_page_max_text_characters: int
+    ai_page_synthesis_max_characters: int
+    ai_quota_enabled: bool
+    ai_quota_cookie_header: Optional[str]
+    ai_quota_session_limit_percent: float
+    ai_quota_weekly_limit_percent: float
+    ai_quota_poll_seconds: int
+    ai_quota_max_requests_between_checks: int
+    ai_quota_reset_grace_seconds: int
+    ai_quota_failure_retry_seconds: int
     mcp_http_enabled: bool
 
     @classmethod
@@ -62,6 +96,7 @@ class KnowledgeConfig:
         embedding_api_key = os.getenv("KNOWLEDGE_EMBEDDING_API_KEY") or os.getenv(
             "OPENAI_API_KEY" if embedding_backend == "openai" else "OPENROUTER_API_KEY"
         )
+        ollama_api_key = os.getenv("OLLAMA_API_KEY")
         return cls(
             db_file=os.getenv("KNOWLEDGE_DB_FILE", default_knowledge),
             source_db_file=source_db,
@@ -92,5 +127,44 @@ class KnowledgeConfig:
             embedding_timeout_seconds=_int("KNOWLEDGE_EMBEDDING_TIMEOUT_SECONDS", 30, 1),
             embedding_batch_size=_int("KNOWLEDGE_EMBEDDING_BATCH_SIZE", 32, 1),
             embedding_local_fallback=_bool("KNOWLEDGE_EMBEDDING_LOCAL_FALLBACK", True),
+            ai_enrichment_enabled=_bool("KNOWLEDGE_AI_ENABLED", bool(ollama_api_key)),
+            ai_model=os.getenv("KNOWLEDGE_AI_MODEL", "qwen3.5:397b").strip(),
+            ai_api_key=ollama_api_key,
+            ai_base_url=os.getenv("KNOWLEDGE_AI_BASE_URL", "https://ollama.com").strip(),
+            ai_timeout_seconds=_int("KNOWLEDGE_AI_TIMEOUT_SECONDS", 180, 1),
+            ai_max_input_characters=_int("KNOWLEDGE_AI_MAX_INPUT_CHARS", 30_000, 2000),
+            ai_max_attempts=_int("KNOWLEDGE_AI_MAX_ATTEMPTS", 4, 1),
+            ai_language=os.getenv("KNOWLEDGE_AI_LANGUAGE", "English").strip() or "English",
+            ai_analysis_version=os.getenv("KNOWLEDGE_AI_ANALYSIS_VERSION", "2").strip() or "2",
+            ai_pdf_vision_enabled=_bool("KNOWLEDGE_AI_PDF_VISION_ENABLED", True),
+            ai_pdf_max_images=_int("KNOWLEDGE_AI_PDF_MAX_IMAGES", 4, 1),
+            ai_pdf_image_dpi=_int("KNOWLEDGE_AI_PDF_IMAGE_DPI", 120, 72),
+            ai_pdf_image_max_dimension=_int("KNOWLEDGE_AI_PDF_IMAGE_MAX_DIMENSION", 1600, 600),
+            ai_pdf_image_max_bytes=_int("KNOWLEDGE_AI_PDF_IMAGE_MAX_MB", 12, 1) * 1024 * 1024,
+            ai_pdf_render_timeout_seconds=_int("KNOWLEDGE_AI_PDF_RENDER_TIMEOUT_SECONDS", 45, 1),
+            ai_page_enrichment_enabled=_bool("KNOWLEDGE_AI_PAGE_ENABLED", True),
+            ai_page_analysis_version=os.getenv("KNOWLEDGE_AI_PAGE_ANALYSIS_VERSION", "1").strip() or "1",
+            ai_page_max_text_characters=_int("KNOWLEDGE_AI_PAGE_MAX_TEXT_CHARS", 12_000, 500),
+            ai_page_synthesis_max_characters=_int(
+                "KNOWLEDGE_AI_PAGE_SYNTHESIS_MAX_CHARS", 300_000, 10_000
+            ),
+            ai_quota_enabled=_bool("KNOWLEDGE_AI_QUOTA_ENABLED", True),
+            ai_quota_cookie_header=os.getenv("OLLAMA_COOKIE_HEADER"),
+            ai_quota_session_limit_percent=_float(
+                "KNOWLEDGE_AI_QUOTA_SESSION_LIMIT_PERCENT", 95.0
+            ),
+            ai_quota_weekly_limit_percent=_float(
+                "KNOWLEDGE_AI_QUOTA_WEEKLY_LIMIT_PERCENT", 95.0
+            ),
+            ai_quota_poll_seconds=_int("KNOWLEDGE_AI_QUOTA_POLL_SECONDS", 60, 10),
+            ai_quota_max_requests_between_checks=_int(
+                "KNOWLEDGE_AI_QUOTA_MAX_REQUESTS_BETWEEN_CHECKS", 20, 1
+            ),
+            ai_quota_reset_grace_seconds=_int(
+                "KNOWLEDGE_AI_QUOTA_RESET_GRACE_SECONDS", 30, 0
+            ),
+            ai_quota_failure_retry_seconds=_int(
+                "KNOWLEDGE_AI_QUOTA_FAILURE_RETRY_SECONDS", 300, 30
+            ),
             mcp_http_enabled=_bool("MCP_HTTP_ENABLED", True),
         )
