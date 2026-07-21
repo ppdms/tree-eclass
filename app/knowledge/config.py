@@ -24,6 +24,11 @@ def _float(name: str, default: float, minimum: float = 0.0, maximum: float = 100
         return default
 
 
+def _csv(name: str, default: str) -> tuple[str, ...]:
+    value = os.getenv(name, default)
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
 @dataclass(frozen=True)
 class KnowledgeConfig:
     db_file: str
@@ -71,7 +76,10 @@ class KnowledgeConfig:
     ai_pdf_image_max_bytes: int
     ai_pdf_render_timeout_seconds: int
     ai_page_enrichment_enabled: bool
+    ai_page_concurrency: int
     ai_page_analysis_version: str
+    ai_page_fallback_models: tuple[str, ...]
+    ai_page_attempts_per_model: int
     ai_page_max_text_characters: int
     ai_page_synthesis_max_characters: int
     ai_quota_enabled: bool
@@ -143,7 +151,14 @@ class KnowledgeConfig:
             ai_pdf_image_max_bytes=_int("KNOWLEDGE_AI_PDF_IMAGE_MAX_MB", 12, 1) * 1024 * 1024,
             ai_pdf_render_timeout_seconds=_int("KNOWLEDGE_AI_PDF_RENDER_TIMEOUT_SECONDS", 45, 1),
             ai_page_enrichment_enabled=_bool("KNOWLEDGE_AI_PAGE_ENABLED", True),
+            ai_page_concurrency=min(32, _int("KNOWLEDGE_AI_PAGE_CONCURRENCY", 10, 1)),
             ai_page_analysis_version=os.getenv("KNOWLEDGE_AI_PAGE_ANALYSIS_VERSION", "1").strip() or "1",
+            ai_page_fallback_models=_csv(
+                "KNOWLEDGE_AI_PAGE_FALLBACK_MODELS", "gemma4:31b,kimi-k2.6"
+            ),
+            ai_page_attempts_per_model=_int(
+                "KNOWLEDGE_AI_PAGE_ATTEMPTS_PER_MODEL", 3, 1
+            ),
             ai_page_max_text_characters=_int("KNOWLEDGE_AI_PAGE_MAX_TEXT_CHARS", 12_000, 500),
             ai_page_synthesis_max_characters=_int(
                 "KNOWLEDGE_AI_PAGE_SYNTHESIS_MAX_CHARS", 300_000, 10_000

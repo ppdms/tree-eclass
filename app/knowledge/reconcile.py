@@ -75,6 +75,9 @@ class KnowledgeReconciler:
                 source_modified_at=item.last_updated,
             )
             existing = self.store.get_document_by_path(course_id, path)
+            reviving = bool(existing and (
+                not existing.get("is_current") or existing.get("status") == "deleted"
+            ))
             if item.redirect_url:
                 self.store.record_manifest_document(
                     source, kind or "external", "external", diagnostic_reason="external"
@@ -86,7 +89,7 @@ class KnowledgeReconciler:
                 # magic bytes once, then retain a stable unsupported result if
                 # the content genuinely has no extractor.
                 legacy_unsupported = existing and existing["status"] == "unsupported" and not existing.get("diagnostic_reason")
-                if (existing and existing["source_hash"] == source.source_hash
+                if (existing and not reviving and existing["source_hash"] == source.source_hash
                         and existing["status"] not in {"failed", "pending", "skipped_limit"}
                         and not legacy_unsupported):
                     self.store.refresh_source_metadata(source)
@@ -95,7 +98,10 @@ class KnowledgeReconciler:
                     self.store.record_manifest_document(
                         source, "unknown", "pending", diagnostic_reason="content_detection_pending"
                     )
-                    if self.store.enqueue(course_id, path, source.source_hash, "upsert"):
+                    if self.store.enqueue(
+                        course_id, path, source.source_hash, "upsert",
+                        revive_completed=reviving,
+                    ):
                         counts["enqueued"] += 1
                     counts["pending_detection"] += 1
                 else:
@@ -104,11 +110,14 @@ class KnowledgeReconciler:
                         diagnostic_reason=unsupported_reason(item.name, mime),
                     )
                     counts["unsupported"] += 1
-            elif (not existing or existing["source_hash"] != source.source_hash
+            elif (not existing or reviving or existing["source_hash"] != source.source_hash
                   or existing["status"] in {"failed", "pending", "skipped_limit"}
                   or (existing["status"] == "unsupported" and not existing.get("diagnostic_reason"))):
                 self.store.record_manifest_document(source, kind, "pending")
-                if self.store.enqueue(course_id, path, source.source_hash, "upsert"):
+                if self.store.enqueue(
+                    course_id, path, source.source_hash, "upsert",
+                    revive_completed=reviving,
+                ):
                     counts["enqueued"] += 1
             else:
                 self.store.refresh_source_metadata(source)

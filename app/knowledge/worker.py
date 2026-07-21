@@ -1,6 +1,7 @@
 """Background extraction worker and recovery CLI."""
 
 import argparse
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -31,6 +32,47 @@ from .store import KnowledgeStore, utc_now
 from .vision import render_pdf_pages, representative_pdf_pages
 
 
+def _is_server_error(exc: Exception) -> bool:
+    status = getattr(exc, "http_status", None)
+    return isinstance(status, int) and 500 <= status < 600
+
+
+def _should_retry_enrichment(exc: Exception, attempts: int, max_attempts: int) -> bool:
+    """Keep server failures pending; bound retries for all other failure modes."""
+    if not getattr(exc, "retryable", True):
+        return False
+    return _is_server_error(exc) or attempts < max_attempts
+
+
+def _enrichment_retry_delay(exc: Exception, attempts: int) -> int:
+    """Return exponential backoff in seconds, capped at one hour."""
+    exponential = min(3600, 2 ** min(max(0, attempts), 8) * 15)
+    retry_after = getattr(exc, "retry_after_seconds", None)
+    if isinstance(retry_after, int):
+        return min(3600, max(exponential, retry_after))
+    return exponential
+
+
+def _page_attempt_route(primary_model: str, fallback_models: tuple[str, ...],
+                        attempts_per_model: int, attempt: int) -> tuple[str, bool]:
+    """Select a vision model by attempt, then fall back to primary text-only analysis."""
+    models = (primary_model, *fallback_models)
+    tier = (max(1, attempt) - 1) // max(1, attempts_per_model)
+    if tier < len(models):
+        return models[tier], True
+    return primary_model, False
+
+
+def _should_retry_page_enrichment(exc: Exception, attempts: int, max_attempts: int,
+                                  fallback_count: int, attempts_per_model: int) -> bool:
+    if not getattr(exc, "retryable", True):
+        return False
+    if _is_server_error(exc):
+        return True
+    text_only_attempt = (1 + max(0, fallback_count)) * max(1, attempts_per_model) + 1
+    return attempts < max(max_attempts, text_only_attempt)
+
+
 def _current_source(db: DatabaseManager, course_id: int, path: str) -> SourceMetadata | None:
     course = db.get_course(course_id, include_hidden=True)
     root = db.load_tree(course_id)
@@ -59,6 +101,9 @@ class KnowledgeWorker:
         self.uploader = uploader
         self.stop_event = threading.Event()
         self.operation_lock = threading.RLock()
+        self._pdf_cache_lock = threading.RLock()
+        self._page_executor: ThreadPoolExecutor | None = None
+        self._page_futures: set[Future[bool]] = set()
         self.ai_enabled = bool(self.config.ai_enrichment_enabled and self.config.ai_api_key)
         self.quota_guard: OllamaQuotaGuard | None = None
         if self.ai_enabled and self.config.ai_quota_enabled:
@@ -94,6 +139,9 @@ class KnowledgeWorker:
             timeout_seconds=self.config.ai_timeout_seconds,
             request_observer=self.quota_guard.record_request if self.quota_guard else None,
         ) if self.ai_enabled else None
+        self._enrichers: dict[str, OllamaEnricher] = (
+            {self.config.ai_model: self.enricher} if self.enricher else {}
+        )
         self.course_priorities = self._load_course_priorities() if self.ai_enabled else {}
         self._cached_pdf_id: str | None = None
         self._cached_pdf_hash: str | None = None
@@ -110,6 +158,15 @@ class KnowledgeWorker:
             ocr_page_timeout_seconds=self.config.ocr_page_timeout_seconds,
             ocr_max_pages=self.config.ocr_max_pages,
         )
+        if (
+            self.ai_enabled
+            and self.config.ai_page_enrichment_enabled
+            and self.config.ai_page_concurrency > 1
+        ):
+            self._page_executor = ThreadPoolExecutor(
+                max_workers=self.config.ai_page_concurrency,
+                thread_name_prefix="knowledge-page",
+            )
         if self.ai_enabled:
             self.store.ensure_enrichment_jobs(
                 self.config.ai_model, self.config.ai_analysis_version, self.course_priorities,
@@ -197,10 +254,15 @@ class KnowledgeWorker:
                 )
                 self._queue_completed_syntheses()
 
-    def _run_once(self) -> bool:
+    def _run_once(self, *, include_page_enrichment: bool = True,
+                  include_synthesis: bool = True, include_standard_enrichment: bool = True) -> bool:
         job = self.store.claim_job()
         if not job:
-            return self._run_enrichment_once()
+            return self._run_enrichment_once(
+                include_page_enrichment=include_page_enrichment,
+                include_synthesis=include_synthesis,
+                include_standard_enrichment=include_standard_enrichment,
+            )
         db = DatabaseManager(self.config.source_db_file)
         source = None
         kind = None
@@ -347,27 +409,28 @@ class KnowledgeWorker:
         )
 
     def _pdf_bytes(self, document: dict[str, object]) -> bytes:
-        opaque_id = str(document["id"])
-        source_hash = str(document.get("source_hash") or "")
-        if (self._cached_pdf_id == opaque_id and self._cached_pdf_hash == source_hash
-                and self._cached_pdf_data is not None):
-            return self._cached_pdf_data
-        db = DatabaseManager(self.config.source_db_file)
-        try:
-            data = self._uploader(db).download_file(str(document["source_path"]))
-        finally:
-            db.close()
-        if not data:
-            raise EnrichmentError("PDF could not be downloaded")
-        if len(data) > self.config.max_source_bytes:
-            raise EnrichmentError("PDF exceeds the configured source-size limit", retryable=False)
-        if (len(source_hash) == 32
-                and hashlib.md5(data).hexdigest() != source_hash.lower()):  # nosec B324
-            raise EnrichmentError("downloaded PDF hash does not match indexed source")
-        self._cached_pdf_id = opaque_id
-        self._cached_pdf_hash = source_hash
-        self._cached_pdf_data = data
-        return data
+        with self._pdf_cache_lock:
+            opaque_id = str(document["id"])
+            source_hash = str(document.get("source_hash") or "")
+            if (self._cached_pdf_id == opaque_id and self._cached_pdf_hash == source_hash
+                    and self._cached_pdf_data is not None):
+                return self._cached_pdf_data
+            db = DatabaseManager(self.config.source_db_file)
+            try:
+                data = self._uploader(db).download_file(str(document["source_path"]))
+            finally:
+                db.close()
+            if not data:
+                raise EnrichmentError("PDF could not be downloaded")
+            if len(data) > self.config.max_source_bytes:
+                raise EnrichmentError("PDF exceeds the configured source-size limit", retryable=False)
+            if (len(source_hash) == 32
+                    and hashlib.md5(data).hexdigest() != source_hash.lower()):  # nosec B324
+                raise EnrichmentError("downloaded PDF hash does not match indexed source")
+            self._cached_pdf_id = opaque_id
+            self._cached_pdf_hash = source_hash
+            self._cached_pdf_data = data
+            return data
 
     def _process_document_enrichment(self, job: dict[str, object], *, from_pages: bool) -> None:
         document, chunks, course_documents = self.store.enrichment_material(str(job["document_id"]))
@@ -415,9 +478,10 @@ class KnowledgeWorker:
         except Exception as exc:
             self._record_quota_error(exc)
             error = f"{type(exc).__name__}: {str(exc)}"[:1000]
-            retryable = getattr(exc, "retryable", True)
-            if retryable and job["attempts"] < self.config.ai_max_attempts:
-                delay = min(3600, 2 ** job["attempts"] * 15)
+            if _should_retry_enrichment(
+                exc, int(job["attempts"]), self.config.ai_max_attempts
+            ):
+                delay = _enrichment_retry_delay(exc, int(job["attempts"]))
                 retry_at = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
                 self.store.fail_enrichment(job["document_id"], error, retry_at=retry_at)
             else:
@@ -438,24 +502,32 @@ class KnowledgeWorker:
                     job["document_id"], job["page_number"], "source is no longer current"
                 )
                 return True
-            images = render_pdf_pages(
-                self._pdf_bytes(document), [int(job["page_number"])],
-                dpi=self.config.ai_pdf_image_dpi,
-                max_dimension=self.config.ai_pdf_image_max_dimension,
-                max_total_bytes=self.config.ai_pdf_image_max_bytes,
-                timeout_seconds=self.config.ai_pdf_render_timeout_seconds,
+            selected_model, use_vision = _page_attempt_route(
+                self.config.ai_model, self.config.ai_page_fallback_models,
+                self.config.ai_page_attempts_per_model, int(job["attempts"]),
             )
-            if len(images) != 1:
-                raise EnrichmentError("PDF page could not be rendered")
+            image_base64 = None
+            if use_vision:
+                images = render_pdf_pages(
+                    self._pdf_bytes(document), [int(job["page_number"])],
+                    dpi=self.config.ai_pdf_image_dpi,
+                    max_dimension=self.config.ai_pdf_image_max_dimension,
+                    max_total_bytes=self.config.ai_pdf_image_max_bytes,
+                    timeout_seconds=self.config.ai_pdf_render_timeout_seconds,
+                )
+                if len(images) != 1:
+                    raise EnrichmentError("PDF page could not be rendered")
+                image_base64 = images[0]["base64"]
             page_texts = merge_chunk_texts(chunks)
             page_text = "\n\n".join(page_texts)[:self.config.ai_page_max_text_characters]
-            payload = self.enricher.analyze_page(
+            enricher = self._enricher_for_model(selected_model)
+            payload = enricher.analyze_page(
                 document, int(job["page_number"]), int(document.get("page_count") or 0),
-                page_text, images[0]["base64"], language=self.config.ai_language,
+                page_text, image_base64, language=self.config.ai_language,
             )
             if not self.store.finish_page_enrichment(
                 job["document_id"], job["page_number"], job["source_hash"],
-                job["analysis_version"], self.config.ai_model, payload,
+                job["analysis_version"], selected_model, payload,
             ):
                 logging.info(
                     "Discarded stale page enrichment for %s page %s",
@@ -473,9 +545,12 @@ class KnowledgeWorker:
         except Exception as exc:
             self._record_quota_error(exc)
             error = f"{type(exc).__name__}: {str(exc)}"[:1000]
-            retryable = getattr(exc, "retryable", True)
-            if retryable and job["attempts"] < self.config.ai_max_attempts:
-                delay = min(3600, 2 ** job["attempts"] * 15)
+            if _should_retry_page_enrichment(
+                exc, int(job["attempts"]), self.config.ai_max_attempts,
+                len(self.config.ai_page_fallback_models),
+                self.config.ai_page_attempts_per_model,
+            ):
+                delay = _enrichment_retry_delay(exc, int(job["attempts"]))
                 retry_at = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
                 self.store.fail_page_enrichment(
                     job["document_id"], job["page_number"], error, retry_at=retry_at
@@ -488,27 +563,88 @@ class KnowledgeWorker:
                 )
         return True
 
+    def _enricher_for_model(self, model: str) -> OllamaEnricher:
+        enricher = self._enrichers.get(model)
+        if enricher is None:
+            enricher = OllamaEnricher(
+                api_key=self.config.ai_api_key or "",
+                model=model,
+                base_url=self.config.ai_base_url,
+                timeout_seconds=self.config.ai_timeout_seconds,
+                request_observer=(
+                    self.quota_guard.record_request if self.quota_guard else None
+                ),
+            )
+            self._enrichers[model] = enricher
+        return enricher
+
     def _record_quota_error(self, exc: Exception) -> None:
         if self.quota_guard and getattr(exc, "http_status", None) == 429:
             self.quota_guard.record_rate_limit(getattr(exc, "retry_after_seconds", None))
 
-    def _run_enrichment_once(self) -> bool:
+    def _run_page_enrichment_guarded_once(self) -> bool:
         if not self.enricher:
             return False
         if self.quota_guard and not self.quota_guard.before_request().allowed:
             return False
-        if self.config.ai_page_enrichment_enabled:
-            if self._run_document_enrichment_once(self.page_synthesis_version, from_pages=True):
-                return True
-            if self._run_page_enrichment_once():
-                return True
-        return self._run_document_enrichment_once(
-            self.config.ai_analysis_version, from_pages=False
-        )
+        return self._run_page_enrichment_once()
 
-    def run_once(self) -> bool:
+    def _run_enrichment_once(self, *, include_page_enrichment: bool = True,
+                             include_synthesis: bool = True,
+                             include_standard_enrichment: bool = True) -> bool:
+        if not self.enricher:
+            return False
+        if not (include_page_enrichment or include_synthesis or include_standard_enrichment):
+            return False
+        if self.quota_guard and not self.quota_guard.before_request().allowed:
+            return False
+        if self.config.ai_page_enrichment_enabled:
+            if (include_synthesis and self._run_document_enrichment_once(
+                    self.page_synthesis_version, from_pages=True)):
+                return True
+            if include_page_enrichment and self._run_page_enrichment_once():
+                return True
+        if include_standard_enrichment:
+            return self._run_document_enrichment_once(
+                self.config.ai_analysis_version, from_pages=False
+            )
+        return False
+
+    def _reap_page_pool(self) -> bool:
+        if self._page_executor is None:
+            return False
+        worked = False
+        completed = {future for future in self._page_futures if future.done()}
+        for future in completed:
+            self._page_futures.remove(future)
+            try:
+                worked = future.result() or worked
+            except Exception:
+                logging.exception("Parallel page enrichment task failed unexpectedly")
+                worked = True
+        return worked
+
+    def _fill_page_pool(self) -> bool:
+        if self._page_executor is None or self.stop_event.is_set():
+            return False
+        available = self.config.ai_page_concurrency - len(self._page_futures)
+        pending = self.store.claimable_page_enrichment_count()
+        submitted = min(max(0, available), pending)
+        for _ in range(submitted):
+            self._page_futures.add(
+                self._page_executor.submit(self._run_page_enrichment_guarded_once)
+            )
+        return submitted > 0
+
+    def run_once(self, *, include_page_enrichment: bool = True,
+                 include_synthesis: bool = True,
+                 include_standard_enrichment: bool = True) -> bool:
         with self.operation_lock:
-            return self._run_once()
+            return self._run_once(
+                include_page_enrichment=include_page_enrichment,
+                include_synthesis=include_synthesis,
+                include_standard_enrichment=include_standard_enrichment,
+            )
 
     def run_forever(self) -> None:
         self.store.recover_claims()
@@ -517,38 +653,76 @@ class KnowledgeWorker:
             if self.config.ai_page_enrichment_enabled:
                 self.store.recover_page_enrichment_claims()
         next_reconcile = time.monotonic() + self.config.reconcile_interval_seconds
-        while not self.stop_event.is_set():
-            if time.monotonic() >= next_reconcile:
-                try:
-                    with self.operation_lock:
-                        KnowledgeReconciler(self.store, self.config.source_db_file).reconcile_all()
-                        self.course_priorities = self._load_course_priorities() if self.ai_enabled else {}
-                        if self.ai_enabled:
-                            self.store.ensure_enrichment_jobs(
-                                self.config.ai_model, self.config.ai_analysis_version,
-                                self.course_priorities,
-                                include_pdfs=not self.config.ai_page_enrichment_enabled,
-                            )
-                            if self.config.ai_page_enrichment_enabled:
-                                self.store.discard_pending_page_jobs_except(
-                                    set(self.course_priorities)
-                                )
-                                self.store.ensure_page_enrichment_jobs(
-                                    self.config.ai_model, self.config.ai_page_analysis_version,
+        try:
+            while not self.stop_event.is_set():
+                if time.monotonic() >= next_reconcile:
+                    try:
+                        with self.operation_lock:
+                            KnowledgeReconciler(self.store, self.config.source_db_file).reconcile_all()
+                            self.course_priorities = self._load_course_priorities() if self.ai_enabled else {}
+                            if self.ai_enabled:
+                                self.store.ensure_enrichment_jobs(
+                                    self.config.ai_model, self.config.ai_analysis_version,
                                     self.course_priorities,
+                                    include_pdfs=not self.config.ai_page_enrichment_enabled,
                                 )
-                                self._queue_completed_syntheses()
+                                if self.config.ai_page_enrichment_enabled:
+                                    self.store.discard_pending_page_jobs_except(
+                                        set(self.course_priorities)
+                                    )
+                                    self.store.ensure_page_enrichment_jobs(
+                                        self.config.ai_model, self.config.ai_page_analysis_version,
+                                        self.course_priorities,
+                                    )
+                                    self._queue_completed_syntheses()
+                    except Exception:
+                        logging.exception("Periodic knowledge reconciliation failed")
+                    next_reconcile = time.monotonic() + self.config.reconcile_interval_seconds
+                try:
+                    parallel_pages = self._reap_page_pool()
+                    if self._page_executor is None:
+                        worked = self.run_once()
+                    elif self._page_futures:
+                        # Keep all page slots busy unless the final page of a
+                        # document just queued its higher-priority synthesis.
+                        if not self.store.has_claimable_enrichment(self.page_synthesis_version):
+                            parallel_pages = self._fill_page_pool() or parallel_pages
+                        # Local extraction may continue beside page requests, but keep
+                        # total Ollama concurrency bounded by the page-pool size.
+                        worked = self.run_once(
+                            include_page_enrichment=False,
+                            include_synthesis=False,
+                            include_standard_enrichment=False,
+                        )
+                    else:
+                        # Preserve the original priority: completed-document synthesis,
+                        # then page work, then ordinary non-PDF enrichment.
+                        worked = self.run_once(
+                            include_page_enrichment=False,
+                            include_synthesis=True,
+                            include_standard_enrichment=False,
+                        )
+                        if not worked:
+                            parallel_pages = self._fill_page_pool() or parallel_pages
+                        if not worked and not self._page_futures:
+                            worked = self.run_once(
+                                include_page_enrichment=False,
+                                include_synthesis=False,
+                                include_standard_enrichment=True,
+                            )
+                    self.store.set_state("worker_heartbeat", utc_now())
                 except Exception:
-                    logging.exception("Periodic knowledge reconciliation failed")
-                next_reconcile = time.monotonic() + self.config.reconcile_interval_seconds
-            try:
-                worked = self.run_once()
-                self.store.set_state("worker_heartbeat", utc_now())
-            except Exception:
-                worked = False
-                logging.exception("Knowledge worker loop error")
-            if not worked:
-                self.stop_event.wait(self.config.worker_poll_seconds)
+                    worked = False
+                    parallel_pages = False
+                    logging.exception("Knowledge worker loop error")
+                if not worked and not parallel_pages:
+                    self.stop_event.wait(
+                        min(1, self.config.worker_poll_seconds)
+                        if self._page_futures else self.config.worker_poll_seconds
+                    )
+        finally:
+            if self._page_executor is not None:
+                self._page_executor.shutdown(wait=False, cancel_futures=True)
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -562,6 +736,7 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--reconcile-all", action="store_true")
     group.add_argument("--rebuild", action="store_true")
     group.add_argument("--retry-failed", action="store_true")
+    group.add_argument("--retry-enrichment", metavar="DOCUMENT_ID")
     args = parser.parse_args(argv)
     config = KnowledgeConfig.from_env()
     store = KnowledgeStore(config.db_file, embedding_provider=EmbeddingProvider.from_config(config))
@@ -579,6 +754,8 @@ def main(argv: list[str] | None = None) -> int:
             + store.release_failed_enrichments()
             + store.release_failed_page_enrichments()
         )
+    elif args.retry_enrichment:
+        print(int(store.release_failed_enrichment(args.retry_enrichment)))
     else:
         worker = KnowledgeWorker(config, store)
         if args.once:

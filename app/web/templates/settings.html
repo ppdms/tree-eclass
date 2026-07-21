@@ -54,6 +54,113 @@
 	{% endif %}
 </div>
 
+<!-- Discord Course Mapping Section -->
+<div class="section" id="discord-course-mapping">
+	<div class="settings-section-title">
+		<h2>Discord Course Mapping</h2>
+		{% if discord_channels and discord_mapped_count == discord_channels|length %}
+		<span class="settings-section-status settings-section-status--ok"><i class="bi bi-check-circle-fill"></i> {{ discord_mapped_count }} mapped</span>
+		{% else %}
+		<span class="settings-section-status settings-section-status--warn"><i class="bi bi-exclamation-triangle-fill"></i> {{ discord_mapped_count }} of {{ discord_channels|length }} mapped</span>
+		{% endif %}
+		<div class="settings-section-actions">
+			<button type="submit" form="discordCourseMapForm" class="btn btn-secondary settings-dirty-submit" data-dirty-button-for="discordCourseMapForm">Save mappings</button>
+		</div>
+	</div>
+	<p class="settings-section-description">Associate each Discord channel with the eClass course whose discussions it contains.</p>
+
+	{% if discord_mapping_saved %}
+	<div class="discord-map-notice"><i class="bi bi-check-circle-fill"></i> Discord course mappings saved and workers refreshed.</div>
+	{% endif %}
+
+	<div class="form-card">
+		{% if discord_channels %}
+		<form method="POST" action="/settings/discord-course-map" id="discordCourseMapForm" data-dirty-watch>
+			<div class="discord-map-list">
+			{% for channel in discord_channels %}
+				<div class="discord-map-row">
+					<label for="discord_course_{{ channel.root_id }}">
+						<span class="discord-map-channel"><i class="bi bi-discord"></i> #{{ channel.name }}</span>
+						<span class="discord-map-kind">Discord channel</span>
+					</label>
+					<i class="bi bi-arrow-right discord-map-arrow" aria-hidden="true"></i>
+					<select id="discord_course_{{ channel.root_id }}" name="discord_course_{{ channel.root_id }}">
+						<option value="">Not mapped</option>
+						{% for course in discord_courses %}
+						<option value="{{ course.id }}" {% if channel.mapped_course_id == course.id %}selected{% endif %}>{{ course.name }}{% if course.short_name %} ({{ course.short_name }}){% endif %}{% if course.hidden %} — hidden{% endif %}</option>
+						{% endfor %}
+					</select>
+				</div>
+			{% endfor %}
+			</div>
+		</form>
+		{% else %}
+		<p class="settings-section-description discord-map-empty">No Discord root channels were found. Point <code>DISCORD_ARCHIVE_DIR</code> at an existing archive first.</p>
+		{% endif %}
+	</div>
+</div>
+
+<!-- Discord Exporter Section -->
+<div class="section" id="discord-exporter">
+	<div class="settings-section-title">
+		<h2>Discord Exporter</h2>
+		{% if discord_export_settings.enabled and discord_export_token_configured %}
+		<span class="settings-section-status settings-section-status--ok"><i class="bi bi-check-circle-fill"></i> Enabled</span>
+		{% elif discord_export_settings.enabled %}
+		<span class="settings-section-status settings-section-status--warn"><i class="bi bi-exclamation-triangle-fill"></i> Token required</span>
+		{% else %}
+		<span class="settings-section-status"><i class="bi bi-pause-circle-fill"></i> Disabled</span>
+		{% endif %}
+		<div class="settings-section-actions">
+			<button type="submit" form="discordExporterForm" class="btn btn-secondary settings-dirty-submit" data-dirty-button-for="discordExporterForm">Save exporter</button>
+		</div>
+	</div>
+	<p class="settings-section-description">Configure the integrated resumable exporter. Its token is stored in plaintext in the local eClass database and is never written to archive state, manifests, commands, or logs.</p>
+
+	{% if discord_export_saved %}
+	<div class="discord-map-notice"><i class="bi bi-check-circle-fill"></i> Discord exporter settings saved and worker refreshed.</div>
+	{% endif %}
+
+	<div class="form-card">
+		<form method="POST" action="/settings/discord-exporter" id="discordExporterForm" data-dirty-watch>
+			<div class="settings-matrix settings-matrix--2col">
+				<div class="form-group">
+					<label for="discord_export_token">Discord Token</label>
+					<input type="password" id="discord_export_token" name="token" autocomplete="new-password" placeholder="{% if discord_export_token_configured %}Token configured — enter to replace{% else %}Enter Discord token{% endif %}">
+					<small>Leaving this blank preserves the current token.</small>
+				</div>
+				<div class="form-group">
+					<label for="discord_export_interval">Export Interval (minutes)</label>
+					<input type="number" id="discord_export_interval" name="interval_minutes" value="{{ discord_export_settings.interval_seconds // 60 }}" min="1" max="43200" required>
+					<small>The worker runs immediately when enabled, then on this interval.</small>
+				</div>
+				<div class="form-group">
+					<label for="discord_export_threads">Threads</label>
+					<select id="discord_export_threads" name="include_threads">
+						<option value="None" {% if discord_export_settings.include_threads == 'None' %}selected{% endif %}>Do not include threads</option>
+						<option value="Active" {% if discord_export_settings.include_threads == 'Active' %}selected{% endif %}>Active threads only</option>
+						<option value="All" {% if discord_export_settings.include_threads == 'All' %}selected{% endif %}>Active and archived threads</option>
+					</select>
+				</div>
+				<div class="form-group">
+					<label for="discord_export_parallel">Parallel Exports</label>
+					<input type="number" id="discord_export_parallel" name="parallel" value="{{ discord_export_settings.parallel }}" min="1" max="16" required>
+				</div>
+			</div>
+			<div class="settings-matrix settings-matrix--2col">
+				<div class="form-group">
+					<label><input type="checkbox" name="enabled" value="true" {% if discord_export_settings.enabled %}checked{% endif %}> Enable scheduled exports</label>
+					<small>Requires a token and at least one course mapping.</small>
+				</div>
+				<div class="form-group">
+					<label><input type="checkbox" name="media" value="true" {% if discord_export_settings.media %}checked{% endif %}> Download media</label>
+					<small>Reuse previously downloaded attachments across segments.</small>
+				</div>
+			</div>
+		</form>
+	</div>
+</div>
+
 <!-- eClass Credentials Section -->
 <div class="section">
 	<div class="settings-section-title">

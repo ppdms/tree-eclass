@@ -9,3 +9,6 @@ Downloads/
 .env
 .codex
 .agents
+
+# Local Discord exports are private runtime data.
+discord_exports/

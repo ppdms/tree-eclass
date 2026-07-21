@@ -166,6 +166,10 @@ def build_study_intelligence(materials: list[dict[str, Any]], exam_plans: list[d
             item["first"]["course_id"], item["second"]["course_id"]
         }]
     enriched = sum(bool(item.get("enriched")) for item in scoped)
+    coverage_percent = round(100 * enriched / len(scoped)) if scoped else 0
+    if enriched < len(scoped):
+        # Rounding must not advertise completion while work is still missing.
+        coverage_percent = min(99, coverage_percent)
     return {
         "focus_queue": _focus_queue(scoped, exams_by_course, study_levels, today),
         "exam_runways": runways,
@@ -173,6 +177,6 @@ def build_study_intelligence(materials: list[dict[str, Any]], exam_plans: list[d
         "coverage": {
             "enriched": enriched,
             "total": len(scoped),
-            "percent": round(100 * enriched / len(scoped)) if scoped else 0,
+            "percent": coverage_percent,
         },
     }

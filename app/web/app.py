@@ -35,6 +35,10 @@ from app.knowledge.service import KnowledgeService
 from app.knowledge.worker import KnowledgeWorker
 from app.knowledge.reconcile import KnowledgeReconciler
 from app.knowledge.store import KnowledgeStore
+from app.messages.config import MessageConfig
+from app.messages.export_worker import ExportConfig, ExportWorker
+from app.messages.mapping import discover_root_channels
+from app.messages.worker import MessageWorker
 from app.mcp.server import knowledge_mcp
 
 # Configure logging for systemd
@@ -46,13 +50,18 @@ logging.basicConfig(
 
 _knowledge_worker = None
 _knowledge_worker_thread = None
+_message_worker = None
+_message_worker_thread = None
+_message_export_worker = None
+_message_export_worker_thread = None
 _knowledge_admin_lock = threading.RLock()
 
 
 @asynccontextmanager
 async def app_lifespan(_app: FastAPI):
     """Compose the checker, optional worker, and MCP session-manager lifecycles."""
-    global _knowledge_worker, _knowledge_worker_thread
+    global _knowledge_worker, _knowledge_worker_thread, _message_worker, _message_worker_thread
+    global _message_export_worker, _message_export_worker_thread
     start_scheduled_checker()
     config = KnowledgeConfig.from_env()
     if config.enabled and config.worker_enabled:
@@ -67,6 +76,33 @@ async def app_lifespan(_app: FastAPI):
             _knowledge_worker = None
             _knowledge_worker_thread = None
             logging.exception("Knowledge worker could not start; the web service will continue")
+    message_config = MessageConfig.from_env()
+    export_config = ExportConfig.from_env(message_config)
+    try:
+        _message_export_worker = ExportWorker(export_config)
+        _message_export_worker_thread = threading.Thread(
+            target=_message_export_worker.run_forever,
+            daemon=True,
+            name="discord-export-worker",
+        )
+        _message_export_worker_thread.start()
+        logging.info("Discord export worker started")
+    except Exception:
+        _message_export_worker = None
+        _message_export_worker_thread = None
+        logging.exception("Discord export worker could not start; the web service will continue")
+    if message_config.enabled and message_config.worker_enabled:
+        try:
+            _message_worker = MessageWorker(message_config)
+            _message_worker_thread = threading.Thread(
+                target=_message_worker.run_forever, daemon=True, name="discord-message-worker"
+            )
+            _message_worker_thread.start()
+            logging.info("Discord message worker started")
+        except Exception:
+            _message_worker = None
+            _message_worker_thread = None
+            logging.exception("Discord message worker could not start; the web service will continue")
     try:
         if config.enabled and config.mcp_http_enabled:
             async with knowledge_mcp.session_manager.run():
@@ -77,10 +113,22 @@ async def app_lifespan(_app: FastAPI):
         stop_scheduled_checker()
         if _knowledge_worker:
             _knowledge_worker.stop()
+        if _message_worker:
+            _message_worker.stop()
+        if _message_export_worker:
+            _message_export_worker.stop()
         if _knowledge_worker_thread:
             await asyncio.to_thread(_knowledge_worker_thread.join, 10)
+        if _message_worker_thread:
+            await asyncio.to_thread(_message_worker_thread.join, 10)
+        if _message_export_worker_thread:
+            await asyncio.to_thread(_message_export_worker_thread.join, 10)
         _knowledge_worker = None
         _knowledge_worker_thread = None
+        _message_worker = None
+        _message_worker_thread = None
+        _message_export_worker = None
+        _message_export_worker_thread = None
 
 
 app = FastAPI(title="tree-eClass Manager", version="1.0.0", lifespan=app_lifespan)
@@ -530,6 +578,7 @@ async def view_course(request: Request, course_id: int):
         # Load version metadata for the file tree UI
         files_with_versions = db_manager.get_files_with_versions(course_id)
         folders_with_deleted = db_manager.get_folders_with_deleted(course_id)
+        collapsed_folders = db_manager.get_collapsed_folders(course_id)
         study_levels = db_manager.get_file_study_levels(course_id)
         knowledge_config = KnowledgeConfig.from_env()
         file_insights = {}
@@ -549,6 +598,7 @@ async def view_course(request: Request, course_id: int):
             "changes_data": changes_data,
             "files_with_versions": files_with_versions,
             "folders_with_deleted": folders_with_deleted,
+            "collapsed_folders": collapsed_folders,
             "study_levels": study_levels,
             "file_insights": file_insights,
             "ai_enrichment_configured": bool(
@@ -944,6 +994,14 @@ async def view_settings(request: Request):
             for course in db_manager.get_courses(include_hidden=True)
             if course["hidden"]
         ]
+        message_config = MessageConfig.from_env()
+        discord_courses = db_manager.get_courses(include_hidden=True)
+        discord_channels = discover_root_channels(
+            message_config.archive_dir, message_config.course_map
+        )
+        discord_export_settings = db_manager.get_discord_export_settings()
+        discord_export_token_configured = bool(discord_export_settings["token"])
+        discord_export_settings["token"] = ""
         return templates.TemplateResponse(request=request, name="settings.html", context={
             "request": request,
             "credentials": safe_credentials,
@@ -952,10 +1010,93 @@ async def view_settings(request: Request):
             "preferences": preferences,
             "global_feeds": GLOBAL_FEEDS,
             "hidden_courses": hidden_courses,
+            "discord_courses": discord_courses,
+            "discord_channels": discord_channels,
+            "discord_mapped_count": sum(
+                channel.mapped_course_id is not None for channel in discord_channels
+            ),
+            "discord_mapping_saved": request.query_params.get("discord_saved") == "1",
+            "discord_export_settings": discord_export_settings,
+            "discord_export_token_configured": discord_export_token_configured,
+            "discord_export_saved": request.query_params.get("discord_export_saved") == "1",
         })
     except Exception as e:
         logging.error(f"Error viewing settings: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/settings/discord-course-map")
+async def update_discord_course_map(request: Request):
+    """Map archive root channels to eClass courses using human-readable names."""
+    message_config = MessageConfig.from_env()
+    channels = discover_root_channels(message_config.archive_dir, message_config.course_map)
+    allowed_roots = {channel.root_id for channel in channels}
+    allowed_courses = {
+        int(course["id"]) for course in db_manager.get_courses(include_hidden=True)
+    }
+    form = await request.form()
+    mapping: dict[str, int] = {}
+    for root_id in allowed_roots:
+        raw_course_id = str(form.get(f"discord_course_{root_id}", "")).strip()
+        if not raw_course_id:
+            continue
+        try:
+            course_id = int(raw_course_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid eClass course selection") from exc
+        if course_id not in allowed_courses:
+            raise HTTPException(status_code=400, detail="Unknown eClass course selection")
+        mapping[root_id] = course_id
+    try:
+        db_manager.save_discord_course_map(mapping)
+    except Exception as exc:
+        logging.exception("Could not save Discord course mapping")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    refreshed_config = MessageConfig.from_env()
+    if _message_worker is not None:
+        _message_worker.reload_config()
+    if _message_export_worker is not None:
+        _message_export_worker.reload_config(refreshed_config)
+    logging.info("Updated %s Discord course mapping(s)", len(mapping))
+    return RedirectResponse(
+        url="/settings?discord_saved=1#discord-course-mapping", status_code=303
+    )
+
+
+@app.post("/settings/discord-exporter")
+async def update_discord_exporter(
+    enabled: Optional[bool] = Form(False),
+    token: Optional[str] = Form(None),
+    interval_minutes: int = Form(60),
+    include_threads: str = Form("All"),
+    media: Optional[bool] = Form(False),
+    parallel: int = Form(1),
+):
+    """Persist every setting needed to run the integrated Discord exporter."""
+    try:
+        existing = db_manager.get_discord_export_settings()
+        final_token = token.strip() if token and token.strip() else existing["token"]
+        db_manager.save_discord_export_settings(
+            enabled=bool(enabled),
+            token=final_token,
+            interval_seconds=int(interval_minutes) * 60,
+            include_threads=include_threads,
+            media=bool(media),
+            parallel=parallel,
+        )
+        refreshed_messages = MessageConfig.from_env()
+        if _message_export_worker is not None:
+            _message_export_worker.reload_config(refreshed_messages)
+        logging.info("Updated Discord exporter settings")
+        return RedirectResponse(
+            url="/settings?discord_export_saved=1#discord-exporter", status_code=303
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("Could not save Discord exporter settings")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/settings/credentials")
@@ -1411,6 +1552,40 @@ async def set_study_level(course_id: int, request: Request):
         raise
     except Exception as e:
         logging.error(f"API error setting study level course {course_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/courses/{course_id}/folders/collapsed")
+async def set_folder_collapsed(course_id: int, request: Request):
+    """Persist whether a folder is collapsed in the course file tree."""
+    try:
+        if not db_manager.get_course(course_id):
+            raise HTTPException(status_code=404, detail="Course not found")
+
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=422, detail="Expected a JSON object")
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=422, detail="Expected a JSON object")
+
+        folder_key = body.get("folder_key")
+        collapsed = body.get("collapsed")
+        if not isinstance(folder_key, str) or not folder_key or len(folder_key) > 4096:
+            raise HTTPException(status_code=422, detail="A valid folder_key is required")
+        if not isinstance(collapsed, bool):
+            raise HTTPException(status_code=422, detail="collapsed must be a boolean")
+
+        if not db_manager.set_folder_collapsed(course_id, folder_key, collapsed):
+            raise HTTPException(status_code=404, detail="Folder not found")
+        return JSONResponse(content={"status": "ok", "collapsed": collapsed})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(
+            f"API error setting collapsed folder for course {course_id}: {e}",
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 

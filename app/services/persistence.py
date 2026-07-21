@@ -18,7 +18,7 @@ from app.services.download_paths import (
 )
 
 DB_FILE = os.getenv("DB_FILE", "eclass.db")
-SCHEMA_VERSION = 26  # Current schema version
+SCHEMA_VERSION = 29  # Current schema version
 
 class DatabaseManager:
     """Manages all SQLite database operations."""
@@ -201,6 +201,35 @@ class DatabaseManager:
                 last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (course_id, file_path),
                 FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS collapsed_course_folders (
+                course_id INTEGER NOT NULL,
+                folder_key TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (course_id, folder_key),
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS discord_course_channels (
+                root_channel_id TEXT PRIMARY KEY,
+                course_id INTEGER NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS discord_export_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                enabled INTEGER NOT NULL DEFAULT 0,
+                token TEXT NOT NULL DEFAULT '',
+                interval_seconds INTEGER NOT NULL DEFAULT 3600,
+                include_threads TEXT NOT NULL DEFAULT 'All',
+                media INTEGER NOT NULL DEFAULT 1,
+                parallel INTEGER NOT NULL DEFAULT 1,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
         cursor.execute("""
@@ -398,6 +427,18 @@ class DatabaseManager:
         if current_version < 26:
             self._migration_25_to_26()
             self._set_schema_version(26)
+
+        if current_version < 27:
+            self._migration_26_to_27()
+            self._set_schema_version(27)
+
+        if current_version < 28:
+            self._migration_27_to_28()
+            self._set_schema_version(28)
+
+        if current_version < 29:
+            self._migration_28_to_29()
+            self._set_schema_version(29)
 
         logging.info("All migrations completed successfully")
 
@@ -911,6 +952,53 @@ class DatabaseManager:
             logging.info("Added download_base_path column to preferences")
         self.conn.commit()
 
+    def _migration_26_to_27(self):
+        """Migration: Persist collapsed folders in the course file tree."""
+        logging.info("Running migration 26 -> 27: Adding collapsed course folders")
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS collapsed_course_folders (
+                course_id INTEGER NOT NULL,
+                folder_key TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (course_id, folder_key),
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        self.conn.commit()
+
+    def _migration_27_to_28(self):
+        """Migration: Store Discord channel mappings in the application database."""
+        logging.info("Running migration 27 -> 28: Adding Discord course mappings")
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS discord_course_channels (
+                root_channel_id TEXT PRIMARY KEY,
+                course_id INTEGER NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (course_id) REFERENCES courses (id) ON DELETE CASCADE
+            )
+        """)
+        self.conn.commit()
+
+    def _migration_28_to_29(self):
+        """Migration: Store Discord exporter settings in the application database."""
+        logging.info("Running migration 28 -> 29: Adding Discord exporter settings")
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS discord_export_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                enabled INTEGER NOT NULL DEFAULT 0,
+                token TEXT NOT NULL DEFAULT '',
+                interval_seconds INTEGER NOT NULL DEFAULT 3600,
+                include_threads TEXT NOT NULL DEFAULT 'All',
+                media INTEGER NOT NULL DEFAULT 1,
+                parallel INTEGER NOT NULL DEFAULT 1,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        self.conn.commit()
+
     def _migration_18_to_19(self):
         """Migration: Add exercises table."""
         logging.info("Running migration 18 -> 19: Adding exercises table")
@@ -1219,6 +1307,91 @@ class DatabaseManager:
             logging.error(f"Failed to get courses: {e}", exc_info=True)
             raise
 
+    def get_discord_course_map(self) -> Dict[str, int]:
+        """Return Discord root-channel mappings stored in SQLite."""
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT root_channel_id, course_id FROM discord_course_channels "
+            "ORDER BY root_channel_id"
+        )
+        return {str(row[0]): int(row[1]) for row in cursor.fetchall()}
+
+    def save_discord_course_map(self, mapping: Dict[str, int]) -> None:
+        """Atomically replace all Discord root-channel mappings."""
+        validated: Dict[str, int] = {}
+        for raw_root_id, raw_course_id in mapping.items():
+            root_id = str(raw_root_id).strip()
+            course_id = int(raw_course_id)
+            if (
+                not root_id.isascii()
+                or not root_id.isdigit()
+                or int(root_id) <= 0
+                or course_id <= 0
+            ):
+                raise ValueError("Discord and eClass course IDs must be positive integers")
+            validated[root_id] = course_id
+        with self.conn:
+            self.conn.execute("DELETE FROM discord_course_channels")
+            self.conn.executemany(
+                "INSERT INTO discord_course_channels(root_channel_id,course_id,updated_at) "
+                "VALUES(?,?,CURRENT_TIMESTAMP)",
+                sorted(validated.items()),
+            )
+
+    def get_discord_export_settings(self) -> Dict[str, any]:
+        """Return persisted Discord exporter settings with safe defaults."""
+        row = self.conn.execute(
+            "SELECT enabled,token,interval_seconds,include_threads,media,parallel "
+            "FROM discord_export_settings WHERE id=1"
+        ).fetchone()
+        if not row:
+            return {
+                "enabled": False,
+                "token": "",
+                "interval_seconds": 3600,
+                "include_threads": "All",
+                "media": True,
+                "parallel": 1,
+            }
+        return {
+            "enabled": bool(row[0]),
+            "token": str(row[1] or ""),
+            "interval_seconds": int(row[2]),
+            "include_threads": str(row[3]),
+            "media": bool(row[4]),
+            "parallel": int(row[5]),
+        }
+
+    def save_discord_export_settings(
+        self, *, enabled: bool, token: str, interval_seconds: int,
+        include_threads: str, media: bool, parallel: int,
+    ) -> None:
+        """Validate and persist all settings required by the exporter worker."""
+        include_threads = str(include_threads).title()
+        if include_threads not in {"None", "Active", "All"}:
+            raise ValueError("include_threads must be None, Active, or All")
+        interval_seconds = int(interval_seconds)
+        parallel = int(parallel)
+        if not 60 <= interval_seconds <= 2_592_000:
+            raise ValueError("export interval must be between 1 minute and 30 days")
+        if not 1 <= parallel <= 16:
+            raise ValueError("export parallelism must be between 1 and 16")
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO discord_export_settings(
+                       id,enabled,token,interval_seconds,include_threads,media,parallel,updated_at)
+                   VALUES(1,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                   ON CONFLICT(id) DO UPDATE SET
+                       enabled=excluded.enabled,token=excluded.token,
+                       interval_seconds=excluded.interval_seconds,
+                       include_threads=excluded.include_threads,media=excluded.media,
+                       parallel=excluded.parallel,updated_at=CURRENT_TIMESTAMP""",
+                (
+                    int(enabled), str(token), interval_seconds, include_threads,
+                    int(media), parallel,
+                ),
+            )
+
     def get_course(self, course_id: int, include_hidden: bool = False) -> Optional[Dict]:
         """Return one course, respecting UI visibility unless explicitly overridden."""
         try:
@@ -1343,6 +1516,55 @@ class DatabaseManager:
             raise
 
     # --- Tree methods ---
+    def get_collapsed_folders(self, course_id: int) -> set:
+        """Return stable folder keys collapsed in a course's file tree."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT folder_key FROM collapsed_course_folders WHERE course_id = ?",
+                (course_id,),
+            )
+            return {row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(
+                f"Failed to load collapsed folders for course {course_id}: {e}",
+                exc_info=True,
+            )
+            raise
+
+    def set_folder_collapsed(self, course_id: int, folder_key: str, collapsed: bool) -> bool:
+        """Persist a folder's collapsed state if it belongs to the course."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM nodes WHERE course_id = ? AND url = ? LIMIT 1",
+                (course_id, folder_key),
+            )
+            if not cursor.fetchone():
+                return False
+
+            if collapsed:
+                cursor.execute("""
+                    INSERT INTO collapsed_course_folders (course_id, folder_key, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(course_id, folder_key) DO UPDATE SET
+                        updated_at = CURRENT_TIMESTAMP
+                """, (course_id, folder_key))
+            else:
+                cursor.execute(
+                    "DELETE FROM collapsed_course_folders WHERE course_id = ? AND folder_key = ?",
+                    (course_id, folder_key),
+                )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            self.conn.rollback()
+            logging.error(
+                f"Failed to update collapsed folder for course {course_id}: {e}",
+                exc_info=True,
+            )
+            raise
+
     def save_tree(self, course_id: int, root_node: Node):
         """Saves an entire Node tree to the database for a given course."""
         cursor = self.conn.cursor()

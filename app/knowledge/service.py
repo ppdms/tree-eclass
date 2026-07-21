@@ -6,6 +6,7 @@ from typing import Any
 from urllib.parse import quote
 
 from app.services.persistence import DatabaseManager
+from app.course_access import enforce_course_ids, visible_courses
 
 from .config import KnowledgeConfig
 from .embeddings import EmbeddingProvider
@@ -71,20 +72,10 @@ class KnowledgeService:
         return DatabaseManager(self.config.source_db_file)
 
     def _visible_courses(self, include_hidden: bool = False) -> dict[int, dict[str, Any]]:
-        db = self._source_db()
-        try:
-            return {course["id"]: course for course in db.get_courses(include_hidden=include_hidden)}
-        finally:
-            db.close()
+        return visible_courses(self.config.source_db_file, include_hidden=include_hidden)
 
     def _enforce_courses(self, requested: list[int] | None) -> list[int]:
-        visible = self._visible_courses()
-        if requested is None:
-            return list(visible)
-        unknown = set(requested) - set(visible)
-        if unknown:
-            raise ValueError("one or more requested courses are unavailable")
-        return list(dict.fromkeys(requested))
+        return enforce_course_ids(self.config.source_db_file, requested)
 
     def _cached_analyses(self, document_ids: list[str], *, compact: bool = True) -> dict[str, dict[str, Any]]:
         records = self.store.enrichment_records(document_ids)

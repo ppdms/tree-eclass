@@ -15,7 +15,7 @@ from .embeddings import (LOCAL_MODEL_NAME, EmbeddingProvider, cosine, embed_text
 from .normalization import document_id, normalize_path, search_normalize
 
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 POLICY_KEYWORDS = tuple(search_normalize(value) for value in (
     "intro", "introduction", "course", "description", "syllabus", "grading",
@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS page_enrichments (
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK(status IN ('pending', 'running', 'ready', 'failed')),
     model TEXT NOT NULL,
+    requested_model TEXT NOT NULL,
     payload_json TEXT,
     priority INTEGER NOT NULL DEFAULT 0,
     attempts INTEGER NOT NULL DEFAULT 0,
@@ -208,6 +209,18 @@ class KnowledgeStore:
                 conn.execute("ALTER TABLE document_enrichments ADD COLUMN analysis_version TEXT NOT NULL DEFAULT '1'")
             if "priority" not in enrichment_columns:
                 conn.execute("ALTER TABLE document_enrichments ADD COLUMN priority INTEGER NOT NULL DEFAULT 0")
+            page_enrichment_columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(page_enrichments)")
+            }
+            if "requested_model" not in page_enrichment_columns:
+                conn.execute(
+                    "ALTER TABLE page_enrichments "
+                    "ADD COLUMN requested_model TEXT NOT NULL DEFAULT ''"
+                )
+                conn.execute(
+                    "UPDATE page_enrichments SET requested_model=model "
+                    "WHERE requested_model=''"
+                )
             embedding_primary_key = [row[1] for row in conn.execute("PRAGMA table_info(chunk_embeddings)")
                                      if row[5]]
             if embedding_primary_key == ["chunk_id"]:
@@ -336,15 +349,18 @@ class KnowledgeStore:
         except (json.JSONDecodeError, TypeError):
             return value
 
-    def enqueue(self, course_id: int, source_path: str, requested_hash: Optional[str], action: str) -> bool:
+    def enqueue(self, course_id: int, source_path: str, requested_hash: Optional[str], action: str,
+                *, revive_completed: bool = False) -> bool:
+        """Queue index work, optionally reopening a completed job for a revived document."""
         path = normalize_path(source_path)
+        reset_statuses = "('failed','stale','completed')" if revive_completed else "('failed','stale')"
         with self.connection() as conn:
             cursor = conn.execute(
                 "INSERT INTO index_jobs(course_id,source_path,normalized_path,requested_hash,action,status,available_at) "
                 "VALUES(?,?,?,?,?,'pending',?) "
                 "ON CONFLICT(course_id,normalized_path,requested_hash,action) DO UPDATE SET "
                 "status='pending',available_at=excluded.available_at,claimed_at=NULL,completed_at=NULL,error=NULL "
-                "WHERE index_jobs.status IN ('failed','stale')",
+                f"WHERE index_jobs.status IN {reset_statuses}",
                 (course_id, source_path, path, requested_hash or "", action, utc_now()),
             )
             conn.commit()
@@ -369,6 +385,24 @@ class KnowledgeStore:
             )
             conn.commit()
             return cursor.rowcount
+
+    def release_failed_enrichment(self, opaque_id: str) -> bool:
+        """Retry one failed current-document enrichment without releasing terminal peers."""
+        with self.connection() as conn:
+            cursor = conn.execute(
+                """UPDATE document_enrichments
+                      SET status='pending',attempts=0,available_at=?,claimed_at=NULL,error=NULL
+                    WHERE document_id=? AND status='failed'
+                      AND EXISTS(
+                          SELECT 1 FROM documents d
+                           WHERE d.id=document_enrichments.document_id
+                             AND d.is_current=1 AND d.status='ready'
+                             AND d.source_hash=document_enrichments.source_hash
+                      )""",
+                (utc_now(), opaque_id),
+            )
+            conn.commit()
+            return cursor.rowcount == 1
 
     def recover_claims(self, older_than_seconds: int = 900) -> int:
         cutoff = (datetime.now(timezone.utc) - timedelta(seconds=older_than_seconds)).isoformat()
@@ -457,7 +491,9 @@ class KnowledgeStore:
         with self.connection() as conn:
             rows = conn.execute(
                 "SELECT id,course_id,source_hash FROM documents "
-                "WHERE is_current=1 AND status='ready' AND source_hash<>''"
+                "WHERE is_current=1 AND status='ready' AND source_hash<>'' "
+                "AND EXISTS(SELECT 1 FROM chunks c WHERE c.document_id=documents.id "
+                "AND length(trim(c.text))>0)"
                 + ("" if include_pdfs else " AND document_kind<>'pdf'")
             ).fetchall()
         contexts = {course_id: self.course_context_hash(course_id)
@@ -477,7 +513,9 @@ class KnowledgeStore:
         with self.connection() as conn:
             rows = conn.execute(
                 "SELECT id,source_hash FROM documents "
-                "WHERE course_id=? AND is_current=1 AND status='ready' AND source_hash<>''"
+                "WHERE course_id=? AND is_current=1 AND status='ready' AND source_hash<>'' "
+                "AND EXISTS(SELECT 1 FROM chunks c WHERE c.document_id=documents.id "
+                "AND length(trim(c.text))>0)"
                 + ("" if include_pdfs else " AND document_kind<>'pdf'"),
                 (course_id,),
             ).fetchall()
@@ -518,6 +556,17 @@ class KnowledgeStore:
             ).fetchone()
             conn.commit()
             return dict(claimed)
+
+    def has_claimable_enrichment(self, analysis_version: str) -> bool:
+        """Return whether a document enrichment of one version can run now."""
+        with self.connection() as conn:
+            row = conn.execute(
+                """SELECT 1 FROM document_enrichments
+                     WHERE status='pending' AND available_at<=? AND analysis_version=?
+                     LIMIT 1""",
+                (utc_now(), analysis_version),
+            ).fetchone()
+        return row is not None
 
     def finish_enrichment(self, opaque_id: str, source_hash: str, context_hash: str,
                           analysis_version: str, model: str,
@@ -584,19 +633,20 @@ class KnowledgeStore:
                 cursor = conn.execute(
                     """INSERT INTO page_enrichments(
                            document_id,page_number,source_hash,analysis_version,status,model,
-                           priority,available_at)
-                       VALUES(?,?,?,?,'pending',?,?,?)
+                           requested_model,priority,available_at)
+                       VALUES(?,?,?,?,'pending',?,?,?,?)
                        ON CONFLICT(document_id,page_number) DO UPDATE SET
                            source_hash=excluded.source_hash,
                            analysis_version=excluded.analysis_version,status='pending',
-                           model=excluded.model,payload_json=NULL,priority=excluded.priority,
+                           model=excluded.model,requested_model=excluded.requested_model,
+                           payload_json=NULL,priority=excluded.priority,
                            attempts=0,available_at=excluded.available_at,claimed_at=NULL,
                            generated_at=NULL,error=NULL
                        WHERE page_enrichments.source_hash<>excluded.source_hash
                           OR page_enrichments.analysis_version<>excluded.analysis_version
-                          OR page_enrichments.model<>excluded.model""",
+                          OR page_enrichments.requested_model<>excluded.requested_model""",
                     (
-                        opaque_id, page_number, source_hash, analysis_version, model,
+                        opaque_id, page_number, source_hash, analysis_version, model, model,
                         int(priority), utc_now(),
                     ),
                 )
@@ -678,6 +728,20 @@ class KnowledgeStore:
             ).fetchone()
             conn.commit()
             return dict(claimed)
+
+    def claimable_page_enrichment_count(self) -> int:
+        """Count page jobs that a worker could claim immediately."""
+        now = utc_now()
+        with self.connection() as conn:
+            row = conn.execute(
+                """SELECT count(*) FROM page_enrichments p
+                     JOIN documents d ON d.id=p.document_id
+                     WHERE p.status='pending' AND p.available_at<=?
+                       AND d.is_current=1 AND d.status='ready' AND d.document_kind='pdf'
+                       AND d.source_hash=p.source_hash""",
+                (now,),
+            ).fetchone()
+        return int(row[0]) if row else 0
 
     def finish_page_enrichment(self, opaque_id: str, page_number: int, source_hash: str,
                                analysis_version: str, model: str,
@@ -873,7 +937,19 @@ class KnowledgeStore:
         return {row["document_id"]: dict(row) for row in rows}
 
     def study_intelligence_rows(self, course_ids: list[int] | None = None) -> list[dict[str, Any]]:
-        clauses = ["d.is_current=1", "d.status='ready'"]
+        clauses = [
+            "d.is_current=1",
+            "d.status='ready'",
+            # Study coverage measures AI-analyzable materials. Textless PDFs
+            # remain eligible through page vision; empty archives do not.
+            """(
+                (d.document_kind='pdf' AND coalesce(d.page_count,0)>0)
+                OR EXISTS(
+                    SELECT 1 FROM chunks c
+                     WHERE c.document_id=d.id AND length(trim(c.text))>0
+                )
+            )""",
+        ]
         params: list[Any] = []
         if course_ids is not None:
             if not course_ids:

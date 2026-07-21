@@ -1,5 +1,8 @@
 FROM python:3.14-slim
 
+ARG TARGETARCH=amd64
+ARG DISCORD_CHAT_EXPORTER_VERSION=2.47.3
+
 # Set working directory
 WORKDIR /app
 
@@ -12,6 +15,24 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-eng \
     tesseract-ocr-ell \
     && rm -rf /var/lib/apt/lists/*
+
+# Install the pinned, self-contained DiscordChatExporter CLI used by the
+# optional app.messages exporter. It is disabled unless explicitly configured.
+RUN case "${TARGETARCH}" in \
+        amd64) dce_arch=x64; dce_sha256=8f86bd3a2c2f4412ffbbb2dcb9348642f8f929ad94a4f290ff0f78068c44fc86 ;; \
+        arm64) dce_arch=arm64; dce_sha256=955b58d4bd6ca9107387f4c62bf3a0608bb7837e6f9decf3a216150bd2d888d9 ;; \
+        arm) dce_arch=arm; dce_sha256=3a248ad8b92f5e75071fa273627f7d0c555a8b63d754c56c126057e20b5e6fe3 ;; \
+        *) echo "Unsupported DiscordChatExporter architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && mkdir -p /opt/discord-exporter /tmp/discord-exporter \
+    && curl -fsSL \
+        "https://github.com/Tyrrrz/DiscordChatExporter/releases/download/${DISCORD_CHAT_EXPORTER_VERSION}/DiscordChatExporter.Cli.linux-${dce_arch}.zip" \
+        -o /tmp/discord-exporter.zip \
+    && echo "${dce_sha256}  /tmp/discord-exporter.zip" | sha256sum -c - \
+    && python3 -m zipfile -e /tmp/discord-exporter.zip /tmp/discord-exporter \
+    && cp -a /tmp/discord-exporter/. /opt/discord-exporter/ \
+    && chmod 0755 /opt/discord-exporter/DiscordChatExporter.Cli \
+    && rm -rf /tmp/discord-exporter /tmp/discord-exporter.zip
 
 # Build and install diff-pdf from source
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -720,6 +720,101 @@ main.container {
 	margin-bottom: 0;
 }
 
+.discord-map-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-sm);
+}
+
+.discord-map-row {
+	display: grid;
+	grid-template-columns: minmax(0, 0.9fr) auto minmax(0, 1.1fr);
+	align-items: center;
+	gap: var(--spacing-md);
+	padding: 0.75rem 0;
+	border-bottom: 1px solid var(--border);
+}
+
+.discord-map-row:last-child {
+	border-bottom: 0;
+}
+
+.discord-map-row>label {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	min-width: 0;
+	margin: 0;
+}
+
+.discord-map-channel {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.discord-map-channel .bi-discord {
+	color: #a5b4fc;
+}
+
+.discord-map-kind {
+	color: var(--text-secondary);
+	font-size: 0.75rem;
+}
+
+.discord-map-arrow {
+	color: var(--text-secondary);
+}
+
+.discord-map-row>select {
+	width: 100%;
+	height: 36px;
+	min-width: 0;
+	padding: 0 var(--spacing-sm);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--background);
+	color: var(--text-primary);
+	font-size: 0.875rem;
+	transition: border-color 0.15s;
+}
+
+.discord-map-row>select:focus {
+	outline: none;
+	border-color: var(--primary-color);
+	box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.12);
+}
+
+.discord-map-row>select:disabled {
+	cursor: not-allowed;
+	opacity: 0.65;
+}
+
+.discord-map-notice {
+	width: min(100%, 860px);
+	margin: 0 auto var(--spacing-sm) auto;
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	color: #86efac;
+	font-size: 0.85rem;
+}
+
+.form-card>.discord-map-notice {
+	width: 100%;
+}
+
+.discord-map-notice--warn {
+	color: #fcd34d;
+}
+
+.settings-page .discord-map-empty {
+	width: 100%;
+	margin: 0;
+}
+
 /* Keep SSL checkbox helper text inline when there is enough horizontal space */
 .settings-page .form-group:has(#webdav_disable_check) {
 	display: flex;
@@ -826,6 +921,15 @@ main.container {
 		padding-left: 0.25rem;
 		padding-right: 0.25rem;
 		font-size: 0.85rem;
+	}
+
+	.discord-map-row {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--spacing-xs);
+	}
+
+	.discord-map-arrow {
+		display: none;
 	}
 }
 
@@ -1085,6 +1189,56 @@ main.container {
 	line-height: 1.6;
 }
 
+.tree-folder-header {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--spacing-xs);
+}
+
+.folder-toggle {
+	display: inline-flex;
+	align-items: center;
+	min-width: 0;
+	padding: 2px var(--spacing-xs);
+	border: 0;
+	border-radius: var(--radius);
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	line-height: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.folder-toggle:hover,
+.folder-toggle:focus-visible {
+	background: var(--surface-raised);
+}
+
+.folder-toggle:focus-visible {
+	outline: 2px solid var(--primary-color);
+	outline-offset: 1px;
+}
+
+.folder-toggle:disabled {
+	cursor: wait;
+	opacity: 0.7;
+}
+
+.folder-toggle-chevron {
+	display: inline-flex;
+	justify-content: center;
+	width: 1rem;
+	margin-right: var(--spacing-xs);
+	color: var(--text-secondary);
+	font-size: 0.75rem;
+}
+
+.tree-folder-header > .version-panel {
+	flex-basis: 100%;
+}
+
 .tree-icon {
 	margin-right: var(--spacing-xs);
 	font-size: 1rem;
@@ -1096,6 +1250,10 @@ main.container {
 
 .tree-children {
 	margin-left: var(--spacing-lg);
+}
+
+.tree-children[hidden] {
+	display: none;
 }
 
 .tree-file {
