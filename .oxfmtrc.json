@@ -1,0 +1,31 @@
+{
+  "printWidth": 120,
+  "singleQuote": true,
+  "semi": true,
+  "trailingComma": "all",
+  "sortPackageJson": false,
+  "overrides": [
+    {
+      "files": ["**/*.js", "**/*.jsx", "**/*.css"],
+      "options": {
+        "useTabs": true
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules/",
+    "frontend/node_modules/",
+    "frontend/.next/",
+    "frontend/next-env.d.ts",
+    "data/",
+    ".venv/",
+    ".git/",
+    ".playwright-cli/",
+    ".codex/",
+    ".agents/",
+    "docs/private/",
+    "frontend/package-lock.json",
+    "frontend/tools/oxlint/anti-slop/",
+    "**/*.svg"
+  ]
+}

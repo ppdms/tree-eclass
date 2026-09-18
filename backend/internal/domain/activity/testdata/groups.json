@@ -1,0 +1,85 @@
+{
+  "items": [
+    {
+      "type": "change",
+      "id": 9007199254740993,
+      "course_id": 101,
+      "course_name": "Δένδρα",
+      "course_short_name": "ΔΣ",
+      "change_no": "1"
+    },
+    {
+      "type": "announcement",
+      "id": 1,
+      "title": "  Exam\n deadline  "
+    },
+    {
+      "type": "announcement",
+      "id": "global_9",
+      "title": "exam deadline"
+    },
+    {
+      "type": "announcement",
+      "id": 3,
+      "title": "ΜΑΘΗΜΑΤΟΣ"
+    },
+    {
+      "type": "announcement",
+      "id": 4,
+      "title": "μαθηματος"
+    },
+    {
+      "type": "announcement",
+      "id": 5,
+      "title": ""
+    },
+    {
+      "type": "change",
+      "id": 2,
+      "course_id": 102,
+      "change_no": "2"
+    }
+  ],
+  "groups": [
+    {
+      "id": "change:9007199254740993",
+      "type": "change",
+      "title": "Course files changed in ΔΣ",
+      "importance": "informational",
+      "link": "/courses/101/changes/1",
+      "items": [9007199254740993]
+    },
+    {
+      "id": "announcement:exam-deadline",
+      "type": "announcement",
+      "title": "  Exam\n deadline  ",
+      "importance": "important",
+      "link": "/announcements",
+      "items": [1, "global_9"]
+    },
+    {
+      "id": "announcement:μαθηματος",
+      "type": "announcement",
+      "title": "ΜΑΘΗΜΑΤΟΣ",
+      "importance": "informational",
+      "link": "/announcements",
+      "items": [3, 4]
+    },
+    {
+      "id": "announcement:course-announcement",
+      "type": "announcement",
+      "title": "Course announcement",
+      "importance": "informational",
+      "link": "/announcements",
+      "items": [5]
+    },
+    {
+      "id": "change:2",
+      "type": "change",
+      "title": "Course files changed in Course files",
+      "importance": "informational",
+      "link": "/courses/102/changes/2",
+      "items": [2]
+    }
+  ]
+}

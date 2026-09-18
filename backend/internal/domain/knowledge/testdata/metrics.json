@@ -1,0 +1,65 @@
+[
+  {
+    "texts": [
+      "Δένδρα και γράφοι. ΔΕΝΔΡΑ ΚΑΙ ΓΡΑΦΟΙ.",
+      "A tree-shaped data_structure costs O(n²).",
+      "Ελληνικά\u0000, σύνολα ∑ x_i → ∞",
+      "",
+      "ΟΣ Ος οσ ς ά ά"
+    ],
+    "metrics": {
+      "source_size_bytes": null,
+      "character_count": 124,
+      "word_count": 23,
+      "reading_minutes": 1,
+      "complexity_score": 24,
+      "complexity_label": "Accessible"
+    }
+  },
+  {
+    "texts": ["First sentence.", "Second sentence! More symbols: x={a+b}/c."],
+    "metrics": {
+      "source_size_bytes": null,
+      "character_count": 57,
+      "word_count": 10,
+      "reading_minutes": 1,
+      "complexity_score": 23,
+      "complexity_label": "Accessible"
+    }
+  },
+  {
+    "texts": ["", "", ""],
+    "metrics": {
+      "source_size_bytes": null,
+      "character_count": 0,
+      "word_count": 0,
+      "reading_minutes": 0,
+      "complexity_score": 0,
+      "complexity_label": "Accessible"
+    }
+  },
+  {
+    "texts": [
+      "λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη λέξη "
+    ],
+    "metrics": {
+      "source_size_bytes": null,
+      "character_count": 1150,
+      "word_count": 230,
+      "reading_minutes": 2,
+      "complexity_score": 41,
+      "complexity_label": "Moderate"
+    }
+  },
+  {
+    "texts": ["A very-long-word isn’t one_word. \n\n Όμως; ναι!"],
+    "metrics": {
+      "source_size_bytes": null,
+      "character_count": 46,
+      "word_count": 7,
+      "reading_minutes": 1,
+      "complexity_score": 33,
+      "complexity_label": "Moderate"
+    }
+  }
+]

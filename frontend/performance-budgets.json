@@ -1,0 +1,9 @@
+{
+  "basicCoursesVisibleMs": 1000,
+  "basicStudyVisibleMs": 1000,
+  "hoverMenuVisibleMs": 150,
+  "maxHoverApiRequests": 0,
+  "maxInitialRscPrefetches": 2,
+  "courseOverviewVisibleMs": 1000,
+  "overviewApiP95Ms": 300
+}

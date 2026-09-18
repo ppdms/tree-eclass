@@ -1,0 +1,45 @@
+#!/bin/sh
+# Lifecycle commands always use the installed Go controller, even when editable
+# source does not compile. Only setup/update builds a replacement controller.
+set -eu
+umask 077
+TREE_SOURCE_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
+export TREE_SOURCE_ROOT
+tree_home=${TREE_WORKFLOW_HOME:-"$HOME/.local/share/tree-eclass"}
+case "$tree_home" in /*) ;; *) tree_home="$PWD/$tree_home" ;; esac
+TREE_WORKFLOW_HOME=$tree_home
+export TREE_WORKFLOW_HOME
+tree_controller="$tree_home/native-v1/controller"
+tree_bootstrap=false
+if [ "$#" = 1 ] && [ "$1" = setup ]; then
+    tree_bootstrap=true
+fi
+if [ "$#" = 2 ] && [ "$1" = controller ] && [ "$2" = update ]; then
+    tree_bootstrap=true
+fi
+if [ "$tree_bootstrap" = true ]; then
+    if ! command -v go >/dev/null 2>&1; then
+        echo 'tree: install Go and put it on PATH before setup/controller update' >&2
+        exit 1
+    fi
+    mkdir -p "$tree_home/native-v1"
+    tree_build=$(mktemp -d "$tree_home/native-v1/.controller-build.XXXXXX")
+    trap 'chmod -R u+w "$tree_build"; rm -rf -- "$tree_build"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    (
+        cd "$TREE_SOURCE_ROOT/backend"
+        GOCACHE="$tree_build/cache" GOMODCACHE="$tree_build/modules" \
+            go build -trimpath -ldflags='-s -w' -o "$tree_build/controller" ./cmd/tree
+    )
+    "$tree_build/controller" _install
+    chmod -R u+w "$tree_build"
+    rm -rf -- "$tree_build"
+    trap - EXIT INT TERM
+    if [ "$1" = controller ]; then exit 0; fi
+fi
+if [ ! -x "$tree_controller" ]; then
+    echo 'tree: native controller is not installed; run ./tree setup' >&2
+    exit 1
+fi
+exec "$tree_controller" "$@"

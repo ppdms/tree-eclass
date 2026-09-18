@@ -1,0 +1,3236 @@
+[
+  {
+    "selected": null,
+    "materials": [
+      {
+        "id": "doc-101-0",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/101/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-1",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/101/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-2",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/101/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-3",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/101/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-4",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/101/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-0",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/102/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-1",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/102/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-2",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/102/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-3",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/102/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-4",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/102/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-0",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/103/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-1",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/103/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-2",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/103/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-3",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/103/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-4",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/103/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-0",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/104/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-1",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/104/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-2",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/104/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-3",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/104/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-4",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/104/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      }
+    ],
+    "plans": [
+      {
+        "course_id": 101,
+        "course_name": "Course 101",
+        "enabled": true,
+        "exam_at": "2026-09-15"
+      },
+      {
+        "course_id": 102,
+        "course_name": "Course 102",
+        "enabled": true,
+        "exam_at": "2026-09-18"
+      },
+      {
+        "course_id": 103,
+        "course_name": "Course 103",
+        "enabled": true,
+        "exam_at": "2026-09-21"
+      },
+      {
+        "course_id": 104,
+        "course_name": "Course 104",
+        "enabled": true,
+        "exam_at": "2026-09-24"
+      }
+    ],
+    "levels": {
+      "101": {
+        "/Courses/101/0": 0,
+        "/Courses/101/1": 1,
+        "/Courses/101/2": 2,
+        "/Courses/101/3": 3,
+        "/Courses/101/4": 4
+      },
+      "102": {
+        "/Courses/102/0": 0,
+        "/Courses/102/1": 1,
+        "/Courses/102/2": 2,
+        "/Courses/102/3": 3,
+        "/Courses/102/4": 4
+      },
+      "103": {
+        "/Courses/103/0": 0,
+        "/Courses/103/1": 1,
+        "/Courses/103/2": 2,
+        "/Courses/103/3": 3,
+        "/Courses/103/4": 4
+      },
+      "104": {
+        "/Courses/104/0": 0,
+        "/Courses/104/1": 1,
+        "/Courses/104/2": 2,
+        "/Courses/104/3": 3,
+        "/Courses/104/4": 4
+      }
+    },
+    "expected": {
+      "focus_queue": [
+        {
+          "id": "doc-101-0",
+          "course_id": 101,
+          "course_name": "Course 101",
+          "display_name": "Notes 0",
+          "source_path": "/Courses/101/0",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 20,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": true,
+          "ai": {
+            "importance": "essential",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 0,
+          "priority": 4.57,
+          "days_left": 3,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-102-0",
+          "course_id": 102,
+          "course_name": "Course 102",
+          "display_name": "Notes 0",
+          "source_path": "/Courses/102/0",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 20,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": true,
+          "ai": {
+            "importance": "essential",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 0,
+          "priority": 4.57,
+          "days_left": 6,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-103-0",
+          "course_id": 103,
+          "course_name": "Course 103",
+          "display_name": "Notes 0",
+          "source_path": "/Courses/103/0",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 20,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": true,
+          "ai": {
+            "importance": "essential",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 0,
+          "priority": 4.57,
+          "days_left": 9,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-104-0",
+          "course_id": 104,
+          "course_name": "Course 104",
+          "display_name": "Notes 0",
+          "source_path": "/Courses/104/0",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 20,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": true,
+          "ai": {
+            "importance": "essential",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 0,
+          "priority": 4.57,
+          "days_left": 12,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-101-1",
+          "course_id": 101,
+          "course_name": "Course 101",
+          "display_name": "Notes 1",
+          "source_path": "/Courses/101/1",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 35,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": false,
+          "ai": {
+            "importance": "useful",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 1,
+          "priority": 2.388,
+          "days_left": 3,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-102-1",
+          "course_id": 102,
+          "course_name": "Course 102",
+          "display_name": "Notes 1",
+          "source_path": "/Courses/102/1",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 35,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": false,
+          "ai": {
+            "importance": "useful",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 1,
+          "priority": 2.388,
+          "days_left": 6,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-103-1",
+          "course_id": 103,
+          "course_name": "Course 103",
+          "display_name": "Notes 1",
+          "source_path": "/Courses/103/1",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 35,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": false,
+          "ai": {
+            "importance": "useful",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 1,
+          "priority": 2.388,
+          "days_left": 9,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-104-1",
+          "course_id": 104,
+          "course_name": "Course 104",
+          "display_name": "Notes 1",
+          "source_path": "/Courses/104/1",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 35,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": false,
+          "ai": {
+            "importance": "useful",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 1,
+          "priority": 2.388,
+          "days_left": 12,
+          "recommended_action": "Read source"
+        }
+      ],
+      "exam_runways": [
+        {
+          "course_id": 101,
+          "course_name": "Course 101",
+          "exam_at": "2026-09-15",
+          "exam_date": "2026-09-15",
+          "days_left": 3,
+          "readiness": 47,
+          "remaining_count": 4,
+          "essential_remaining": 2,
+          "next_materials": [
+            {
+              "id": "doc-101-0",
+              "course_id": 101,
+              "course_name": "Course 101",
+              "display_name": "Notes 0",
+              "source_path": "/Courses/101/0",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 20,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": true,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 0,
+              "priority": 4.57
+            },
+            {
+              "id": "doc-101-1",
+              "course_id": 101,
+              "course_name": "Course 101",
+              "display_name": "Notes 1",
+              "source_path": "/Courses/101/1",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 35,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "useful",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 1,
+              "priority": 2.388
+            },
+            {
+              "id": "doc-101-3",
+              "course_id": 101,
+              "course_name": "Course 101",
+              "display_name": "Notes 3",
+              "source_path": "/Courses/101/3",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 65,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 3,
+              "priority": 1.72
+            }
+          ]
+        },
+        {
+          "course_id": 102,
+          "course_name": "Course 102",
+          "exam_at": "2026-09-18",
+          "exam_date": "2026-09-18",
+          "days_left": 6,
+          "readiness": 47,
+          "remaining_count": 4,
+          "essential_remaining": 2,
+          "next_materials": [
+            {
+              "id": "doc-102-0",
+              "course_id": 102,
+              "course_name": "Course 102",
+              "display_name": "Notes 0",
+              "source_path": "/Courses/102/0",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 20,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": true,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 0,
+              "priority": 4.57
+            },
+            {
+              "id": "doc-102-1",
+              "course_id": 102,
+              "course_name": "Course 102",
+              "display_name": "Notes 1",
+              "source_path": "/Courses/102/1",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 35,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "useful",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 1,
+              "priority": 2.388
+            },
+            {
+              "id": "doc-102-3",
+              "course_id": 102,
+              "course_name": "Course 102",
+              "display_name": "Notes 3",
+              "source_path": "/Courses/102/3",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 65,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 3,
+              "priority": 1.72
+            }
+          ]
+        },
+        {
+          "course_id": 103,
+          "course_name": "Course 103",
+          "exam_at": "2026-09-21",
+          "exam_date": "2026-09-21",
+          "days_left": 9,
+          "readiness": 47,
+          "remaining_count": 4,
+          "essential_remaining": 2,
+          "next_materials": [
+            {
+              "id": "doc-103-0",
+              "course_id": 103,
+              "course_name": "Course 103",
+              "display_name": "Notes 0",
+              "source_path": "/Courses/103/0",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 20,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": true,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 0,
+              "priority": 4.57
+            },
+            {
+              "id": "doc-103-1",
+              "course_id": 103,
+              "course_name": "Course 103",
+              "display_name": "Notes 1",
+              "source_path": "/Courses/103/1",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 35,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "useful",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 1,
+              "priority": 2.388
+            },
+            {
+              "id": "doc-103-3",
+              "course_id": 103,
+              "course_name": "Course 103",
+              "display_name": "Notes 3",
+              "source_path": "/Courses/103/3",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 65,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 3,
+              "priority": 1.72
+            }
+          ]
+        },
+        {
+          "course_id": 104,
+          "course_name": "Course 104",
+          "exam_at": "2026-09-24",
+          "exam_date": "2026-09-24",
+          "days_left": 12,
+          "readiness": 47,
+          "remaining_count": 4,
+          "essential_remaining": 2,
+          "next_materials": [
+            {
+              "id": "doc-104-0",
+              "course_id": 104,
+              "course_name": "Course 104",
+              "display_name": "Notes 0",
+              "source_path": "/Courses/104/0",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 20,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": true,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 0,
+              "priority": 4.57
+            },
+            {
+              "id": "doc-104-1",
+              "course_id": 104,
+              "course_name": "Course 104",
+              "display_name": "Notes 1",
+              "source_path": "/Courses/104/1",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 35,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "useful",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 1,
+              "priority": 2.388
+            },
+            {
+              "id": "doc-104-3",
+              "course_id": 104,
+              "course_name": "Course 104",
+              "display_name": "Notes 3",
+              "source_path": "/Courses/104/3",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 65,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 3,
+              "priority": 1.72
+            }
+          ]
+        }
+      ],
+      "exam_collisions": [
+        {
+          "first": {
+            "course_id": 101,
+            "course_name": "Course 101",
+            "exam_at": "2026-09-15",
+            "exam_date": "2026-09-15",
+            "days_left": 3,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-101-0",
+                "course_id": 101,
+                "course_name": "Course 101",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/101/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-101-1",
+                "course_id": 101,
+                "course_name": "Course 101",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/101/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-101-3",
+                "course_id": 101,
+                "course_name": "Course 101",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/101/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "second": {
+            "course_id": 102,
+            "course_name": "Course 102",
+            "exam_at": "2026-09-18",
+            "exam_date": "2026-09-18",
+            "days_left": 6,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-102-0",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/102/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-102-1",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/102/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-102-3",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/102/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "gap_days": 3,
+          "message": "These exams are 3 days apart, so their final review windows overlap."
+        },
+        {
+          "first": {
+            "course_id": 102,
+            "course_name": "Course 102",
+            "exam_at": "2026-09-18",
+            "exam_date": "2026-09-18",
+            "days_left": 6,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-102-0",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/102/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-102-1",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/102/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-102-3",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/102/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "second": {
+            "course_id": 103,
+            "course_name": "Course 103",
+            "exam_at": "2026-09-21",
+            "exam_date": "2026-09-21",
+            "days_left": 9,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-103-0",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/103/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-103-1",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/103/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-103-3",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/103/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "gap_days": 3,
+          "message": "These exams are 3 days apart, so their final review windows overlap."
+        },
+        {
+          "first": {
+            "course_id": 103,
+            "course_name": "Course 103",
+            "exam_at": "2026-09-21",
+            "exam_date": "2026-09-21",
+            "days_left": 9,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-103-0",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/103/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-103-1",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/103/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-103-3",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/103/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "second": {
+            "course_id": 104,
+            "course_name": "Course 104",
+            "exam_at": "2026-09-24",
+            "exam_date": "2026-09-24",
+            "days_left": 12,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-104-0",
+                "course_id": 104,
+                "course_name": "Course 104",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/104/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-104-1",
+                "course_id": 104,
+                "course_name": "Course 104",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/104/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-104-3",
+                "course_id": 104,
+                "course_name": "Course 104",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/104/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "gap_days": 3,
+          "message": "These exams are 3 days apart, so their final review windows overlap."
+        }
+      ],
+      "coverage": {
+        "enriched": 12,
+        "total": 20,
+        "percent": 60
+      }
+    }
+  },
+  {
+    "selected": 101,
+    "materials": [
+      {
+        "id": "doc-101-0",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/101/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-1",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/101/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-2",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/101/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-3",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/101/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-4",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/101/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-0",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/102/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-1",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/102/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-2",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/102/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-3",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/102/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-4",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/102/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-0",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/103/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-1",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/103/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-2",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/103/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-3",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/103/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-4",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/103/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-0",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/104/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-1",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/104/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-2",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/104/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-3",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/104/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-4",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/104/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      }
+    ],
+    "plans": [
+      {
+        "course_id": 101,
+        "course_name": "Course 101",
+        "enabled": true,
+        "exam_at": "2026-09-15"
+      },
+      {
+        "course_id": 102,
+        "course_name": "Course 102",
+        "enabled": true,
+        "exam_at": "2026-09-18"
+      },
+      {
+        "course_id": 103,
+        "course_name": "Course 103",
+        "enabled": true,
+        "exam_at": "2026-09-21"
+      },
+      {
+        "course_id": 104,
+        "course_name": "Course 104",
+        "enabled": true,
+        "exam_at": "2026-09-24"
+      }
+    ],
+    "levels": {
+      "101": {
+        "/Courses/101/0": 0,
+        "/Courses/101/1": 1,
+        "/Courses/101/2": 2,
+        "/Courses/101/3": 3,
+        "/Courses/101/4": 4
+      },
+      "102": {
+        "/Courses/102/0": 0,
+        "/Courses/102/1": 1,
+        "/Courses/102/2": 2,
+        "/Courses/102/3": 3,
+        "/Courses/102/4": 4
+      },
+      "103": {
+        "/Courses/103/0": 0,
+        "/Courses/103/1": 1,
+        "/Courses/103/2": 2,
+        "/Courses/103/3": 3,
+        "/Courses/103/4": 4
+      },
+      "104": {
+        "/Courses/104/0": 0,
+        "/Courses/104/1": 1,
+        "/Courses/104/2": 2,
+        "/Courses/104/3": 3,
+        "/Courses/104/4": 4
+      }
+    },
+    "expected": {
+      "focus_queue": [
+        {
+          "id": "doc-101-0",
+          "course_id": 101,
+          "course_name": "Course 101",
+          "display_name": "Notes 0",
+          "source_path": "/Courses/101/0",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 20,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": true,
+          "ai": {
+            "importance": "essential",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 0,
+          "priority": 4.57,
+          "days_left": 3,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-101-1",
+          "course_id": 101,
+          "course_name": "Course 101",
+          "display_name": "Notes 1",
+          "source_path": "/Courses/101/1",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 35,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": false,
+          "ai": {
+            "importance": "useful",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 1,
+          "priority": 2.388,
+          "days_left": 3,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-101-3",
+          "course_id": 101,
+          "course_name": "Course 101",
+          "display_name": "Notes 3",
+          "source_path": "/Courses/101/3",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 65,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": false,
+          "ai": {
+            "importance": "essential",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 3,
+          "priority": 1.72,
+          "days_left": 3,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-101-2",
+          "course_id": 101,
+          "course_name": "Course 101",
+          "display_name": "Notes 2",
+          "source_path": "/Courses/101/2",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 50,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": true,
+          "ai": {
+            "importance": "reference",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 2,
+          "priority": 0.734,
+          "days_left": 3,
+          "recommended_action": "Read source"
+        }
+      ],
+      "exam_runways": [
+        {
+          "course_id": 101,
+          "course_name": "Course 101",
+          "exam_at": "2026-09-15",
+          "exam_date": "2026-09-15",
+          "days_left": 3,
+          "readiness": 47,
+          "remaining_count": 4,
+          "essential_remaining": 2,
+          "next_materials": [
+            {
+              "id": "doc-101-0",
+              "course_id": 101,
+              "course_name": "Course 101",
+              "display_name": "Notes 0",
+              "source_path": "/Courses/101/0",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 20,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": true,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 0,
+              "priority": 4.57
+            },
+            {
+              "id": "doc-101-1",
+              "course_id": 101,
+              "course_name": "Course 101",
+              "display_name": "Notes 1",
+              "source_path": "/Courses/101/1",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 35,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "useful",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 1,
+              "priority": 2.388
+            },
+            {
+              "id": "doc-101-3",
+              "course_id": 101,
+              "course_name": "Course 101",
+              "display_name": "Notes 3",
+              "source_path": "/Courses/101/3",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 65,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 3,
+              "priority": 1.72
+            }
+          ]
+        }
+      ],
+      "exam_collisions": [
+        {
+          "first": {
+            "course_id": 101,
+            "course_name": "Course 101",
+            "exam_at": "2026-09-15",
+            "exam_date": "2026-09-15",
+            "days_left": 3,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-101-0",
+                "course_id": 101,
+                "course_name": "Course 101",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/101/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-101-1",
+                "course_id": 101,
+                "course_name": "Course 101",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/101/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-101-3",
+                "course_id": 101,
+                "course_name": "Course 101",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/101/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "second": {
+            "course_id": 102,
+            "course_name": "Course 102",
+            "exam_at": "2026-09-18",
+            "exam_date": "2026-09-18",
+            "days_left": 6,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-102-0",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/102/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-102-1",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/102/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-102-3",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/102/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "gap_days": 3,
+          "message": "These exams are 3 days apart, so their final review windows overlap."
+        }
+      ],
+      "coverage": {
+        "enriched": 3,
+        "total": 5,
+        "percent": 60
+      }
+    }
+  },
+  {
+    "selected": 103,
+    "materials": [
+      {
+        "id": "doc-101-0",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/101/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-1",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/101/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-2",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/101/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-3",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/101/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-101-4",
+        "course_id": 101,
+        "course_name": "Course 101",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/101/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-0",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/102/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-1",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/102/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-2",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/102/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-3",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/102/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-102-4",
+        "course_id": 102,
+        "course_name": "Course 102",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/102/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-0",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/103/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-1",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/103/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-2",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/103/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-3",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/103/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-103-4",
+        "course_id": 103,
+        "course_name": "Course 103",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/103/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-0",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 0",
+        "source_path": "/Courses/104/0",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 20,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-1",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 1",
+        "source_path": "/Courses/104/1",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 35,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-2",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 2",
+        "source_path": "/Courses/104/2",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 50,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "reference",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-3",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 3",
+        "source_path": "/Courses/104/3",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 65,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": false,
+        "ai": {
+          "importance": "essential",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      },
+      {
+        "id": "doc-104-4",
+        "course_id": 104,
+        "course_name": "Course 104",
+        "display_name": "Notes 4",
+        "source_path": "/Courses/104/4",
+        "source_origin": "external",
+        "document_kind": "text",
+        "complexity_score": 80,
+        "reading_minutes": 10,
+        "page_count": null,
+        "word_count": 100,
+        "enriched": true,
+        "ai": {
+          "importance": "useful",
+          "assessment_relevance": "high",
+          "difficulty": "intermediate",
+          "recommended_action": "Read source"
+        }
+      }
+    ],
+    "plans": [
+      {
+        "course_id": 101,
+        "course_name": "Course 101",
+        "enabled": true,
+        "exam_at": "2026-09-15"
+      },
+      {
+        "course_id": 102,
+        "course_name": "Course 102",
+        "enabled": true,
+        "exam_at": "2026-09-18"
+      },
+      {
+        "course_id": 103,
+        "course_name": "Course 103",
+        "enabled": true,
+        "exam_at": "2026-09-21"
+      },
+      {
+        "course_id": 104,
+        "course_name": "Course 104",
+        "enabled": true,
+        "exam_at": "2026-09-24"
+      }
+    ],
+    "levels": {
+      "101": {
+        "/Courses/101/0": 0,
+        "/Courses/101/1": 1,
+        "/Courses/101/2": 2,
+        "/Courses/101/3": 3,
+        "/Courses/101/4": 4
+      },
+      "102": {
+        "/Courses/102/0": 0,
+        "/Courses/102/1": 1,
+        "/Courses/102/2": 2,
+        "/Courses/102/3": 3,
+        "/Courses/102/4": 4
+      },
+      "103": {
+        "/Courses/103/0": 0,
+        "/Courses/103/1": 1,
+        "/Courses/103/2": 2,
+        "/Courses/103/3": 3,
+        "/Courses/103/4": 4
+      },
+      "104": {
+        "/Courses/104/0": 0,
+        "/Courses/104/1": 1,
+        "/Courses/104/2": 2,
+        "/Courses/104/3": 3,
+        "/Courses/104/4": 4
+      }
+    },
+    "expected": {
+      "focus_queue": [
+        {
+          "id": "doc-103-0",
+          "course_id": 103,
+          "course_name": "Course 103",
+          "display_name": "Notes 0",
+          "source_path": "/Courses/103/0",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 20,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": true,
+          "ai": {
+            "importance": "essential",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 0,
+          "priority": 4.57,
+          "days_left": 9,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-103-1",
+          "course_id": 103,
+          "course_name": "Course 103",
+          "display_name": "Notes 1",
+          "source_path": "/Courses/103/1",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 35,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": false,
+          "ai": {
+            "importance": "useful",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 1,
+          "priority": 2.388,
+          "days_left": 9,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-103-3",
+          "course_id": 103,
+          "course_name": "Course 103",
+          "display_name": "Notes 3",
+          "source_path": "/Courses/103/3",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 65,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": false,
+          "ai": {
+            "importance": "essential",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 3,
+          "priority": 1.72,
+          "days_left": 9,
+          "recommended_action": "Read source"
+        },
+        {
+          "id": "doc-103-2",
+          "course_id": 103,
+          "course_name": "Course 103",
+          "display_name": "Notes 2",
+          "source_path": "/Courses/103/2",
+          "source_origin": "external",
+          "document_kind": "text",
+          "complexity_score": 50,
+          "reading_minutes": 10,
+          "page_count": null,
+          "word_count": 100,
+          "enriched": true,
+          "ai": {
+            "importance": "reference",
+            "assessment_relevance": "high",
+            "difficulty": "intermediate",
+            "recommended_action": "Read source"
+          },
+          "level": 2,
+          "priority": 0.734,
+          "days_left": 9,
+          "recommended_action": "Read source"
+        }
+      ],
+      "exam_runways": [
+        {
+          "course_id": 103,
+          "course_name": "Course 103",
+          "exam_at": "2026-09-21",
+          "exam_date": "2026-09-21",
+          "days_left": 9,
+          "readiness": 47,
+          "remaining_count": 4,
+          "essential_remaining": 2,
+          "next_materials": [
+            {
+              "id": "doc-103-0",
+              "course_id": 103,
+              "course_name": "Course 103",
+              "display_name": "Notes 0",
+              "source_path": "/Courses/103/0",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 20,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": true,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 0,
+              "priority": 4.57
+            },
+            {
+              "id": "doc-103-1",
+              "course_id": 103,
+              "course_name": "Course 103",
+              "display_name": "Notes 1",
+              "source_path": "/Courses/103/1",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 35,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "useful",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 1,
+              "priority": 2.388
+            },
+            {
+              "id": "doc-103-3",
+              "course_id": 103,
+              "course_name": "Course 103",
+              "display_name": "Notes 3",
+              "source_path": "/Courses/103/3",
+              "source_origin": "external",
+              "document_kind": "text",
+              "complexity_score": 65,
+              "reading_minutes": 10,
+              "page_count": null,
+              "word_count": 100,
+              "enriched": false,
+              "ai": {
+                "importance": "essential",
+                "assessment_relevance": "high",
+                "difficulty": "intermediate",
+                "recommended_action": "Read source"
+              },
+              "level": 3,
+              "priority": 1.72
+            }
+          ]
+        }
+      ],
+      "exam_collisions": [
+        {
+          "first": {
+            "course_id": 102,
+            "course_name": "Course 102",
+            "exam_at": "2026-09-18",
+            "exam_date": "2026-09-18",
+            "days_left": 6,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-102-0",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/102/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-102-1",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/102/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-102-3",
+                "course_id": 102,
+                "course_name": "Course 102",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/102/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "second": {
+            "course_id": 103,
+            "course_name": "Course 103",
+            "exam_at": "2026-09-21",
+            "exam_date": "2026-09-21",
+            "days_left": 9,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-103-0",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/103/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-103-1",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/103/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-103-3",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/103/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "gap_days": 3,
+          "message": "These exams are 3 days apart, so their final review windows overlap."
+        },
+        {
+          "first": {
+            "course_id": 103,
+            "course_name": "Course 103",
+            "exam_at": "2026-09-21",
+            "exam_date": "2026-09-21",
+            "days_left": 9,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-103-0",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/103/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-103-1",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/103/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-103-3",
+                "course_id": 103,
+                "course_name": "Course 103",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/103/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "second": {
+            "course_id": 104,
+            "course_name": "Course 104",
+            "exam_at": "2026-09-24",
+            "exam_date": "2026-09-24",
+            "days_left": 12,
+            "readiness": 47,
+            "remaining_count": 4,
+            "essential_remaining": 2,
+            "next_materials": [
+              {
+                "id": "doc-104-0",
+                "course_id": 104,
+                "course_name": "Course 104",
+                "display_name": "Notes 0",
+                "source_path": "/Courses/104/0",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 20,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": true,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 0,
+                "priority": 4.57
+              },
+              {
+                "id": "doc-104-1",
+                "course_id": 104,
+                "course_name": "Course 104",
+                "display_name": "Notes 1",
+                "source_path": "/Courses/104/1",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 35,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "useful",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 1,
+                "priority": 2.388
+              },
+              {
+                "id": "doc-104-3",
+                "course_id": 104,
+                "course_name": "Course 104",
+                "display_name": "Notes 3",
+                "source_path": "/Courses/104/3",
+                "source_origin": "external",
+                "document_kind": "text",
+                "complexity_score": 65,
+                "reading_minutes": 10,
+                "page_count": null,
+                "word_count": 100,
+                "enriched": false,
+                "ai": {
+                  "importance": "essential",
+                  "assessment_relevance": "high",
+                  "difficulty": "intermediate",
+                  "recommended_action": "Read source"
+                },
+                "level": 3,
+                "priority": 1.72
+              }
+            ]
+          },
+          "gap_days": 3,
+          "message": "These exams are 3 days apart, so their final review windows overlap."
+        }
+      ],
+      "coverage": {
+        "enriched": 3,
+        "total": 5,
+        "percent": 60
+      }
+    }
+  }
+]

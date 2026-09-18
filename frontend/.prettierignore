@@ -1,0 +1,5 @@
+# Generated build output — never format or lint.
+.next/
+node_modules/
+# Vendored anti-slop plugin — upstream formatting, not ours.
+tools/oxlint/anti-slop/

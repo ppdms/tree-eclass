@@ -1,0 +1,100 @@
+@import '@astryxdesign/core/reset.css';
+@import '@astryxdesign/core/astryx.css';
+@import '@astryxdesign/theme-neutral/theme.css';
+
+@font-face {
+	font-family: 'Inter';
+	src: url('/fonts/InterVariable.woff2') format('woff2');
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Inter';
+	src: url('/fonts/InterVariable-Italic.woff2') format('woff2');
+	font-weight: 100 900;
+	font-style: italic;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Roboto Mono';
+	src: url('/fonts/RobotoMono-Variable.ttf') format('truetype');
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+html {
+	background-color: #09090b;
+	color: #fafafa;
+	color-scheme: dark;
+	scrollbar-gutter: stable;
+}
+
+html[data-theme='light'] {
+	background-color: #fafafa;
+	color: #18181b;
+	color-scheme: light;
+}
+
+html[data-theme='eink'] {
+	background-color: #ffffff;
+	color: #000000;
+	color-scheme: light;
+}
+
+::-webkit-scrollbar {
+	width: 0.5rem;
+	height: 0.5rem;
+}
+
+::-webkit-scrollbar-track {
+	background: #09090b;
+}
+
+::-webkit-scrollbar-thumb {
+	background: #27272a;
+	border-radius: 0.375rem;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: #a1a1aa;
+}
+
+html[data-theme='light'] ::-webkit-scrollbar-track,
+html[data-theme='eink'] ::-webkit-scrollbar-track {
+	background: #fafafa;
+}
+
+html[data-theme='light'] ::-webkit-scrollbar-thumb {
+	background: #d4d4d8;
+}
+
+html[data-theme='eink'] ::-webkit-scrollbar-thumb {
+	background: #000000;
+}
+
+::selection {
+	background: rgb(74 222 128 / 25%);
+	color: #18181b;
+}
+
+/* Lucide's default 24px height ignores compact control sizing. Keep every
+   action icon square and optically consistent across native and shared
+   controls. */
+button svg,
+a svg,
+[role='tab'] svg {
+	inline-size: 1em;
+	block-size: 1em;
+	flex: 0 0 auto;
+	stroke-width: 1.8;
+}
+
+html[data-theme='light'] ::selection {
+	background: rgb(22 163 74 / 20%);
+	color: #18181b;
+}
+@stylex;

@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Enforce source code limits
+        run: python3 scripts/quality/audit_limits.py
+
+      - name: Lint JS/JSX (Oxlint)
+        working-directory: frontend
+        run: bun run lint
+
+      - name: Check formatting (Oxfmt)
+        run: frontend/node_modules/.bin/oxfmt --check .
+
+      - name: Check Python lint and formatting (Ruff)
+        run: ruff check . && ruff format --check .
+
+      - name: Run native Go tests
+        working-directory: backend
+        run: go test ./cmd/... ./internal/...
+
+      - name: Run race-enabled native Go tests
+        working-directory: backend
+        run: go test -race ./cmd/... ./internal/...
+
+      - name: Vet native Go packages
+        working-directory: backend
+        run: go vet ./cmd/... ./internal/...
+
+      - name: Check calendar behavior across time zones
+        working-directory: frontend
+        run: bun test

@@ -1,0 +1,17 @@
+{
+  "practice_set_version": "practice-set-v1",
+  "questions": [
+    {
+      "key": "unique lowercase ASCII key",
+      "prompt": "one self-contained question the learner answers",
+      "response_mode": "multiple_choice | short_answer | essay | calculation | proof | diagram | code | mixed",
+      "difficulty": "core | standard | stretch",
+      "estimated_minutes": "integer 1..60",
+      "expected_answer": "the full correct answer",
+      "answer_points": ["one checkable point the answer must contain"],
+      "common_mistakes": ["a specific wrong answer and why"],
+      "evidence_refs": ["exact evidence_ref"]
+    }
+  ],
+  "coverage_note": "what this set does and does not rehearse for the unit"
+}

@@ -1,0 +1,1201 @@
+[
+  {
+    "roadmap": false,
+    "include_actions": true,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 0,
+        "completed_actions": 0
+      }
+    ],
+    "next": null,
+    "actions": [],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"],
+            "total_actions": 0,
+            "completed_actions": 0,
+            "progress_percent": 0
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      },
+      "progress": {
+        "total_actions": 0,
+        "completed_actions": 0,
+        "percent": 0,
+        "next_action": null
+      }
+    }
+  },
+  {
+    "roadmap": false,
+    "include_actions": true,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 40,
+        "completed_actions": 1
+      }
+    ],
+    "next": {
+      "payload": {
+        "action_id": "a1",
+        "estimated_minutes": 10
+      },
+      "status": "in_progress",
+      "progress_minutes": 14
+    },
+    "actions": [
+      {
+        "payload": {
+          "action_id": "a1",
+          "estimated_minutes": 10
+        },
+        "status": "completed",
+        "progress_minutes": 3
+      }
+    ],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"],
+            "total_actions": 40,
+            "completed_actions": 1,
+            "progress_percent": 2
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      },
+      "progress": {
+        "total_actions": 40,
+        "completed_actions": 1,
+        "percent": 2,
+        "next_action": {
+          "action_id": "a1",
+          "estimated_minutes": 10,
+          "status": "in_progress",
+          "progress_minutes": 14,
+          "remaining_minutes": 0
+        }
+      }
+    }
+  },
+  {
+    "roadmap": false,
+    "include_actions": true,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 40,
+        "completed_actions": 3
+      }
+    ],
+    "next": {
+      "payload": {
+        "action_id": "a1",
+        "estimated_minutes": 10
+      },
+      "status": "in_progress",
+      "progress_minutes": 14
+    },
+    "actions": [
+      {
+        "payload": {
+          "action_id": "a1",
+          "estimated_minutes": 10
+        },
+        "status": "completed",
+        "progress_minutes": 3
+      }
+    ],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"],
+            "total_actions": 40,
+            "completed_actions": 3,
+            "progress_percent": 8
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      },
+      "progress": {
+        "total_actions": 40,
+        "completed_actions": 3,
+        "percent": 8,
+        "next_action": {
+          "action_id": "a1",
+          "estimated_minutes": 10,
+          "status": "in_progress",
+          "progress_minutes": 14,
+          "remaining_minutes": 0
+        }
+      }
+    }
+  },
+  {
+    "roadmap": false,
+    "include_actions": true,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 40,
+        "completed_actions": 40
+      }
+    ],
+    "next": null,
+    "actions": [
+      {
+        "payload": {
+          "action_id": "a1",
+          "estimated_minutes": 10
+        },
+        "status": "completed",
+        "progress_minutes": 3
+      }
+    ],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"],
+            "total_actions": 40,
+            "completed_actions": 40,
+            "progress_percent": 100
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      },
+      "progress": {
+        "total_actions": 40,
+        "completed_actions": 40,
+        "percent": 100,
+        "next_action": null
+      }
+    }
+  },
+  {
+    "roadmap": true,
+    "include_actions": true,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 0,
+        "completed_actions": 0
+      }
+    ],
+    "next": null,
+    "actions": [],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"],
+            "total_actions": 0,
+            "completed_actions": 0,
+            "progress_percent": 0
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      },
+      "progress": {
+        "total_actions": 0,
+        "completed_actions": 0,
+        "percent": 0,
+        "next_action_id": null
+      },
+      "actions": []
+    }
+  },
+  {
+    "roadmap": true,
+    "include_actions": true,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 40,
+        "completed_actions": 1
+      }
+    ],
+    "next": {
+      "payload": {
+        "action_id": "a1",
+        "estimated_minutes": 10
+      },
+      "status": "in_progress",
+      "progress_minutes": 14
+    },
+    "actions": [
+      {
+        "payload": {
+          "action_id": "a1",
+          "estimated_minutes": 10
+        },
+        "status": "completed",
+        "progress_minutes": 3
+      }
+    ],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"],
+            "total_actions": 40,
+            "completed_actions": 1,
+            "progress_percent": 2
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      },
+      "progress": {
+        "total_actions": 40,
+        "completed_actions": 1,
+        "percent": 2,
+        "next_action_id": "a1"
+      },
+      "actions": [
+        {
+          "action_id": "a1",
+          "estimated_minutes": 10,
+          "status": "completed",
+          "progress_minutes": 10,
+          "remaining_minutes": 0
+        }
+      ]
+    }
+  },
+  {
+    "roadmap": true,
+    "include_actions": true,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 40,
+        "completed_actions": 3
+      }
+    ],
+    "next": {
+      "payload": {
+        "action_id": "a1",
+        "estimated_minutes": 10
+      },
+      "status": "in_progress",
+      "progress_minutes": 14
+    },
+    "actions": [
+      {
+        "payload": {
+          "action_id": "a1",
+          "estimated_minutes": 10
+        },
+        "status": "completed",
+        "progress_minutes": 3
+      }
+    ],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"],
+            "total_actions": 40,
+            "completed_actions": 3,
+            "progress_percent": 8
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      },
+      "progress": {
+        "total_actions": 40,
+        "completed_actions": 3,
+        "percent": 8,
+        "next_action_id": "a1"
+      },
+      "actions": [
+        {
+          "action_id": "a1",
+          "estimated_minutes": 10,
+          "status": "completed",
+          "progress_minutes": 10,
+          "remaining_minutes": 0
+        }
+      ]
+    }
+  },
+  {
+    "roadmap": true,
+    "include_actions": true,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 40,
+        "completed_actions": 40
+      }
+    ],
+    "next": null,
+    "actions": [
+      {
+        "payload": {
+          "action_id": "a1",
+          "estimated_minutes": 10
+        },
+        "status": "completed",
+        "progress_minutes": 3
+      }
+    ],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"],
+            "total_actions": 40,
+            "completed_actions": 40,
+            "progress_percent": 100
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      },
+      "progress": {
+        "total_actions": 40,
+        "completed_actions": 40,
+        "percent": 100,
+        "next_action_id": null
+      },
+      "actions": [
+        {
+          "action_id": "a1",
+          "estimated_minutes": 10,
+          "status": "completed",
+          "progress_minutes": 10,
+          "remaining_minutes": 0
+        }
+      ]
+    }
+  },
+  {
+    "roadmap": true,
+    "include_actions": false,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 0,
+        "completed_actions": 0
+      }
+    ],
+    "next": null,
+    "actions": [],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "total_actions": 0,
+            "completed_actions": 0,
+            "progress_percent": 0
+          }
+        ],
+        "deferred_sections": {
+          "strategy": true,
+          "support": true
+        }
+      },
+      "progress": {
+        "total_actions": 0,
+        "completed_actions": 0,
+        "percent": 0,
+        "next_action_id": null
+      },
+      "actions_deferred": true
+    }
+  },
+  {
+    "roadmap": true,
+    "include_actions": false,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 40,
+        "completed_actions": 1
+      }
+    ],
+    "next": {
+      "payload": {
+        "action_id": "a1",
+        "estimated_minutes": 10
+      },
+      "status": "in_progress",
+      "progress_minutes": 14
+    },
+    "actions": [
+      {
+        "payload": {
+          "action_id": "a1",
+          "estimated_minutes": 10
+        },
+        "status": "completed",
+        "progress_minutes": 3
+      }
+    ],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "total_actions": 40,
+            "completed_actions": 1,
+            "progress_percent": 2
+          }
+        ],
+        "deferred_sections": {
+          "strategy": true,
+          "support": true
+        }
+      },
+      "progress": {
+        "total_actions": 40,
+        "completed_actions": 1,
+        "percent": 2,
+        "next_action_id": "a1"
+      },
+      "actions_deferred": true
+    }
+  },
+  {
+    "roadmap": true,
+    "include_actions": false,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 40,
+        "completed_actions": 3
+      }
+    ],
+    "next": {
+      "payload": {
+        "action_id": "a1",
+        "estimated_minutes": 10
+      },
+      "status": "in_progress",
+      "progress_minutes": 14
+    },
+    "actions": [
+      {
+        "payload": {
+          "action_id": "a1",
+          "estimated_minutes": 10
+        },
+        "status": "completed",
+        "progress_minutes": 3
+      }
+    ],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "total_actions": 40,
+            "completed_actions": 3,
+            "progress_percent": 8
+          }
+        ],
+        "deferred_sections": {
+          "strategy": true,
+          "support": true
+        }
+      },
+      "progress": {
+        "total_actions": 40,
+        "completed_actions": 3,
+        "percent": 8,
+        "next_action_id": "a1"
+      },
+      "actions_deferred": true
+    }
+  },
+  {
+    "roadmap": true,
+    "include_actions": false,
+    "content": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "objective": "Learn",
+            "action_ids": ["a1"]
+          }
+        ],
+        "exam_strategy": {
+          "summary": "Check sources",
+          "evidence_links": [
+            {
+              "label": "Source"
+            }
+          ]
+        },
+        "question_families": [
+          {
+            "title": "Recall"
+          }
+        ],
+        "conflicts": [],
+        "coverage_gaps": []
+      },
+      "evidence_links": {
+        "document:d1": {
+          "available": true
+        }
+      }
+    },
+    "units": [
+      {
+        "unit_key": "u1",
+        "total_actions": 40,
+        "completed_actions": 40
+      }
+    ],
+    "next": null,
+    "actions": [
+      {
+        "payload": {
+          "action_id": "a1",
+          "estimated_minutes": 10
+        },
+        "status": "completed",
+        "progress_minutes": 3
+      }
+    ],
+    "expected": {
+      "course_id": 711,
+      "usable": true,
+      "revision_id": "r1",
+      "blueprint": {
+        "units": [
+          {
+            "key": "u1",
+            "title": "Μονάδα",
+            "total_actions": 40,
+            "completed_actions": 40,
+            "progress_percent": 100
+          }
+        ],
+        "deferred_sections": {
+          "strategy": true,
+          "support": true
+        }
+      },
+      "progress": {
+        "total_actions": 40,
+        "completed_actions": 40,
+        "percent": 100,
+        "next_action_id": null
+      },
+      "actions_deferred": true
+    }
+  }
+]

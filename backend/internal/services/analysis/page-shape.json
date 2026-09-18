@@ -1,0 +1,13 @@
+{
+  "summary": "2-5 concrete sentences describing everything important on this page",
+  "page_type": "cover | table_of_contents | lecture_content | diagram | table | exercise | solution | references | administrative | blank | other",
+  "key_points": ["0-10 claims, ideas, steps, or instructions on the page"],
+  "definitions": ["0-8 defined terms with their definitions"],
+  "formulas": ["0-8 equations or symbolic expressions with their meaning"],
+  "visuals": ["0-8 diagrams, plots, tables, screenshots, or layout relationships"],
+  "examples": ["0-6 examples, cases, or worked steps"],
+  "assessment_clues": ["0-6 explicit exercise, deadline, grading, or exam clues"],
+  "references": ["0-6 citations, links, books, standards, or cross-references"],
+  "low_information": "true when blank, decorative, or carrying almost no study content",
+  "confidence": "low | medium | high"
+}

@@ -1,0 +1,1729 @@
+[
+  {
+    "name": "trimmed-Greek-and-key-resolution",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": true,
+    "expected": {
+      "blueprint_version": "course-blueprint-v1",
+      "exam_strategy": {
+        "objective": "Πέρασε την εξέταση",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit_one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "estimated_minutes": 20,
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": "Διάβασε <x> & y",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit_one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "reported-duration-is-derived",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ],
+          "estimated_minutes": "ignored"
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": true,
+    "expected": {
+      "blueprint_version": "course-blueprint-v1",
+      "exam_strategy": {
+        "objective": "Πέρασε την εξέταση",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit_one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "estimated_minutes": 20,
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": "Διάβασε <x> & y",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit_one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "forward-and-self-dependencies-dropped",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": ["future_unit", "unit_one"],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": true,
+    "expected": {
+      "blueprint_version": "course-blueprint-v1",
+      "exam_strategy": {
+        "objective": "Πέρασε την εξέταση",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit_one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "estimated_minutes": 20,
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": "Διάβασε <x> & y",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit_one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "unsupported-family-dropped",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["missing"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": true,
+    "expected": {
+      "blueprint_version": "course-blueprint-v1",
+      "exam_strategy": {
+        "objective": "Πέρασε την εξέταση",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit_one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "estimated_minutes": 20,
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": "Διάβασε <x> & y",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "one-source-conflict-dropped",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": true,
+    "expected": {
+      "blueprint_version": "course-blueprint-v1",
+      "exam_strategy": {
+        "objective": "Πέρασε την εξέταση",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit_one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "estimated_minutes": 20,
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": "Διάβασε <x> & y",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit_one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown-action-evidence",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:invented"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "duplicate-evidence",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one", "document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "extra-action-field",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"],
+              "unsafe_override": true
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "missing-score",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "boolean-score",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": true,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "floating-action-time",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20.0,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "no-priority-matches",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["missing"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "duplicate-unit-key",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        },
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "unit-duration-overflow",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 240,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            },
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 240,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            },
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 240,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            },
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 240,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "invalid-version",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ],
+      "blueprint_version": "old"
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "null-required-list",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": null,
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "observed-count-exceeds-sample",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 3,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "integer-text-rejected",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": "20",
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one", "discord:two"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "packet-admission-mismatch",
+    "payload": {
+      "exam_strategy": {
+        "objective": " Πέρασε την εξέταση ",
+        "approach": "Read <code> & verify sources",
+        "target_score_percent": 75,
+        "confidence": "high",
+        "priority_unit_keys": ["unit-one"],
+        "evidence_refs": ["document:one"]
+      },
+      "units": [
+        {
+          "key": "unit_one",
+          "title": "Μονάδα",
+          "objective": "Μάθε τα δένδρα",
+          "priority": "high",
+          "depends_on": [],
+          "evidence_refs": ["document:one"],
+          "actions": [
+            {
+              "kind": "read",
+              "instruction": " Διάβασε <x> & y ",
+              "estimated_minutes": 20,
+              "success_criterion": "Εξήγησε με δικά σου λόγια",
+              "evidence_refs": ["document:one"]
+            }
+          ]
+        }
+      ],
+      "question_families": [
+        {
+          "key": "basics",
+          "name": "Βασικά",
+          "response_mode": "short_answer",
+          "priority": "medium",
+          "confidence": "low",
+          "observed_count": 1,
+          "observed_out_of": 2,
+          "estimated_marks_percent": 50,
+          "unit_keys": ["unit-one"],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "conflicts": [
+        {
+          "summary": "Διαφωνία",
+          "status": "unresolved",
+          "resolution": "Verify originals",
+          "evidence_refs": ["document:one", "discord:two"]
+        }
+      ],
+      "coverage_gaps": [
+        {
+          "summary": "Missing worked examples",
+          "severity": "minor",
+          "recommended_action": "Ask for examples",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "packet": {
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        },
+        {
+          "evidence_ref": "discord:two"
+        }
+      ],
+      "allowed_evidence_refs": ["document:invented"]
+    },
+    "valid": false,
+    "expected": null
+  }
+]

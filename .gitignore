@@ -1,0 +1,44 @@
+target/
+__pycache__/
+**.pyc
+data/
+Downloads/
+**.DS_Store
+.vscode/settings.json
+.venv/
+.env
+.env.*
+.codex
+.agents
+
+# The web module's local-development default; production databases live in data/.
+/eclass.db
+/eclass.db-wal
+/eclass.db-shm
+
+# Empty schema database some tests create by passing "unused.db" as a dummy path.
+/unused.db
+
+# Empty message schema a repo-root worker/service run creates at its default path.
+/discord_knowledge.db
+
+# Local Discord exports are private runtime data.
+discord_exports/
+
+# Frontend build output
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+frontend/next-env.d.ts
+frontend/*.tsbuildinfo
+
+knowledge.db
+.claude/
+.ruff_cache/
+.playwright-cli/
+
+# Disposable native build output; persistent runtime data lives outside Git.
+.tree-build/
+
+# Machine-specific operational and recovery docs; never published.
+/docs/private/

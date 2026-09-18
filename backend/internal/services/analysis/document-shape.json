@@ -1,0 +1,21 @@
+{
+  "summary": "2-3 concrete sentences describing the contents",
+  "course_role": "what this file demonstrably contributes to the course; say that sequence is unknown when the evidence does not establish it",
+  "importance": "essential | useful | reference",
+  "importance_reason": "one short reason grounded in the material",
+  "difficulty": "introductory | intermediate | advanced",
+  "difficulty_reason": "one short reason grounded in the material",
+  "material_type": "lecture_notes | slides | tutorial | assignment | exercise_set | worked_solutions | past_exam | practice_exam | exam_guidance | study_guide | student_notes | textbook | results | reference | administrative | code | other",
+  "external_material_type": "past_paper | student_notes | study_guide | textbook | exercise_solution | lecture_material | other",
+  "course_alignment": "aligned | uncertain | mismatch",
+  "course_alignment_reason": "brief content-grounded reason why this file belongs to this course, cannot be confidently assigned, or clearly belongs to another course",
+  "assessment_relevance": "high | medium | low | unknown",
+  "assessment_reason": "why this is or is not likely useful for assessment; preserve uncertainty",
+  "topics": ["3-8 concise topic names"],
+  "learning_objectives": ["3-6 things a student should understand or be able to do"],
+  "prerequisites": ["0-5 concepts that should be understood first"],
+  "transferable_concepts": ["0-6 canonical English concept labels useful across courses"],
+  "recommended_action": "one specific study action: read, practise, memorize, compare, implement, or reference",
+  "visual_content": ["important diagram/table/formula plus its PDF page, only when visible in supplied images"],
+  "notable_items": ["deadlines, grading details, exercises, exam scope, or other must-not-miss facts"]
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "prompt": "Δένδρα <code> & y",
+    "expected": "practice-question:9007199254740993:unit_one:843a210bc1626dfa31d8cf5e"
+  },
+  {
+    "prompt": "A  B  C",
+    "expected": "practice-question:9007199254740993:unit_one:08e659a77a9baef5f6205f96"
+  },
+  {
+    "prompt": "x\u001c\u001d\u001e\u001fy",
+    "expected": "practice-question:9007199254740993:unit_one:fd1cdc89a2c04c7f24808364"
+  },
+  {
+    "prompt": "literal\\u2028",
+    "expected": "practice-question:9007199254740993:unit_one:c320b4475e28999b4a1b2b9f"
+  },
+  {
+    "prompt": "😀\t\n text",
+    "expected": "practice-question:9007199254740993:unit_one:9f374e942d3be674e0eb7545"
+  },
+  {
+    "prompt": "a\u00000",
+    "expected": "practice-question:9007199254740993:unit_one:ce23ed1017de4a43839402d9"
+  }
+]

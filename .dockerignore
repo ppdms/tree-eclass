@@ -1,0 +1,68 @@
+# Docker ignore file for tree-eclass
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Database (will be in mounted volume)
+*.db
+*.db-journal
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Data directory (will be mounted)
+data/
+prod/classes/
+discord_exports/
+
+# Frontend build artifacts are produced in the disposable browser build stage.
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+
+# Local configuration and private snapshots never belong in either image.
+.env
+.env.*
+*.db-wal
+*.db-shm
+Downloads/
+.snapshots/
+.tree/
+.agents/
+.codex/
+.playwright-cli/
+.ruff_cache/
+
+# Disposable native compilation output.
+.tree-build/

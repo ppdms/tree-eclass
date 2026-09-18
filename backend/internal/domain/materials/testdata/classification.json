@@ -1,0 +1,56 @@
+[
+  {
+    "path": "/Courses/101/external/inbox/cheat___sheet.pdf",
+    "override": "",
+    "kind": "study_guide",
+    "classification": "inferred"
+  },
+  {
+    "path": "/Courses/101/external/PAST-PAPERS/notes.pdf",
+    "override": "",
+    "kind": "past_paper",
+    "classification": "folder"
+  },
+  {
+    "path": "/Courses/101/EXTERNAL/inbox/ΣΗΜΕΙΩΣΕΙΣ.pdf",
+    "override": "",
+    "kind": "student_notes",
+    "classification": "inferred"
+  },
+  {
+    "path": "/Courses/101/external/inbox/Θέματα Σεπτεμβρίου.pdf",
+    "override": "",
+    "kind": "past_paper",
+    "classification": "inferred"
+  },
+  {
+    "path": "/Courses/101/external/inbox/typology.pdf",
+    "override": "",
+    "kind": "other",
+    "classification": "inferred"
+  },
+  {
+    "path": "/external/inbox/Bishop.pdf",
+    "override": "",
+    "kind": "textbook",
+    "classification": "inferred"
+  },
+  {
+    "path": "/external/inbox/a.txt",
+    "override": "",
+    "kind": "other",
+    "classification": "inferred"
+  },
+  {
+    "path": "/external/lecture-material/a.pdf",
+    "override": "",
+    "kind": "lecture_material",
+    "classification": "folder"
+  },
+  {
+    "path": "/external/inbox/exam.pdf",
+    "override": "textbook",
+    "kind": "textbook",
+    "classification": "manual"
+  }
+]

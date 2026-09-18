@@ -1,0 +1,39 @@
+/*
+ * Reader styles.
+ *
+ * `textlayer.css` is PDF.js's own text-layer stylesheet, extracted from
+ * `pdfjs-dist/web/pdf_viewer.css` rather than hand-written. The positioning
+ * rules in it are part of the library's contract with the DOM it builds — a
+ * reimplementation would drift out of alignment with the canvas on the next
+ * upgrade, which shows up as selections that highlight the wrong words. Only
+ * that one block is taken; the rest of the viewer stylesheet would restyle the
+ * surrounding page.
+ *
+ * The layer needs `--total-scale-factor` set to the render scale. The React
+ * component sets it per page, because the same document is rendered at whatever
+ * zoom the learner chose.
+ */
+
+@import './textlayer.css';
+
+/* Selection has to stay visible: the text layer is transparent by design, so
+   without this the learner cannot see what they are about to highlight. */
+.textLayer ::selection {
+	background: color-mix(in srgb, #93c5fd 58%, white);
+	color: #fafafa;
+}
+
+/* A rendered page is a sheet of paper on the surface colour, in both themes.
+   Inverting a PDF's own white would ruin figures and scanned pages. */
+.reader-page canvas {
+	background: #fff;
+}
+
+html[data-theme='light'] .textLayer ::selection {
+	background: color-mix(in srgb, #1d4ed8 25%, white);
+	color: #18181b;
+}
+html[data-theme='eink'] .textLayer ::selection {
+	background: #000;
+	color: #fff;
+}

@@ -1,0 +1,158 @@
+import * as stylex from '@stylexjs/stylex';
+import { media } from '@/styles/constants.stylex';
+import { colors, effects, layout, spacing, typography } from '@/styles/tokens.stylex';
+
+export const activityPartsStyles = stylex.create({
+  activityDiffTree: {
+    gridColumn: {
+      default: '2 / span 2',
+      [media.mobile]: '2 / span 1',
+    },
+    marginTop: '0.25rem',
+    minWidth: 0,
+  },
+  activityDescription: {
+    margin: 0,
+    gridColumn: {
+      default: '2 / span 2',
+      [media.mobile]: '2 / span 1',
+    },
+    color: colors.textPrimarySoft,
+    fontSize: '0.8125rem',
+    lineHeight: 1.35,
+    whiteSpace: 'pre-line',
+    marginTop: '0.25rem',
+    maxWidth: 'none',
+    paddingTop: '0.25rem',
+    width: '100%',
+  },
+  activityItem: {
+    paddingBlock: {
+      default: '0.45rem',
+      [media.mobile]: '0.55rem',
+    },
+    paddingInline: {
+      default: '0.6rem',
+      [media.mobile]: '0.65rem',
+    },
+    alignItems: 'start',
+    backgroundColor: {
+      default: colors.surface,
+      ':hover': colors.surfaceHover,
+    },
+    columnGap: {
+      default: '0.625rem',
+      [media.mobile]: '0.375rem',
+    },
+    display: 'grid',
+    gridTemplateColumns: {
+      default: '1.75rem minmax(0, 1fr) minmax(0, 7.5rem)',
+      [media.mobile]: '1.75rem minmax(0, 1fr)',
+    },
+    rowGap: {
+      default: '0.25rem',
+      [media.mobile]: '0.125rem',
+    },
+    transitionDuration: '150ms',
+    transitionProperty: 'background-color',
+    borderBottomColor: colors.border,
+    borderBottomStyle: 'solid',
+    borderBottomWidth: 1,
+  },
+  activityItemRead: {
+    opacity: 0.68,
+  },
+  activityItemImportant: {
+    backgroundColor: {
+      default: colors.surfaceWarning,
+      ':hover': colors.surfaceHover,
+    },
+    boxShadow: `inset 3px 0 0 ${colors.warning}`,
+  },
+  activityItemMarker: {
+    borderColor: colors.borderLight,
+    borderRadius: '0.45rem',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    placeItems: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceRaised,
+    color: colors.info,
+    display: 'grid',
+    flexShrink: 0,
+    gridColumnStart: '1',
+    gridRowStart: '1',
+    height: '1.75rem',
+    width: '1.75rem',
+  },
+  markerImportant: {
+    borderColor: colors.warning,
+    color: colors.warning,
+  },
+  activityLoadSentinel: {
+    paddingBlock: '0.5rem',
+    alignItems: 'center',
+    color: colors.textSecondary,
+    display: 'flex',
+    fontSize: '0.75rem',
+    justifyContent: 'center',
+    minHeight: '2rem',
+  },
+  dayHeading: {
+    margin: 0,
+    paddingInline: '0.6rem',
+    color: colors.textSecondary,
+    fontSize: typography.sizeXs,
+    fontWeight: typography.weightBold,
+    letterSpacing: '0.08em',
+    lineHeight: 1.3,
+    paddingBlockEnd: '0.25rem',
+    paddingBlockStart: '0.4rem',
+    textTransform: 'uppercase',
+    userSelect: 'none',
+  },
+  activityDay: {
+    borderTopColor: colors.border,
+    borderTopStyle: 'solid',
+    borderTopWidth: 1,
+  },
+  activityDayFirst: {
+    borderTopStyle: 'none',
+    borderTopWidth: 0,
+  },
+  activityEmpty: {
+    borderColor: colors.borderLight,
+    borderRadius: layout.radiusLarge,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    gap: spacing.md,
+    paddingBlock: '2.5rem',
+    paddingInline: '1.5rem',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    textAlign: 'center',
+    marginTop: '0.75rem',
+  },
+  emptyCopy: {
+    margin: 0,
+    color: colors.textSecondary,
+    fontSize: '0.8125rem',
+    lineHeight: 1.45,
+    maxWidth: '32rem',
+  },
+
+  activityList: {
+    borderColor: colors.border,
+    borderRadius: layout.radiusLarge,
+    borderStyle: 'solid',
+    borderWidth: 1,
+    gap: 0,
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    boxShadow: effects.shadowSubtle,
+    display: 'grid',
+  },
+});

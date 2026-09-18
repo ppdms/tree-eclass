@@ -1,0 +1,60 @@
+{
+  "blueprint_version": "course-blueprint-v1",
+  "exam_strategy": {
+    "objective": "non-empty string",
+    "approach": "non-empty string",
+    "target_score_percent": "number from 0 through 100",
+    "confidence": "high | medium | low",
+    "priority_unit_keys": ["unit_key"],
+    "evidence_refs": ["label from ALLOWED_EVIDENCE_REFS"]
+  },
+  "units": [
+    {
+      "key": "unique lowercase ASCII key",
+      "title": "non-empty string",
+      "objective": "observable learning objective",
+      "priority": "critical | high | medium | low",
+      "depends_on": ["key of an earlier unit"],
+      "evidence_refs": ["label from ALLOWED_EVIDENCE_REFS"],
+      "actions": [
+        {
+          "kind": "read | recall | solve | write | draw | implement | compare | review | diagnostic",
+          "instruction": "specific atomic action",
+          "estimated_minutes": "integer 5..240",
+          "success_criterion": "observable completion check",
+          "evidence_refs": ["label from ALLOWED_EVIDENCE_REFS"]
+        }
+      ]
+    }
+  ],
+  "question_families": [
+    {
+      "key": "unique lowercase ASCII key",
+      "name": "non-empty string",
+      "response_mode": "multiple_choice | short_answer | essay | calculation | proof | diagram | code | mixed",
+      "priority": "critical | high | medium | low",
+      "confidence": "high | medium | low",
+      "observed_count": "integer 0..100",
+      "observed_out_of": "integer 0..100 and >= observed_count",
+      "estimated_marks_percent": "number 0..100",
+      "unit_keys": ["existing unit key"],
+      "evidence_refs": ["label from ALLOWED_EVIDENCE_REFS"]
+    }
+  ],
+  "conflicts": [
+    {
+      "summary": "specific conflicting claims",
+      "status": "unresolved | resolved | superseded",
+      "resolution": "resolution or what remains unknown",
+      "evidence_refs": ["two or more labels from ALLOWED_EVIDENCE_REFS; omit the whole conflict if you cannot cite two"]
+    }
+  ],
+  "coverage_gaps": [
+    {
+      "summary": "missing or insufficient evidence",
+      "severity": "blocking | important | minor",
+      "recommended_action": "how to close or manage the gap",
+      "evidence_refs": ["zero or more labels from ALLOWED_EVIDENCE_REFS"]
+    }
+  ]
+}

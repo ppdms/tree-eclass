@@ -1,0 +1,58 @@
+[
+  {
+    "course": 9007199254740993,
+    "unit": "unit_one",
+    "kind": "read",
+    "instruction": "Διάβασε <x> & y",
+    "success": "Εξήγησε",
+    "expected": "course-blueprint:9007199254740993:unit_one:61eb0cac5ab4a30d69417071"
+  },
+  {
+    "course": 9007199254740993,
+    "unit": "unit_one",
+    "kind": "read",
+    "instruction": "text line end",
+    "success": "Εξήγησε",
+    "expected": "course-blueprint:9007199254740993:unit_one:68e8b7b799042b5a6f601404"
+  },
+  {
+    "course": 9007199254740993,
+    "unit": "unit_one",
+    "kind": "read",
+    "instruction": "literal\\u2028 plus \\u2029",
+    "success": "Εξήγησε",
+    "expected": "course-blueprint:9007199254740993:unit_one:7f32dae6d451ecdc05962715"
+  },
+  {
+    "course": 9007199254740993,
+    "unit": "unit_one",
+    "kind": "read",
+    "instruction": "\\ ",
+    "success": "Εξήγησε",
+    "expected": "course-blueprint:9007199254740993:unit_one:e9426c7a90ea586b176a0f3f"
+  },
+  {
+    "course": 9007199254740993,
+    "unit": "unit_one",
+    "kind": "read",
+    "instruction": "nul\u0000 & literal",
+    "success": "Εξήγησε",
+    "expected": "course-blueprint:9007199254740993:unit_one:a3c04b78bf305300b1c7de40"
+  },
+  {
+    "course": 9007199254740993,
+    "unit": "unit_one",
+    "kind": "read",
+    "instruction": "quote \" and \\ slash",
+    "success": "Εξήγησε",
+    "expected": "course-blueprint:9007199254740993:unit_one:fbb135887b6b29b2c3b5b50f"
+  },
+  {
+    "course": 9007199254740993,
+    "unit": "unit_one",
+    "kind": "read",
+    "instruction": "😀",
+    "success": "Εξήγησε",
+    "expected": "course-blueprint:9007199254740993:unit_one:c67b0538fad73a4774d87da3"
+  }
+]

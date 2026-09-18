@@ -1,0 +1,453 @@
+[
+  {
+    "name": "Greek-trimming",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": true,
+    "expected": {
+      "practice_set_version": "practice-set-v1",
+      "unit_key": "unit_one",
+      "questions": [
+        {
+          "question_id": "practice-question:101:unit_one:e6b62cd7114aafd70079d103",
+          "key": "one",
+          "prompt": "Εξήγησε <x> & y",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "coverage_note": "Εξάσκηση με τις πηγές"
+    }
+  },
+  {
+    "name": "prompt-",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": "",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "estimated_minutes-5.5",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5.5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "estimated_minutes-True",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": true,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "difficulty-invented",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "invented",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "evidence_refs-['document:invented']",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:invented"]
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "answer_points-[]",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": [],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "common_mistakes-None",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": null,
+          "evidence_refs": ["document:one"]
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "key-invalid key",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "invalid key",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "duplicate-question",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        },
+        {
+          "key": "two",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "unknown-field",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"],
+          "injected": "x"
+        }
+      ]
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  },
+  {
+    "name": "null-version",
+    "payload": {
+      "coverage_note": "Εξάσκηση με τις πηγές",
+      "questions": [
+        {
+          "key": "one",
+          "prompt": " Εξήγησε <x> & y ",
+          "response_mode": "short_answer",
+          "difficulty": "core",
+          "estimated_minutes": 5,
+          "expected_answer": "Η αναμενόμενη απάντηση",
+          "answer_points": ["Σημείο ένα"],
+          "common_mistakes": [],
+          "evidence_refs": ["document:one"]
+        }
+      ],
+      "practice_set_version": null
+    },
+    "packet": {
+      "course": {
+        "course_id": 101
+      },
+      "unit": {
+        "key": "unit_one"
+      },
+      "evidence": [
+        {
+          "evidence_ref": "document:one"
+        }
+      ],
+      "allowed_evidence_refs": ["document:one"]
+    },
+    "valid": false,
+    "expected": null
+  }
+]
