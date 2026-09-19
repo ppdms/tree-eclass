@@ -41,7 +41,15 @@ func containerRuntime(ctx context.Context, cfg Config, migrate bool) (err error)
 	if err = stop(); err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, stop()) }()
+	// A stop that was requested (SIGTERM/SIGINT cancels ctx) is a clean shutdown:
+	// report success so the unit does not look failed to systemd and
+	// Restart=on-failure keeps restarting only genuine crashes.
+	defer func() {
+		stopErr := stop()
+		if ctx.Err() == nil {
+			err = errors.Join(err, stopErr)
+		}
+	}()
 	configPath := filepath.Join(cfg.Temp, "container-runtime.json")
 	if err = containerTools(&cfg); err != nil {
 		return err
@@ -57,9 +65,15 @@ func containerRuntime(ctx context.Context, cfg Config, migrate bool) (err error)
 		spec.Command = append(spec.Command, "migrate")
 	}
 	if err = manager.Run(ctx, spec); err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
 		return err
 	}
 	if !migrate {
+		if ctx.Err() != nil {
+			return nil
+		}
 		return errors.New("application stopped unexpectedly")
 	}
 	return setupContainerObjects(ctx, cfg)
