@@ -19,7 +19,7 @@ x-api: &api
 
 services:
   postgres:
-    image: postgres:18.6
+    image: docker.io/library/postgres:18.6
     environment:
       POSTGRES_USER: tree
       POSTGRES_DB: tree
@@ -51,7 +51,7 @@ services:
     restart: 'no'
 
   seaweed:
-    image: chrislusf/seaweedfs:4.46
+    image: docker.io/chrislusf/seaweedfs:4.46
     command:
       - mini
       - -dir=/data

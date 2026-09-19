@@ -45,6 +45,11 @@ The local machine owns the database and S3 store. Startup uses no login services
 container engine, or external Git hosting. The private `laptop` Git remote is a
 local bare repository; only sanitized, public-safe history is published.
 
+On a Linux server the same application runs from `Dockerfile` next to PostgreSQL
+18 and SeaweedFS; the container contract (commands, runtime configuration,
+buckets, `/jobs`, health) is documented in
+[docs/linux-deployment.md](docs/linux-deployment.md).
+
 ### Daily Mac start and stop
 
 ```sh

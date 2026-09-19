@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.2-slim AS browser-build
+FROM docker.io/oven/bun:1.4.2-slim AS browser-build
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/bun.lock ./
 RUN bun install --frozen-lockfile
@@ -6,7 +6,7 @@ COPY frontend ./
 RUN bun run build
 
 # Optional future Linux deployment. The laptop uses ./tree and native services.
-FROM golang:1.27.1 AS go-build
+FROM docker.io/library/golang:1.27.1 AS go-build
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
@@ -14,7 +14,7 @@ COPY backend/cmd ./cmd
 COPY backend/internal ./internal
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /tree-eclass ./cmd/tree-eclass
 
-FROM python:3.14.7-slim-trixie AS pdf-build
+FROM docker.io/library/python:3.14.7-slim-trixie AS pdf-build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ autoconf automake make git pkg-config libpoppler-glib-dev libwxgtk3.2-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -24,7 +24,7 @@ RUN git init -q /tmp/diff-pdf && cd /tmp/diff-pdf \
     && git fetch --depth=1 origin "$DIFF_PDF_REVISION" && git checkout --detach FETCH_HEAD \
     && ./bootstrap && ./configure && make && install -m 755 diff-pdf /diff-pdf-bin
 
-FROM python:3.14.7-slim-trixie AS api
+FROM docker.io/library/python:3.14.7-slim-trixie AS api
 ARG TARGETARCH
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 GOMEMLIMIT=192MiB
