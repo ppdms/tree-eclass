@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/platform"
 )
 
 type manifest struct {

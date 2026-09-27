@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/navigation"
+	"tree-eclass/internal/domain/scheduler"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/scheduler"
 )
 
 type adaptiveCourse struct {

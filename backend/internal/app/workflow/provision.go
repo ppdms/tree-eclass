@@ -17,7 +17,7 @@ import (
 	"runtime"
 	"strings"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 const weedVersion = "4.46"

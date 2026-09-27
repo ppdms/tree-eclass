@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/jobs"
-	"tree-eclass/internal/infrastructure/storage/queries"
 	"tree-eclass/internal/integrations/mirror"
 )
 

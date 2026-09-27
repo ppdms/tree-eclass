@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func TestFiniteCompletionAndFailure(t *testing.T) {

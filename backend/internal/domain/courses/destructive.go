@@ -7,7 +7,7 @@ import (
 	"regexp"
 
 	"github.com/jackc/pgx/v5"
-	"tree-eclass/internal/infrastructure/jobs"
+	"tree-eclass/internal/domain/commands"
 )
 
 var ErrReplay = errors.New("this mutation request was already processed")
@@ -57,7 +57,7 @@ func (s Service) Destructive(ctx context.Context, id int64, action, key string) 
 	if err != nil {
 		return err
 	}
-	if _, err = jobs.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
+	if _, err = commands.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

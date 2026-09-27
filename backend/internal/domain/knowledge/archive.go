@@ -12,15 +12,15 @@ import (
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
+	"tree-eclass/internal/domain/extract"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/storage/queries"
-	"tree-eclass/internal/integrations/parser"
+	"tree-eclass/internal/domain/objects"
+	"tree-eclass/internal/domain/queries"
 )
 
 type archiveMember struct {
-	Record         parser.Record
-	Object         blob.Reference
+	Record         extract.Record
+	Object         objects.Reference
 	ID, Path, Name string
 }
 
@@ -36,10 +36,10 @@ func memberArchive(d queries.KnowledgeDocument) bool {
 // ZIP/RAR content belongs to admitted leaves. Running the legacy flattening
 // extractor first can mistake a ZIP nested inside a RAR for the outer archive.
 func (i Indexer) archive(ctx context.Context, file string, d queries.KnowledgeDocument, result *extraction) error {
-	records := []parser.Record{}
+	records := []extract.Record{}
 	seen := map[string]bool{}
 	var expanded int64
-	err := i.Parser.Run(ctx, parser.Request{Operation: "archive-list", Path: file}, func(r parser.Record) error {
+	err := i.Parser.Run(ctx, extract.Request{Operation: "archive-list", Path: file}, func(r extract.Record) error {
 		if r.Type == "complete" {
 			result.Warnings = append(result.Warnings, r.Warnings...)
 			return nil
@@ -71,7 +71,7 @@ func (i Indexer) archive(ctx context.Context, file string, d queries.KnowledgeDo
 	}
 	return nil
 }
-func validateMember(r parser.Record) error {
+func validateMember(r extract.Record) error {
 	if r.Type != "member" || len(r.MemberChain) < 1 || len(r.MemberChain) > 2 || r.Depth != len(r.MemberChain)-1 ||
 		r.MemberPath != strings.Join(r.MemberChain, "!/") {
 		return errors.New("invalid archive member identity")
@@ -81,7 +81,7 @@ func validateMember(r parser.Record) error {
 		return errors.New("unsupported archive member kind or container")
 	}
 	if len(r.ContentHash) != 64 || strings.Trim(r.ContentHash, "0123456789abcdef") != "" || r.ExpandedSize < 0 ||
-		r.ExpandedSize > blob.MaxSourceBytes ||
+		r.ExpandedSize > objects.MaxSourceBytes ||
 		r.CompressedSize < 0 {
 		return errors.New("invalid archive member size or hash")
 	}
@@ -110,7 +110,7 @@ func (i Indexer) archiveObject(
 	ctx context.Context,
 	file string,
 	d queries.KnowledgeDocument,
-	r parser.Record,
+	r extract.Record,
 ) (archiveMember, error) {
 	member := archiveMember{
 		Record: r,
@@ -119,7 +119,7 @@ func (i Indexer) archiveObject(
 	}
 	member.ID = identity.Document(d.CourseID, member.Path)
 	received := false
-	request := parser.Request{
+	request := extract.Request{
 		Operation:     "archive-member",
 		ArchiveFormat: r.ArchiveFormat,
 		Path:          file,
@@ -131,7 +131,7 @@ func (i Indexer) archiveObject(
 			"expected_expanded_size":   r.ExpandedSize,
 		},
 	}
-	err := i.Parser.Run(ctx, request, func(artifact parser.Record) error {
+	err := i.Parser.Run(ctx, request, func(artifact extract.Record) error {
 		if artifact.Type != "artifact" {
 			return nil
 		}

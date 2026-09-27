@@ -9,9 +9,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/jobs"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/queries"
 )
 
 type Service struct{ Pool *pgxpool.Pool }
@@ -101,7 +101,7 @@ func (s Service) mutate(ctx context.Context, fn func(*queries.Queries) error) er
 	if err = fn(queries.New(tx)); err != nil {
 		return err
 	}
-	if _, err = jobs.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
+	if _, err = commands.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -137,7 +137,7 @@ func (s Service) Reorder(ctx context.Context, ids []int64) error {
 			return err
 		}
 	}
-	if _, err = jobs.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
+	if _, err = commands.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

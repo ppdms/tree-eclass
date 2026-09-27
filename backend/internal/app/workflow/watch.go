@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/sys/unix"
 	"tree-eclass/internal/app/server"
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 // Watch is a managed child, not a login service. Compilation does not hold the

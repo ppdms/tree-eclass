@@ -3,14 +3,12 @@ package jobs
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/json"
-	"errors"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/commands"
+	"tree-eclass/internal/domain/queries"
 )
 
 type Queue struct{ Pool *pgxpool.Pool }
@@ -19,26 +17,7 @@ type Queue struct{ Pool *pgxpool.Pool }
 // Coalescing reuses only an unclaimed command. A running job already has its
 // input snapshot, so a later mutation must leave another pending command.
 func EnqueueTx(ctx context.Context, tx pgx.Tx, queue, action string, payload any, coalesce bool) (string, error) {
-	q := queries.New(tx)
-	if coalesce {
-		if err := q.QueueLock(ctx, queue); err != nil {
-			return "", err
-		}
-		id, err := q.PendingCommand(ctx, queries.PendingCommandParams{Queue: queue, Action: action})
-		if err == nil {
-			return id, nil
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return "", err
-		}
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-	id := rand.Text()
-	err = q.EnqueueCommand(ctx, queries.EnqueueCommandParams{ID: id, Queue: queue, Action: action, Payload: data})
-	return id, err
+	return commands.EnqueueTx(ctx, tx, queue, action, payload, coalesce)
 }
 
 func (q Queue) Enqueue(ctx context.Context, queue, action string, payload any, coalesce bool) (string, error) {

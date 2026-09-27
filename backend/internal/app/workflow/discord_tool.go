@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 const discordVersion = "2.48"

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/process"
 )
 

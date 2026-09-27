@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"golang.org/x/text/unicode/norm"
+	"tree-eclass/internal/domain/extract"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/integrations/parser"
 )
 
 var horizontal = regexp.MustCompile(`[ \t]+`)
@@ -77,7 +77,7 @@ func Pieces(text string, target, overlap int) []string {
 	}
 	return result
 }
-func Chunks(document, hash string, unit parser.Record, ordinal int64) []Chunk {
+func Chunks(document, hash string, unit extract.Record, ordinal int64) []Chunk {
 	end := ""
 	if unit.LocatorEnd != nil {
 		end = *unit.LocatorEnd

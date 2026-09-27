@@ -3,9 +3,12 @@ package inference
 import (
 	"encoding/base64"
 	"errors"
+
+	dinference "tree-eclass/internal/domain/inference"
 )
 
-type Image struct{ MIMEType, Data string }
+// Image is the shared provider contract from domain/inference.
+type Image = dinference.Image
 
 func imageContent(m Message) (any, error) {
 	if len(m.Images) == 0 {

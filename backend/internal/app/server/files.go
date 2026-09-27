@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/knowledge"
+	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/storage/queries"
 )
 
 func (s *Server) fileRoutes() {

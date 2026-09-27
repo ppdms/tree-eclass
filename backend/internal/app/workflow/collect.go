@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"tree-eclass/internal/app/server"
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/checkpoint"
-	"tree-eclass/internal/infrastructure/platform"
 	"tree-eclass/internal/infrastructure/process"
 )
 

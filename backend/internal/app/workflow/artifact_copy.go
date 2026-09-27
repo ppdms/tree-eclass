@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 // Copy immutable runtime dependencies using APFS clones, retaining validated

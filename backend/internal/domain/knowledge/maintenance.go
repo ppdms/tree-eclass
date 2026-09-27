@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/queries"
 )
 
 // Maintain runs on the same serial queue as extraction. Rebuilding replaces

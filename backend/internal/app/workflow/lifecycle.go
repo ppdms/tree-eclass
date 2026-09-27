@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/checkpoint"
-	"tree-eclass/internal/infrastructure/platform"
 )
 
 // Up always selects a fixed release and restores an interrupted development

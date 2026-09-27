@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func revoked(dir string) bool { _, err := os.Stat(filepath.Join(dir, "stop")); return err == nil }

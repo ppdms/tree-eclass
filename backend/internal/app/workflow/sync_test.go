@@ -16,8 +16,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/materials"
+	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/storage/queries"
 	"tree-eclass/internal/integrations/eclass"
 	"tree-eclass/internal/services/synchronization"
 )

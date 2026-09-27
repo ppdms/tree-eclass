@@ -7,7 +7,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/notifications"
 )
 
 type Credentials struct {
@@ -76,7 +75,7 @@ func (s Service) Webhook(ctx context.Context) (string, error) {
 }
 func (s Service) SaveWebhook(ctx context.Context, value string, clear bool) error {
 	if !clear && strings.TrimSpace(value) != "" {
-		if err := notifications.ValidURL(strings.TrimSpace(value)); err != nil {
+		if err := identity.ValidURL(strings.TrimSpace(value)); err != nil {
 			return Invalid{err.Error()}
 		}
 	}

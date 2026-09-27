@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/jobs"
 )
 
 type Discord struct {
@@ -94,7 +94,7 @@ ON CONFLICT(id) DO UPDATE SET enabled=$1,token=$2,interval_seconds=$3,include_th
 		if err != nil {
 			return err
 		}
-		_, err = jobs.EnqueueTx(ctx, tx, "discord", "reload_export", map[string]any{}, true)
+		_, err = commands.EnqueueTx(ctx, tx, "discord", "reload_export", map[string]any{}, true)
 		return err
 	})
 }
@@ -162,7 +162,7 @@ func (s Service) SaveDiscordMap(ctx context.Context, form url.Values) (int, erro
 			}
 		}
 		count = len(mapping)
-		_, err = jobs.EnqueueTx(ctx, tx, "discord", "reload_messages", map[string]any{}, true)
+		_, err = commands.EnqueueTx(ctx, tx, "discord", "reload_messages", map[string]any{}, true)
 		return err
 	})
 	return count, err

@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"slices"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func Bundle(ctx context.Context, root string, executables map[string]string) error {

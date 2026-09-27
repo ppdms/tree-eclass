@@ -16,20 +16,19 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+
+	"tree-eclass/internal/domain/objects"
 )
 
 const DataBucket = "tree-eclass-data"
 const CacheBucket = "tree-eclass-cache"
-const MaxSourceBytes int64 = 50 * 1024 * 1024
 
-type Reference struct {
-	Bucket    string `json:"bucket"`
-	Key       string `json:"key"`
-	VersionID string `json:"version_id"`
-	SHA256    string `json:"sha256"`
-	Bytes     int64  `json:"bytes"`
-	MediaType string `json:"media_type"`
-}
+// Reference and MaxSourceBytes are the shared domain contract from
+// domain/objects; they remain identical types for every caller.
+type Reference = objects.Reference
+
+const MaxSourceBytes = objects.MaxSourceBytes
+
 type Store struct {
 	client  *s3.Client
 	uploads chan struct{}
@@ -108,7 +107,10 @@ func (s *Store) Put(ctx context.Context, input io.Reader, mediaType, tempDir str
 		return Reference{}, errors.New("document must contain between 1 byte and 50 MiB")
 	}
 	digest := fmt.Sprintf("%x", hash.Sum(nil))
-	ref := Reference{DataBucket, "objects/" + digest, digest, digest, size, mediaType}
+	ref := Reference{
+		Bucket: DataBucket, Key: "objects/" + digest, VersionID: digest,
+		SHA256: digest, Bytes: size, MediaType: mediaType,
+	}
 	ref.VersionID = ""
 	if _, err = f.Seek(0, io.SeekStart); err != nil {
 		return ref, err

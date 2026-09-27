@@ -11,11 +11,10 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/storage"
+	"tree-eclass/internal/domain/objects"
 )
 
-func mapAttachments(m *stagedMessage, media map[string]blob.Reference) error {
+func mapAttachments(m *stagedMessage, media map[string]objects.Reference) error {
 	var attachments []map[string]any
 	if err := decode([]byte(m.Attachments), &attachments); err != nil {
 		return err
@@ -53,14 +52,14 @@ func mapAttachments(m *stagedMessage, media map[string]blob.Reference) error {
 	m.Attachments = string(raw)
 	return nil
 }
-func registerMedia(ctx context.Context, tx pgx.Tx, sourcePath string, media map[string]blob.Reference) error {
+func registerMedia(ctx context.Context, tx pgx.Tx, sourcePath string, media map[string]objects.Reference) error {
 	for name, object := range media {
 		if !strings.HasPrefix(name, "media/") || path.Clean(name) != name || strings.ContainsAny(name, "\x00\\") ||
 			len(name) > 4096 ||
-			object.Bytes > blob.MaxSourceBytes {
+			object.Bytes > objects.MaxSourceBytes {
 			return errors.New("invalid Discord media catalog reference")
 		}
-		if err := storage.RegisterObject(ctx, tx, object); err != nil {
+		if err := objects.RegisterObject(ctx, tx, object); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO messages.archive_media(source_path,relative_path,object_id) VALUES($1,$2,$3)`, sourcePath, identity.Encode(name), object.SHA256); err != nil {
@@ -69,8 +68,8 @@ func registerMedia(ctx context.Context, tx pgx.Tx, sourcePath string, media map[
 	}
 	return nil
 }
-func (s Reader) Media(ctx context.Context, id string) (blob.Reference, error) {
-	var object blob.Reference
+func (s Reader) Media(ctx context.Context, id string) (objects.Reference, error) {
+	var object objects.Reference
 	if len(id) != 64 || strings.ContainsAny(id, "/\\") {
 		return object, pgx.ErrNoRows
 	}
@@ -82,7 +81,7 @@ func (s Reader) Media(ctx context.Context, id string) (blob.Reference, error) {
 	return object, err
 }
 
-func sameMedia(ctx context.Context, tx pgx.Tx, sourcePath string, media map[string]blob.Reference) error {
+func sameMedia(ctx context.Context, tx pgx.Tx, sourcePath string, media map[string]objects.Reference) error {
 	rows, err := tx.Query(
 		ctx,
 		`SELECT relative_path,object_id FROM messages.archive_media WHERE source_path=$1 LIMIT 2001`,

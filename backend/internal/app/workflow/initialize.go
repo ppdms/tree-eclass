@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func (c *Controller) run(ctx context.Context, dir string, argv ...string) error {

@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 type Spec struct {

@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"tree-eclass/internal/domain/identity"
 )
 
 type Sender interface {
@@ -21,14 +23,10 @@ type HTTPSender struct{ Client *http.Client }
 type Failure struct{ Status int }
 
 func (e Failure) Error() string { return fmt.Sprintf("webhook returned HTTP %d", e.Status) }
-func ValidURL(raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil || len(raw) > 4096 || u.Hostname() == "" || u.User != nil || u.Fragment != "" ||
-		(u.Scheme != "https" && u.Scheme != "http") {
-		return errors.New("webhook must be an absolute HTTP or HTTPS URL without user information or fragment")
-	}
-	return nil
-}
+
+// ValidURL is the shared webhook-target validator defined by domain/identity.
+var ValidURL = identity.ValidURL
+
 func NewSender() *HTTPSender {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns = 1

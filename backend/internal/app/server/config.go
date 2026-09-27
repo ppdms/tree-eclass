@@ -15,9 +15,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/infrastructure/jobs"
-	"tree-eclass/internal/infrastructure/platform"
 	"tree-eclass/internal/infrastructure/process"
 	"tree-eclass/internal/infrastructure/quota"
 	"tree-eclass/internal/infrastructure/storage"

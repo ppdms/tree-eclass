@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func (c *Controller) Doctor(ctx context.Context) error {

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 // Execute is an internal bootstrap. It must not start a writer until its parent

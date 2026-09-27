@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 
 	"tree-eclass/internal/app/server"
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/nativebundle"
-	"tree-eclass/internal/infrastructure/platform"
 )
 
 type runtimeTools struct {

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/integrations/parser"
 )
 

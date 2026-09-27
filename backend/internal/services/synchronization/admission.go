@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/storage/queries"
 )
 
 type Request struct {

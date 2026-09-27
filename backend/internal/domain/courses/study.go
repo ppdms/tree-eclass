@@ -6,8 +6,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/jobs"
 )
 
 // Study levels retain the exact logical catalog path, including deleted-file
@@ -28,7 +28,7 @@ ON CONFLICT(course_id,file_path) DO UPDATE SET level=excluded.level,last_updated
 		if err != nil {
 			return err
 		}
-		_, err = jobs.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true)
+		_, err = commands.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true)
 		return err
 	})
 }

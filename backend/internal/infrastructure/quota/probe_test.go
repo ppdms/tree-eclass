@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"tree-eclass/internal/integrations/inference"
+	"tree-eclass/internal/domain/inference"
 )
 
 type roundTrip func(*http.Request) (*http.Response, error)

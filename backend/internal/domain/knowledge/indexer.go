@@ -9,18 +9,18 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"tree-eclass/internal/domain/commands"
+	"tree-eclass/internal/domain/extract"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/jobs"
-	"tree-eclass/internal/infrastructure/platform"
-	"tree-eclass/internal/infrastructure/storage/queries"
-	"tree-eclass/internal/integrations/parser"
+	"tree-eclass/internal/domain/objects"
+	"tree-eclass/internal/domain/platform"
+	"tree-eclass/internal/domain/queries"
 )
 
 type Indexer struct {
 	Pool    *pgxpool.Pool
-	Objects *blob.Store
-	Parser  *parser.Runner
+	Objects objects.Store
+	Parser  extract.Extractor
 	Temp    string
 }
 type extraction struct {
@@ -73,7 +73,7 @@ func (i Indexer) Index(ctx context.Context, id string) (failure error) {
 	if err != nil {
 		return err
 	}
-	object := blob.Reference{
+	object := objects.Reference{
 		Bucket:    row.Bucket,
 		Key:       row.Key,
 		VersionID: row.VersionID,
@@ -92,7 +92,7 @@ func (i Indexer) Index(ctx context.Context, id string) (failure error) {
 	}
 	return i.publish(ctx, document, result)
 }
-func (i Indexer) download(ctx context.Context, ref blob.Reference) (string, error) {
+func (i Indexer) download(ctx context.Context, ref objects.Reference) (string, error) {
 	return i.Objects.Download(ctx, ref, i.Temp)
 }
 func (i Indexer) extract(ctx context.Context, file string, document queries.KnowledgeDocument) (extraction, error) {
@@ -105,7 +105,7 @@ func (i Indexer) extract(ctx context.Context, file string, document queries.Know
 	if document.MimeType != nil {
 		mediaType = *document.MimeType
 	}
-	source := &parser.Source{
+	source := &extract.Source{
 		CourseID:        document.CourseID,
 		CourseName:      identity.Decode(document.CourseName),
 		CourseShortName: document.CourseShortName,
@@ -117,11 +117,11 @@ func (i Indexer) extract(ctx context.Context, file string, document queries.Know
 		SourceHash:  document.SourceHash,
 		MIMEType:    mediaType,
 	}
-	limits := map[string]any{"ocr_enabled": i.Parser.Tessdata != "", "ocr_languages": "ell+eng"}
+	limits := map[string]any{"ocr_enabled": i.Parser.OCREnabled(), "ocr_languages": "ell+eng"}
 	err := i.Parser.Run(
 		ctx,
-		parser.Request{Operation: "extract", Path: file, Kind: document.DocumentKind, Source: source, Limits: limits},
-		func(record parser.Record) error {
+		extract.Request{Operation: "extract", Path: file, Kind: document.DocumentKind, Source: source, Limits: limits},
+		func(record extract.Record) error {
 			if record.Type == "complete" {
 				result.Warnings = append(result.Warnings, record.Warnings...)
 				return nil
@@ -177,7 +177,7 @@ func (i Indexer) publish(ctx context.Context, document queries.KnowledgeDocument
 			return err
 		}
 	}
-	if _, err = jobs.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
+	if _, err = commands.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

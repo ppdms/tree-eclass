@@ -6,9 +6,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/materials"
+	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/jobs"
 	"tree-eclass/internal/infrastructure/storage"
-	"tree-eclass/internal/infrastructure/storage/queries"
 )
 
 func publishDocument(ctx context.Context, tx pgx.Tx, course queries.AppCourse, file File) (string, error) {

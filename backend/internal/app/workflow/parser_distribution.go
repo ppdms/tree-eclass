@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 type parserDistribution struct {

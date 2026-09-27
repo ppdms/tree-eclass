@@ -14,9 +14,9 @@ import (
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/materials"
+	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/infrastructure/storage"
-	"tree-eclass/internal/infrastructure/storage/queries"
 	"tree-eclass/internal/integrations/parser"
 )
 

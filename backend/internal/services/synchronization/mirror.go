@@ -5,9 +5,9 @@ import (
 	"path"
 
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/storage/queries"
 	"tree-eclass/internal/integrations/mirror"
 )
 

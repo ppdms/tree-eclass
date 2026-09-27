@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func (g *graph) resources(n *node) (bool, error) {

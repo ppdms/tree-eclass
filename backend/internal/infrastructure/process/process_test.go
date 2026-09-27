@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func TestMain(m *testing.M) {

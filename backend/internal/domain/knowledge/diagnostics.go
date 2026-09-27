@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/queries"
 )
 
 type Coverage struct {

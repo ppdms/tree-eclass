@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/checkpoint"
-	"tree-eclass/internal/infrastructure/platform"
 	"tree-eclass/internal/infrastructure/process"
 )
 

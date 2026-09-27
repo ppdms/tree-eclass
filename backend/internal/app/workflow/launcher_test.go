@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func TestLauncherRecoveryDoesNotCompileEditableCode(t *testing.T) {

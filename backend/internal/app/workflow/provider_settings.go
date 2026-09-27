@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 type providerSettings struct {

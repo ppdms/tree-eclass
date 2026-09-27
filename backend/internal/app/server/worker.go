@@ -8,15 +8,15 @@ import (
 	"time"
 
 	"tree-eclass/internal/domain/knowledge"
+	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/jobs"
-	"tree-eclass/internal/infrastructure/storage/queries"
 )
 
 func (s *Server) indexWorker(ctx context.Context) error {
 	queue := jobs.Queue{Pool: s.db.Pool}
 	indexer := knowledge.Indexer{Pool: s.db.Pool, Objects: s.blobs, Temp: s.config.Temp,
 		Parser: s.parser}
-	indexer.Parser.Tessdata = s.config.Tessdata
+	s.parser.Tessdata = s.config.Tessdata
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {

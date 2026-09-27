@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/checkpoint"
-	"tree-eclass/internal/infrastructure/platform"
 )
 
 type Release struct {

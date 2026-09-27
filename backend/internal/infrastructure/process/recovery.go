@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"time"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func (m Manager) stopOrphan(name string, r Record) error {

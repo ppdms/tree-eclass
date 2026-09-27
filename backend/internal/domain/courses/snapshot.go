@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/queries"
 )
 
 func SnapshotCourses(ctx context.Context, tx pgx.Tx, selected *int64) ([]Course, *Course, error) {

@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/platform"
 	"tree-eclass/internal/infrastructure/process"
 	"tree-eclass/internal/infrastructure/storage"
 )

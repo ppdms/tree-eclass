@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 // Exercise the real shell launcher and Go command dispatch, with the test

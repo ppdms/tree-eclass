@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"tree-eclass/internal/infrastructure/jobs"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/commands"
+	"tree-eclass/internal/domain/queries"
 )
 
 func (s Service) UpdateType(ctx context.Context, id int64, document, kind string) error {
@@ -36,7 +36,7 @@ func (s Service) UpdateType(ctx context.Context, id int64, document, kind string
 	); err != nil {
 		return err
 	}
-	if _, err = jobs.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
+	if _, err = commands.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

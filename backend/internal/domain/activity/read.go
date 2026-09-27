@@ -6,7 +6,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/queries"
 )
 
 type Reader struct{ Pool *pgxpool.Pool }

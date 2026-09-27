@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 // StartHelper preserves the caller's streaming pipes and cancellation while

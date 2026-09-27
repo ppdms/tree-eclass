@@ -6,8 +6,8 @@ import (
 	"math"
 	"strconv"
 
+	"tree-eclass/internal/domain/scheduler"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/scheduler"
 )
 
 func adaptiveResult(

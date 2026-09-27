@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"tree-eclass/internal/integrations/inference"
+	"tree-eclass/internal/domain/inference"
 )
 
 type Store interface {

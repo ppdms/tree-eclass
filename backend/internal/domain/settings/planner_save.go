@@ -6,8 +6,8 @@ import (
 	"net/url"
 
 	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/jobs"
 )
 
 // SavePlanner commits the complete form and its projection debt together. The
@@ -53,7 +53,7 @@ VALUES(1,$1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET daily_blocks=$1,block_min
 				return err
 			}
 		}
-		_, err = jobs.EnqueueTx(ctx, tx, "projection", "refresh_priorities", map[string]any{}, true)
+		_, err = commands.EnqueueTx(ctx, tx, "projection", "refresh_priorities", map[string]any{}, true)
 		return err
 	})
 }

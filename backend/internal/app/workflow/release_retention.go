@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/checkpoint"
-	"tree-eclass/internal/infrastructure/platform"
 )
 
 type latestBuild struct {

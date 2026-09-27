@@ -3,11 +3,11 @@ package knowledge
 import (
 	"strings"
 	"testing"
-	"tree-eclass/internal/integrations/parser"
+	"tree-eclass/internal/domain/extract"
 )
 
 func TestArchiveMemberIdentityAndBounds(t *testing.T) {
-	valid := parser.Record{
+	valid := extract.Record{
 		Type:           "member",
 		MemberPath:     "nested.zip!/σημειώσεις.txt",
 		MemberChain:    []string{"nested.zip", "σημειώσεις.txt"},
@@ -21,22 +21,22 @@ func TestArchiveMemberIdentityAndBounds(t *testing.T) {
 	if err := validateMember(valid); err != nil {
 		t.Fatal(err)
 	}
-	for _, mutate := range []func(*parser.Record){
-		func(r *parser.Record) { r.MemberPath = "other.txt" },
-		func(r *parser.Record) {
+	for _, mutate := range []func(*extract.Record){
+		func(r *extract.Record) { r.MemberPath = "other.txt" },
+		func(r *extract.Record) {
 			r.MemberChain = []string{"../escape.txt"}
 			r.MemberPath = "../escape.txt"
 			r.Depth = 0
 		},
-		func(r *parser.Record) { r.ExpandedSize = 51 * 1024 * 1024 },
-		func(r *parser.Record) {
+		func(r *extract.Record) { r.ExpandedSize = 51 * 1024 * 1024 },
+		func(r *extract.Record) {
 			r.MemberChain = []string{"C:/escape.txt"}
 			r.MemberPath = "C:/escape.txt"
 			r.Depth = 0
 		},
-		func(r *parser.Record) { r.ContentHash = "unverified" },
-		func(r *parser.Record) { r.Kind = "archive" },
-		func(r *parser.Record) { r.ArchiveFormat = "unknown" },
+		func(r *extract.Record) { r.ContentHash = "unverified" },
+		func(r *extract.Record) { r.Kind = "archive" },
+		func(r *extract.Record) { r.ArchiveFormat = "unknown" },
 	} {
 		candidate := valid
 		mutate(&candidate)

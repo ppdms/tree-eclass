@@ -12,24 +12,30 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/storage"
+	"tree-eclass/internal/domain/objects"
 )
+
+// objectStore is the importer's object-storage contract: spool new archive
+// bytes, or reopen a registered object when re-indexing.
+type objectStore interface {
+	Put(ctx context.Context, input io.Reader, mediaType, tempDir string) (objects.Reference, error)
+	Open(ctx context.Context, ref objects.Reference) (io.ReadCloser, error)
+}
 
 type Importer struct {
 	Pool  *pgxpool.Pool
-	Blobs *blob.Store
+	Blobs objectStore
 	Temp  string
 }
 type Archive struct {
-	Media                 map[string]blob.Reference
+	Media                 map[string]objects.Reference
 	ExpectedSHA           string
 	Root, Channel, Course int64
 	After, Before         int64
 }
 type ImportResult struct {
 	Path                    string
-	Object                  blob.Reference
+	Object                  objects.Reference
 	Messages, Conversations int64
 }
 
@@ -62,11 +68,11 @@ func (s Importer) importTx(ctx context.Context, tx pgx.Tx, source Archive, input
 	}
 	defer os.Remove(file.Name())
 	defer file.Close()
-	size, err := io.Copy(file, io.LimitReader(input, blob.MaxSourceBytes+1))
+	size, err := io.Copy(file, io.LimitReader(input, objects.MaxSourceBytes+1))
 	if err != nil {
 		return result, err
 	}
-	if size == 0 || size > blob.MaxSourceBytes {
+	if size == 0 || size > objects.MaxSourceBytes {
 		return result, errors.New("Discord export must contain 1 byte to 50 MiB")
 	}
 	if _, err = file.Seek(0, io.SeekStart); err != nil {
@@ -121,7 +127,7 @@ func (s Importer) registerArchive(
 	h exportHeader,
 	result ImportResult,
 ) (ImportResult, error) {
-	if err := storage.RegisterObject(ctx, tx, result.Object); err != nil {
+	if err := objects.RegisterObject(ctx, tx, result.Object); err != nil {
 		return result, err
 	}
 	if err := publishArchive(ctx, tx, source, h, result); err != nil {

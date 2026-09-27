@@ -59,7 +59,7 @@ also traverses Go files inside frontend dependencies). Opt-in native integration
 tests use `TREE_NATIVE_TESTS=1` and `TREE_TEST_WEED` pointing to the verified pinned
 SeaweedFS binary. They create and remove private synthetic clusters and never use
 `DATABASE_URL` or the authoritative dataset. SQL queries are generated with sqlc
-from `backend/internal/infrastructure/storage/queries/*.sql`; qualify schema names in migrations because
+from `backend/internal/domain/queries/*.sql`; qualify schema names in migrations because
 sqlc does not interpret the legacy `SET search_path` statements as PostgreSQL does.
 Applied migration bytes are immutable release data: never reformat or edit an
 applied migration; append a new migration for schema changes.
@@ -434,7 +434,12 @@ progress updates independently of immutable guidance.
   `backend/internal/integrations/`, runtime adapters in
   `backend/internal/infrastructure/`, and HTTP/lifecycle entrypoints under
   `backend/internal/app/`. Preserve the explicit parser boundary
-  under `parser/`.
+  under `parser/`. Domain owns its ports and generated query models under
+  `backend/internal/domain/` (`queries`, `objects`, `commands`, `extract`,
+  `inference`, `scheduler`, `platform`); outer layers implement those ports and
+  must never be imported by domain code. Enforced by
+  `backend/.go-arch-lint.yml` via `go tool go-arch-lint check` in `backend/`
+  (also gated in CI).
 - **Compliance gate**: `python3 scripts/quality/audit_limits.py` (repo root) — exit 0 = compliant.
 
 ## Known deliberate removals

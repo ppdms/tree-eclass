@@ -6,13 +6,13 @@ import (
 	"reflect"
 	"testing"
 
-	"tree-eclass/internal/integrations/parser"
+	"tree-eclass/internal/domain/extract"
 )
 
 func TestChunkFixture(t *testing.T) {
 	var fixture struct {
 		Document, Hash string
-		Unit           parser.Record
+		Unit           extract.Record
 		Chunks         []Chunk
 	}
 	b, err := os.ReadFile("testdata/chunks.json")

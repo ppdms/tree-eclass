@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"tree-eclass/internal/app/server"
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func (c *Controller) application(ctx context.Context) error {

@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"time"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 const pythonVersion = "3.14.7"

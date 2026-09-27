@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 // This is the complete Python runtime boundary. Business services, credentials,

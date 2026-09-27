@@ -16,57 +16,16 @@ import (
 	"syscall"
 	"time"
 
+	"tree-eclass/internal/domain/extract"
 	"tree-eclass/internal/infrastructure/process"
 )
 
-type Source struct {
-	CourseID        int64   `json:"course_id"`
-	CourseName      string  `json:"course_name"`
-	CourseShortName *string `json:"course_short_name"`
-	SourcePath      string  `json:"source_path"`
-	SourceURL       *string `json:"source_url"`
-	DisplayName     string  `json:"display_name"`
-	SourceHash      string  `json:"source_hash"`
-	MIMEType        string  `json:"mime_type"`
-}
-type Request struct {
-	ArchiveFormat string         `json:"archive_format,omitempty"`
-	Operation     string         `json:"operation"`
-	Path          string         `json:"path"`
-	Output        string         `json:"output"`
-	Kind          string         `json:"kind,omitempty"`
-	Source        *Source        `json:"source,omitempty"`
-	Limits        map[string]any `json:"limits,omitempty"`
-	Options       map[string]any `json:"options,omitempty"`
-	Pages         []int          `json:"pages,omitempty"`
-	MemberChain   []string       `json:"member_chain,omitempty"`
-}
-type Record struct {
-	Type           string         `json:"type"`
-	Title          string         `json:"title"`
-	Kind           string         `json:"kind"`
-	Text           string         `json:"text"`
-	LocatorType    string         `json:"locator_type"`
-	LocatorStart   string         `json:"locator_start"`
-	LocatorEnd     *string        `json:"locator_end"`
-	Heading        *string        `json:"heading"`
-	Metadata       map[string]any `json:"metadata"`
-	Warnings       []string       `json:"warnings"`
-	Path           string         `json:"path"`
-	Bytes          int64          `json:"bytes"`
-	Page           int            `json:"page"`
-	Reason         string         `json:"reason"`
-	Message        string         `json:"message"`
-	MemberPath     string         `json:"member_path"`
-	MemberChain    []string       `json:"member_chain"`
-	ContentHash    string         `json:"content_hash"`
-	CRC32          uint32         `json:"crc32"`
-	ExpandedSize   int64          `json:"expanded_size"`
-	CompressedSize int64          `json:"compressed_size"`
-	MIMEType       string         `json:"mime_type"`
-	Depth          int            `json:"depth"`
-	ArchiveFormat  string         `json:"archive_format"`
-}
+// Source, Request and Record are the shared extraction contract from
+// domain/extract; they remain identical types for every caller.
+type Source = extract.Source
+type Request = extract.Request
+type Record = extract.Record
+
 type Runner struct {
 	Python, Root, Temp string
 	Tessdata           string
@@ -79,6 +38,9 @@ type Runner struct {
 func New(python, root, temp string) *Runner {
 	return &Runner{Python: python, Root: root, Temp: temp, Timeout: 15 * time.Minute, gate: make(chan struct{}, 1)}
 }
+
+// OCREnabled reports whether tessdata was configured for image text extraction.
+func (r *Runner) OCREnabled() bool { return r.Tessdata != "" }
 
 // Run calls consume synchronously. Artifact paths exist only during this call;
 // the caller must stream them into durable storage before consume returns.

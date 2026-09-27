@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"tree-eclass/internal/integrations/inference"
+	"tree-eclass/internal/domain/inference"
 )
 
 type memoryStore struct {

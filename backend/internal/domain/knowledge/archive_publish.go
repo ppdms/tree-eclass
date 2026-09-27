@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 
 	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/jobs"
-	"tree-eclass/internal/infrastructure/storage"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/objects"
+	"tree-eclass/internal/domain/queries"
 )
 
 func publishArchive(ctx context.Context, tx pgx.Tx, parent queries.KnowledgeDocument, members []archiveMember) error {
@@ -33,7 +33,7 @@ func publishMember(ctx context.Context, tx pgx.Tx, parent queries.KnowledgeDocum
 	if err := q.QueueLock(ctx, "document:"+m.ID); err != nil {
 		return err
 	}
-	if err := storage.RegisterObject(ctx, tx, o); err != nil {
+	if err := objects.RegisterObject(ctx, tx, o); err != nil {
 		return err
 	}
 	if err := q.RegisterRevision(
@@ -56,7 +56,7 @@ func publishMember(ctx context.Context, tx pgx.Tx, parent queries.KnowledgeDocum
 		return err
 	}
 	if status == "pending" {
-		_, err = jobs.EnqueueTx(ctx, tx, "index", "index_document", map[string]string{"document_id": m.ID}, false)
+		_, err = commands.EnqueueTx(ctx, tx, "index", "index_document", map[string]string{"document_id": m.ID}, false)
 	}
 	return err
 }

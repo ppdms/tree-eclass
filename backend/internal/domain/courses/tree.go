@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/queries"
 )
 
 type Node struct {

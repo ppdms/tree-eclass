@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 // Download verifies immutable source identity while streaming to an owned spool.

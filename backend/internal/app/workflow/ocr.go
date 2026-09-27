@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 const tessdataRevision = "87416418657359cb625c412a48b6e1d6d41c29bd"

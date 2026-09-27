@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/notifications"
-	"tree-eclass/internal/infrastructure/storage/queries"
 	"tree-eclass/internal/integrations/eclass"
 )
 

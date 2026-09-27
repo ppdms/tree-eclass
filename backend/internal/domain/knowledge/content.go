@@ -5,11 +5,11 @@ import (
 	"path"
 
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/blob"
+	"tree-eclass/internal/domain/objects"
 )
 
 type Content struct {
-	Object blob.Reference
+	Object objects.Reference
 	Name   string
 }
 

@@ -3,7 +3,9 @@ package identity
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"unicode"
 
@@ -40,4 +42,14 @@ func Encode(text string) string {
 }
 func Decode(text string) string {
 	return strings.NewReplacer("\ue0000", "\x00", "\ue000e", "\ue000").Replace(text)
+}
+
+// ValidURL rejects webhook targets that are not plain absolute HTTP(S) URLs.
+func ValidURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || len(raw) > 4096 || u.Hostname() == "" || u.User != nil || u.Fragment != "" ||
+		(u.Scheme != "https" && u.Scheme != "http") {
+		return errors.New("webhook must be an absolute HTTP or HTTPS URL without user information or fragment")
+	}
+	return nil
 }

@@ -35,6 +35,10 @@ jobs:
       - name: Enforce source code limits
         run: python3 scripts/quality/audit_limits.py
 
+      - name: Check Go architecture boundaries
+        working-directory: backend
+        run: go tool go-arch-lint check
+
       - name: Lint JS/JSX (Oxlint)
         working-directory: frontend
         run: bun run lint

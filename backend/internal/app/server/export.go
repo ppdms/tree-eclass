@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func (s *Server) exportLearner(w http.ResponseWriter, r *http.Request) {

@@ -13,11 +13,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/text/unicode/norm"
+	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/jobs"
-	"tree-eclass/internal/infrastructure/storage"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/objects"
+	"tree-eclass/internal/domain/queries"
 )
 
 var ErrDuplicate = errors.New("a file with this name already exists")
@@ -33,7 +32,7 @@ var TypeFolders = map[string]string{
 }
 
 type ObjectWriter interface {
-	Put(context.Context, io.Reader, string, string) (blob.Reference, error)
+	Put(context.Context, io.Reader, string, string) (objects.Reference, error)
 }
 type Service struct {
 	Pool    *pgxpool.Pool
@@ -47,7 +46,7 @@ type Upload struct {
 }
 type Result struct {
 	DocumentID, RevisionID, Path, Kind, CommandID string
-	Object                                        blob.Reference
+	Object                                        objects.Reference
 }
 
 func Filename(raw string) (string, error) {
@@ -152,7 +151,7 @@ func (s Service) publish(
 	if err = observeUpload(ctx, q, course, upload, result, name); err != nil {
 		return "", err
 	}
-	command, err := jobs.EnqueueTx(
+	command, err := commands.EnqueueTx(
 		ctx,
 		tx,
 		"index",
@@ -167,7 +166,7 @@ func (s Service) publish(
 }
 
 func (result Result) stage(ctx context.Context, tx pgx.Tx, q *queries.Queries, course queries.AppCourse) error {
-	if err := storage.RegisterObject(ctx, tx, result.Object); err != nil {
+	if err := objects.RegisterObject(ctx, tx, result.Object); err != nil {
 		return err
 	}
 	return q.RegisterRevision(

@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/checkpoint"
-	"tree-eclass/internal/infrastructure/platform"
 	"tree-eclass/internal/infrastructure/process"
 )
 

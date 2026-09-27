@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/blob"
+	"tree-eclass/internal/domain/objects"
 )
 
 // ReindexMapped repairs one archive after a channel is assigned to another
@@ -28,22 +28,22 @@ func (s Importer) ReindexMapped(ctx context.Context) (bool, error) {
 		return false, errors.New("Discord media catalog exceeds limit")
 	}
 	source.ExpectedSHA = object.SHA256
-	content, err := s.Blobs.Get(ctx, object, "")
+	content, err := s.Blobs.Open(ctx, object)
 	if err != nil {
 		return false, err
 	}
-	defer content.Body.Close()
-	_, err = s.Import(ctx, source, content.Body)
+	defer content.Close()
+	_, err = s.Import(ctx, source, content)
 	if err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-func (s Importer) loadMappedSource(ctx context.Context) (string, Archive, blob.Reference, error) {
+func (s Importer) loadMappedSource(ctx context.Context) (string, Archive, objects.Reference, error) {
 	var source Archive
 	var path string
-	var object blob.Reference
+	var object objects.Reference
 	err := s.Pool.QueryRow(ctx, `SELECT a.path,a.root_id::bigint,a.channel_id,m.course_id,o.bucket,o.key,o.version_id,o.sha256,o.bytes,o.media_type
  FROM messages.archive_sources a JOIN app.discord_course_channels m ON m.root_channel_id=a.root_id JOIN app.objects o ON o.id=a.object_id
  WHERE a.course_id<>m.course_id ORDER BY a.indexed_at,a.path LIMIT 1`).
@@ -62,8 +62,8 @@ func (s Importer) loadMappedSource(ctx context.Context) (string, Archive, blob.R
 	return path, source, object, err
 }
 
-func (s Importer) loadArchiveMedia(ctx context.Context, path string) (map[string]blob.Reference, error) {
-	media := map[string]blob.Reference{}
+func (s Importer) loadArchiveMedia(ctx context.Context, path string) (map[string]objects.Reference, error) {
+	media := map[string]objects.Reference{}
 	rows, err := s.Pool.Query(
 		ctx,
 		`SELECT am.relative_path,o.bucket,o.key,o.version_id,o.sha256,o.bytes,o.media_type FROM messages.archive_media am JOIN app.objects o ON o.id=am.object_id WHERE am.source_path=$1 LIMIT 2001`,
@@ -75,7 +75,7 @@ func (s Importer) loadArchiveMedia(ctx context.Context, path string) (map[string
 	defer rows.Close()
 	for rows.Next() {
 		var name string
-		var ref blob.Reference
+		var ref objects.Reference
 		if err = rows.Scan(
 			&name,
 			&ref.Bucket,

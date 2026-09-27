@@ -14,8 +14,8 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 	"tree-eclass/internal/domain/materials"
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/platform"
 )
 
 const (

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 )
 
 func (s Store) journalPath() string { return filepath.Join(s.Root, "restore.json") }

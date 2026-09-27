@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/storage/queries"
+	"tree-eclass/internal/domain/queries"
 )
 
 func TestCatalogTreePreservesPathsAndRejectsDisconnectedNodes(t *testing.T) {

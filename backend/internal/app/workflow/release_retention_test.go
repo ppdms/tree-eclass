@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/checkpoint"
-	"tree-eclass/internal/infrastructure/platform"
 )
 
 func TestReleaseRetentionProtectsCodeNeededByData(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/storage/queries"
 )
 
 func resourceDocument(ctx context.Context, tx pgx.Tx, id string) (queries.KnowledgeDocument, error) {

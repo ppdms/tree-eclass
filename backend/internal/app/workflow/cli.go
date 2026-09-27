@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"tree-eclass/internal/infrastructure/platform"
+	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/process"
 	"tree-eclass/internal/services/library"
 )

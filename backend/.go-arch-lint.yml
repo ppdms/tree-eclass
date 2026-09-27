@@ -1,0 +1,35 @@
+version: 3
+workdir: internal
+allow:
+  depOnAnyVendor: true
+
+excludeFiles:
+  - "^.*_test\\.go$"
+
+components:
+  domain: { in: domain/** }
+  infrastructure: { in: infrastructure/** }
+  integrations: { in: integrations/** }
+  services: { in: services/** }
+  app: { in: app/** }
+
+deps:
+  domain:
+    mayDependOn:
+      - domain
+  infrastructure:
+    mayDependOn:
+      - domain
+      - infrastructure
+  integrations:
+    mayDependOn:
+      - domain
+      - infrastructure
+      - integrations
+  services:
+    mayDependOn:
+      - domain
+      - infrastructure
+      - integrations
+  app:
+    anyProjectDeps: true
