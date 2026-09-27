@@ -47,16 +47,25 @@ func (c *Controller) ExportS3(ctx context.Context, args []string) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, c.stopAll()) }()
-	if err = c.startPostgres(ctx); err != nil {
+	return c.runExport(ctx, endpoint, access, secret, out)
+}
+
+func (c *Controller) runExport(ctx context.Context, endpoint, access, secret, out string) error {
+	if err := c.startPostgres(ctx); err != nil {
 		return err
 	}
-	if err = c.waitDatabase(ctx); err != nil {
+	if err := c.waitDatabase(ctx); err != nil {
 		return err
 	}
 	rows, err := c.registeredObjects(ctx)
 	if err != nil {
 		return err
 	}
+	stopWeed, err := c.startLegacyWeed(ctx, endpoint, access, secret)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = stopWeed() }()
 	client := s3.New(s3.Options{
 		Region: "us-east-1", BaseEndpoint: aws.String(endpoint), UsePathStyle: true,
 		Credentials: credentials.NewStaticCredentialsProvider(access, secret, ""),
@@ -213,15 +222,15 @@ func (c *Controller) legacyS3Target(endpoint, access, secret string) (string, st
 		return "", "", "", err
 	}
 	if endpoint == "" {
-		if port := legacyNumber(raw, "ports", "s3"); port > 0 {
+		if port := legacyNumber(raw, "ports", "S3"); port > 0 {
 			endpoint = fmt.Sprintf("http://127.0.0.1:%d", int(port))
 		}
 	}
 	if access == "" {
-		access = legacyString(raw, "s3_access")
+		access = legacyValue(raw, "s3_access")
 	}
 	if secret == "" {
-		secret = legacyString(raw, "s3_secret")
+		secret = legacyValue(raw, "s3_secret")
 	}
 	if endpoint == "" || access == "" || secret == "" {
 		return "", "", "", errors.New(
@@ -246,15 +255,44 @@ func legacyConfig(path string) (map[string]any, error) {
 	return raw, nil
 }
 
-func legacyString(raw map[string]any, name string) string {
-	value, _ := raw[name].(string)
-	return value
+func legacyNumber(raw map[string]any, section, name string) float64 {
+	return legacyGroupNumber(legacyGroup(raw, section), name)
 }
 
-func legacyNumber(raw map[string]any, section, name string) float64 {
-	group, _ := raw[section].(map[string]any)
-	value, _ := group[name].(float64)
-	return value
+func legacyGroup(raw map[string]any, section string) map[string]any {
+	if group, ok := raw[section].(map[string]any); ok {
+		return group
+	}
+	for key, value := range raw {
+		if group, ok := value.(map[string]any); ok && strings.EqualFold(key, section) {
+			return group
+		}
+	}
+	return nil
+}
+
+func legacyGroupNumber(group map[string]any, name string) float64 {
+	if value, ok := group[name].(float64); ok {
+		return value
+	}
+	for key, value := range group {
+		if number, ok := value.(float64); ok && strings.EqualFold(key, name) {
+			return number
+		}
+	}
+	return 0
+}
+
+func legacyValue(raw map[string]any, name string) string {
+	if value, ok := raw[name].(string); ok {
+		return value
+	}
+	for key, value := range raw {
+		if text, ok := value.(string); ok && strings.EqualFold(key, name) {
+			return text
+		}
+	}
+	return ""
 }
 
 // parseExportFlags accepts --name value and --name=value for the four
