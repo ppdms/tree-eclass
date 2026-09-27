@@ -25,14 +25,33 @@ import (
 // moved onto the local filesystem; the AWS SDK remains in the build only for
 // this command.
 func (c *Controller) ExportS3(ctx context.Context, args []string) (err error) {
+	flags, err := parseExportFlags(args)
+	if err != nil {
+		return err
+	}
+	if flags.external {
+		if flags.databaseURL == "" {
+			return errors.New("storage export-s3 --external requires --database-url")
+		}
+		if flags.endpoint == "" || flags.access == "" || flags.secret == "" {
+			return errors.New("storage export-s3 --external requires --endpoint, --access and --secret")
+		}
+		out := flags.out
+		if out == "" {
+			return errors.New("storage export-s3 --external requires --out")
+		}
+		if err = os.MkdirAll(out, 0700); err != nil {
+			return err
+		}
+		// Server deployment: PostgreSQL and SeaweedFS already run as
+		// containers and the API stays stopped out-of-band (verified with
+		// systemctl); no native processes are started or stopped here.
+		return c.runExportExternal(ctx, flags.endpoint, flags.access, flags.secret, out, flags.databaseURL)
+	}
 	if err = c.configured(); err != nil {
 		return err
 	}
 	if err = c.stopped(); err != nil {
-		return err
-	}
-	flags, err := parseExportFlags(args)
-	if err != nil {
 		return err
 	}
 	endpoint, access, secret, err := c.legacyS3Target(flags.endpoint, flags.access, flags.secret)
@@ -81,6 +100,29 @@ func (c *Controller) runExport(ctx context.Context, endpoint, access, secret, ou
 	return nil
 }
 
+// runExportExternal migrates using already-running PostgreSQL and SeaweedFS
+// (server deployment): no native processes are started or stopped. The caller
+// guarantees the API is stopped; databaseURL is the full catalog URL.
+func (c *Controller) runExportExternal(ctx context.Context, endpoint, access, secret, out, databaseURL string) error {
+	rows, err := c.registeredObjectsURL(ctx, databaseURL)
+	if err != nil {
+		return err
+	}
+	client := s3.New(s3.Options{
+		Region: "us-east-1", BaseEndpoint: aws.String(endpoint), UsePathStyle: true,
+		Credentials: credentials.NewStaticCredentialsProvider(access, secret, ""),
+	})
+	exported, existing, failures := exportObjects(ctx, client, out, rows)
+	fmt.Printf(
+		"storage export-s3: %d registered objects; %d exported, %d already present, %d failed into %s\n",
+		len(rows), exported, existing, len(rows)-exported-existing, out,
+	)
+	if failures != nil {
+		return fmt.Errorf("export incomplete: %w", failures)
+	}
+	return nil
+}
+
 type legacyObject struct {
 	key    string
 	sha256 string
@@ -91,7 +133,11 @@ type legacyObject struct {
 // lossless export can be verified against the database rather than a bucket
 // listing.
 func (c *Controller) registeredObjects(ctx context.Context) ([]legacyObject, error) {
-	conn, err := pgx.Connect(ctx, c.databaseURL())
+	return c.registeredObjectsURL(ctx, c.databaseURL())
+}
+
+func (c *Controller) registeredObjectsURL(ctx context.Context, databaseURL string) ([]legacyObject, error) {
+	conn, err := pgx.Connect(ctx, databaseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -295,16 +341,21 @@ func legacyValue(raw map[string]any, name string) string {
 	return ""
 }
 
-// parseExportFlags accepts --name value and --name=value for the four
-// migration options.
+// parseExportFlags accepts --name value and --name=value options;
+// --external is a bare flag.
 func parseExportFlags(args []string) (exportFlags, error) {
 	flags := exportFlags{}
 	values := map[string]*string{
 		"endpoint": &flags.endpoint, "access": &flags.access,
 		"secret": &flags.secret, "out": &flags.out,
+		"database-url": &flags.databaseURL,
 	}
-	const usage = "usage: storage export-s3 [--endpoint URL] [--access KEY] [--secret KEY] [--out DIR]"
+	const usage = "usage: storage export-s3 [--endpoint URL] [--access KEY] [--secret KEY] [--out DIR] [--database-url URL] [--external]"
 	for i := 0; i < len(args); i++ {
+		if args[i] == "--external" {
+			flags.external = true
+			continue
+		}
 		if !strings.HasPrefix(args[i], "--") {
 			return flags, fmt.Errorf("unexpected argument %q; %s", args[i], usage)
 		}
@@ -325,4 +376,7 @@ func parseExportFlags(args []string) (exportFlags, error) {
 	return flags, nil
 }
 
-type exportFlags struct{ endpoint, access, secret, out string }
+type exportFlags struct {
+	endpoint, access, secret, out, databaseURL string
+	external                                   bool
+}
