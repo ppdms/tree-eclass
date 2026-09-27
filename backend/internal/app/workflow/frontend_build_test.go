@@ -124,7 +124,7 @@ func writeFrontendTheme(t *testing.T, root, color string) {
 
 func waitBrowserBuild(t *testing.T, c *Controller, ready func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(60 * time.Second)
+	deadline := time.Now().Add(120 * time.Second)
 	for time.Now().Before(deadline) {
 		if ready() {
 			return

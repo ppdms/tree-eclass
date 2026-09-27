@@ -139,12 +139,9 @@ func setupSharedNativeEnvironment() (*sharedNativeEnvironment, error) {
 		},
 	}
 	c.Processes = process.Manager{Root: filepath.Join(root, "processes"), Executable: executable}
-	version, err := exec.Command(filepath.Join(pg, "postgres"), "--version").Output()
-	if err != nil {
-		_ = os.RemoveAll(root)
+	if err := detectPostgresVersion(pg, root, &c.Config); err != nil {
 		return nil, err
 	}
-	c.Config.PostgresVersion = strings.TrimSpace(string(version))
 	ctx := context.Background()
 	cleanup := true
 	defer func() {
@@ -212,4 +209,14 @@ func (s *sharedNativeEnvironment) admin(ctx context.Context) (*pgx.Conn, error) 
 	}
 	config.Database = "postgres"
 	return pgx.ConnectConfig(ctx, config)
+}
+
+func detectPostgresVersion(pg, root string, cfg *Config) error {
+	version, err := exec.Command(filepath.Join(pg, "postgres"), "--version").Output()
+	if err != nil {
+		_ = os.RemoveAll(root)
+		return err
+	}
+	cfg.PostgresVersion = strings.TrimSpace(string(version))
+	return nil
 }
