@@ -107,7 +107,7 @@ func productionMemoryChecks(t *testing.T, fixture productionFrontendFixture) map
 	c := fixture.c
 	rss := map[string]int64{}
 	var err error
-	for _, name := range []string{"api", "postgres", "seaweed"} {
+	for _, name := range []string{"api", "postgres"} {
 		var record process.Record
 		if err := platform.ReadJSON(filepath.Join(c.Processes.Root, name, "process.json"), &record); err != nil {
 			t.Fatal(err)

@@ -165,8 +165,8 @@ func discordIntervalMappingChecks(t *testing.T, fixture *discordIntervalFixture,
 	t.Helper()
 	ctx, c, pool, objects, temp := fixture.ctx, fixture.c, fixture.pool, fixture.objects, fixture.temp
 	api, err := server.New(ctx, server.Config{
-		Mode: "test", DatabaseURL: c.databaseURL(), S3Endpoint: c.endpoint(),
-		S3Access: c.Config.S3Access, S3Secret: c.Config.S3Secret, Temp: temp,
+		Mode: "test", DatabaseURL: c.databaseURL(),
+		ObjectsRoot: c.testObjectsRoot(), Temp: temp,
 	})
 	if err != nil {
 		t.Fatal(err)

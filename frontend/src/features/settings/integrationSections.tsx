@@ -86,15 +86,10 @@ export function StorageSection({ data }: { data: SettingsPayload }) {
       title="Document storage"
       collapsible
       defaultOpen={false}
-      status={data.storage?.configured ? 'Local SeaweedFS' : 'Not configured'}
+      status={data.storage?.configured ? 'Local storage' : 'Not configured'}
       description="Course files and their previous versions are stored on this laptop."
     >
-      <p>Storage starts and stops with the application. Its credentials are managed by the native launcher.</p>
-      {data.storage?.endpoint && (
-        <p>
-          Local endpoint: <code>{data.storage.endpoint}</code>
-        </p>
-      )}
+      <p>Storage starts and stops with the application; files are kept on this laptop.</p>
       <ConnectionTest endpoint="/api/settings/test-storage" label="Check document storage" />
       <CheckFailureSignal />
     </Section>

@@ -150,7 +150,7 @@ func (c *Controller) Down() error {
 }
 
 func (c *Controller) versions() map[string]string {
-	return map[string]string{"postgres": c.Config.PostgresVersion, "seaweedfs": c.Config.WeedVersion}
+	return map[string]string{"postgres": c.Config.PostgresVersion, "objects": objectsFormat}
 }
 
 func (c *Controller) SnapshotRestore(id string) error {
@@ -165,7 +165,12 @@ func (c *Controller) SnapshotRestore(id string) error {
 			"development checkpoints cannot replace stable data; exit development to restore its baseline",
 		)
 	}
-	if m.Versions["postgres"] != c.Config.PostgresVersion || m.Versions["seaweedfs"] != c.Config.WeedVersion {
+	if m.Versions["objects"] == "" {
+		return errors.New(
+			"checkpoint predates filesystem object storage and cannot be restored; run ./tree storage export-s3, then take a new checkpoint",
+		)
+	}
+	if m.Versions["postgres"] != c.Config.PostgresVersion || m.Versions["objects"] != objectsFormat {
 		return errors.New("checkpoint requires different infrastructure binaries")
 	}
 	if err = c.Down(); err != nil {

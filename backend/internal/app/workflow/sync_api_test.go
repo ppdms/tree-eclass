@@ -18,9 +18,7 @@ func syncAPIChecks(t *testing.T, c *Controller) {
 		t.Context(),
 		server.Config{
 			DatabaseURL:     c.databaseURL(),
-			S3Endpoint:      c.endpoint(),
-			S3Access:        c.Config.S3Access,
-			S3Secret:        c.Config.S3Secret,
+			ObjectsRoot:     c.testObjectsRoot(),
 			Mode:            "test",
 			ExternalWorkers: true,
 		},

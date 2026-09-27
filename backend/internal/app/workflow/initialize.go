@@ -50,7 +50,7 @@ func (c *Controller) initialize(ctx context.Context) error {
 	if err = os.Remove(password); err != nil {
 		return err
 	}
-	for _, dir := range []string{"seaweed", "settings", "exports"} {
+	for _, dir := range []string{"objects", "settings", "exports"} {
 		if err = os.Mkdir(filepath.Join(temp, dir), 0700); err != nil {
 			return err
 		}
@@ -58,9 +58,9 @@ func (c *Controller) initialize(ctx context.Context) error {
 	if err = platform.WriteJSON(
 		filepath.Join(temp, "dataset.json"),
 		map[string]any{
-			"format":    1,
-			"postgres":  c.Config.PostgresVersion,
-			"seaweedfs": c.Config.WeedVersion,
+			"format":   2,
+			"postgres": c.Config.PostgresVersion,
+			"objects":  objectsFormat,
 		},
 	); err != nil {
 		return err

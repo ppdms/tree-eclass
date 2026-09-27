@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/blob"
@@ -16,7 +15,7 @@ import (
 )
 
 // Containers use the same finite-writer journal and helper ownership protocol.
-// The orchestrator owns PostgreSQL/S3 and must checkpoint them while stopped
+// The orchestrator owns PostgreSQL and must checkpoint it while stopped
 // before explicitly invoking container-migrate for an application upgrade.
 func containerRuntime(ctx context.Context, cfg Config, migrate bool) (err error) {
 	if !filepath.IsAbs(cfg.Temp) || cfg.Temp == "/" || cfg.Session == "" || cfg.Mode != "stable" {
@@ -90,34 +89,17 @@ func stopContainer(manager process.Manager, root string) error {
 }
 
 func setupContainerObjects(ctx context.Context, cfg Config) (err error) {
-	// Keep exclusive DB admission while configuring the application's S3 buckets.
+	// Keep exclusive DB admission while configuring the application's object store.
 	db, err := storage.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	objects, err := blob.New(cfg.S3Endpoint, cfg.S3Access, cfg.S3Secret)
+	objects, err := blob.New(cfg.ObjectsRoot)
 	if err != nil {
 		return err
 	}
-	ready, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	retry := time.NewTimer(0)
-	if !retry.Stop() {
-		<-retry.C
-	}
-	defer retry.Stop()
-	for {
-		if err = objects.Setup(ready); err == nil {
-			return nil
-		}
-		retry.Reset(time.Second)
-		select {
-		case <-ready.Done():
-			return errors.Join(err, ready.Err())
-		case <-retry.C:
-		}
-	}
+	return objects.Setup(ctx)
 }
 
 func containerTools(cfg *Config) error {

@@ -54,8 +54,8 @@ func newMaterialPublicationFixture(t *testing.T) *materialPublicationFixture {
 		t.Fatal(err)
 	}
 	api, err := server.New(ctx, server.Config{
-		DatabaseURL: c.databaseURL(), S3Endpoint: c.endpoint(),
-		S3Access: c.Config.S3Access, S3Secret: c.Config.S3Secret, Mode: "test",
+		DatabaseURL: c.databaseURL(), ObjectsRoot: c.testObjectsRoot(),
+		Mode:            "test",
 		ExternalWorkers: true,
 	})
 	if err != nil {

@@ -10,7 +10,7 @@ import (
 func fixture(t *testing.T) Store {
 	t.Helper()
 	s := Store{Root: t.TempDir(), Stopped: func() error { return nil }}
-	for _, dir := range []string{"postgres", "seaweed", "settings"} {
+	for _, dir := range []string{"postgres", "objects", "settings"} {
 		if err := os.MkdirAll(filepath.Join(s.Active(), dir), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -29,7 +29,7 @@ func TestInterruptedRestore(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, dir := range []string{"postgres", "seaweed", "settings"} {
+			for _, dir := range []string{"postgres", "objects", "settings"} {
 				if err = os.WriteFile(filepath.Join(s.Active(), dir, "content"), []byte("dev mutation"), 0600); err != nil {
 					t.Fatal(err)
 				}
@@ -53,7 +53,7 @@ func TestInterruptedRestore(t *testing.T) {
 			if err = s.Recover(); err != nil {
 				t.Fatal(err)
 			}
-			for _, dir := range []string{"postgres", "seaweed", "settings"} {
+			for _, dir := range []string{"postgres", "objects", "settings"} {
 				b, err := os.ReadFile(filepath.Join(s.Active(), dir, "content"))
 				if err != nil || string(b) != "stable" {
 					t.Fatalf("restore %s: %s %v", dir, b, err)

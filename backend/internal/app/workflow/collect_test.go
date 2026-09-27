@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5"
 
 	"tree-eclass/internal/infrastructure/blob"
@@ -17,13 +16,11 @@ import (
 )
 
 type objectCollectionFixture struct {
-	c              *Controller
-	ctx            context.Context
-	conn           *pgx.Conn
-	store          *blob.Store
-	refs           []blob.Reference
-	sdk            *s3.Client
-	foreignVersion *string
+	c     *Controller
+	ctx   context.Context
+	conn  *pgx.Conn
+	store *blob.Store
+	refs  []blob.Reference
 }
 
 func TestNativeObjectCollectionPreservesHistory(t *testing.T) {
@@ -63,15 +60,8 @@ func newObjectCollectionFixture(t *testing.T) *objectCollectionFixture {
 	c := nativeController(t)
 	ctx := t.Context()
 	conn, store := startTestStorage(t, c)
-	sdk := s3.New(
-		s3.Options{
-			Region: "us-east-1", BaseEndpoint: aws.String(c.endpoint()),
-			UsePathStyle: true,
-			Credentials:  credentials.NewStaticCredentialsProvider(c.Config.S3Access, c.Config.S3Secret, ""),
-		},
-	)
 	return &objectCollectionFixture{
-		c: c, ctx: ctx, conn: conn, store: store, refs: historicalObjects(t, ctx, conn, store), sdk: sdk,
+		c: c, ctx: ctx, conn: conn, store: store, refs: historicalObjects(t, ctx, conn, store),
 	}
 }
 
@@ -131,69 +121,73 @@ func seedCollectionReferences(t *testing.T, ctx context.Context, conn *pgx.Conn,
 
 func addOrphanObjects(t *testing.T, fixture *objectCollectionFixture) {
 	t.Helper()
-	ctx, sdk := fixture.ctx, fixture.sdk
-	// More than a page of versions exercises deleting the page's continuation key.
+	root := fixture.c.testObjectsRoot()
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Hundreds of unregistered content-addressed files exercise the bulk sweep.
 	for i := 0; i < 505; i++ {
-		key := fmt.Sprintf("objects/%064x", i)
-		if _, err := sdk.PutObject(
-			ctx,
-			&s3.PutObjectInput{
-				Bucket: aws.String(blob.DataBucket),
-				Key:    aws.String(key),
-				Body:   strings.NewReader("orphan"),
-			},
-		); err != nil {
+		if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("%064x", i)), []byte("orphan"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	foreign, err := sdk.PutObject(
-		ctx,
-		&s3.PutObjectInput{
-			Bucket: aws.String(blob.DataBucket),
-			Key:    aws.String("objects/foreign-file"),
-			Body:   strings.NewReader("preserve"),
-		},
-	)
-	if err != nil {
+	// Foreign namespaces: a non-hex file and a nested directory must survive every sweep.
+	if err := os.WriteFile(filepath.Join(root, "foreign-file"), []byte("preserve"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	fixture.foreignVersion = foreign.VersionId
+	nested := filepath.Join(root, "foreign-dir", "nested")
+	if err := os.MkdirAll(filepath.Dir(nested), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nested, []byte("preserve"), 0600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func verifyCollection(t *testing.T, fixture *objectCollectionFixture) {
 	t.Helper()
-	ctx, conn, store, refs, sdk := fixture.ctx, fixture.conn, fixture.store, fixture.refs, fixture.sdk
+	ctx, conn, store, refs := fixture.ctx, fixture.conn, fixture.store, fixture.refs
 	var count int
 	if err := conn.QueryRow(ctx, `SELECT count(*) FROM app.objects`).Scan(&count); err != nil || count != 7 {
 		t.Fatal("catalog lost history or retained abandoned entry", count, err)
 	}
 	for _, ref := range refs[:7] {
-		out, err := store.Get(ctx, ref, "")
+		object, err := store.Open(ctx, ref)
 		if err != nil {
 			t.Fatal("referenced historical object deleted", err)
 		}
-		b, err := io.ReadAll(out.Body)
-		out.Body.Close()
+		b, err := io.ReadAll(object)
+		object.Close()
 		if err != nil || len(b) == 0 {
 			t.Fatal("historical bytes unavailable", err)
 		}
 	}
-	if out, err := store.Get(ctx, refs[7], ""); err == nil {
-		out.Body.Close()
+	if object, err := store.Open(ctx, refs[7]); err == nil {
+		object.Close()
 		t.Fatal("unreferenced catalog object survived")
 	}
-	versions, err := sdk.ListObjectVersions(ctx, &s3.ListObjectVersionsInput{Bucket: aws.String(blob.DataBucket)})
-	if err != nil || len(versions.Versions) != 8 {
-		t.Fatal("orphan pagination or namespace preservation failed", len(versions.Versions), err)
+	root := fixture.c.testObjectsRoot()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err = sdk.HeadObject(
-		ctx,
-		&s3.HeadObjectInput{
-			Bucket:    aws.String(blob.DataBucket),
-			Key:       aws.String("objects/foreign-file"),
-			VersionId: fixture.foreignVersion,
-		},
-	); err != nil {
-		t.Fatal("foreign object deleted", err)
+	if len(entries) != 9 {
+		t.Fatal("orphan sweep or namespace preservation failed", len(entries))
+	}
+	kept := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		kept[entry.Name()] = true
+	}
+	for _, ref := range refs[:7] {
+		if !kept[ref.SHA256] {
+			t.Fatal("referenced object file missing", ref.SHA256)
+		}
+	}
+	if !kept["foreign-file"] {
+		t.Fatal("foreign object deleted")
+	}
+	nested, err := os.ReadFile(filepath.Join(root, "foreign-dir", "nested"))
+	if err != nil || string(nested) != "preserve" {
+		t.Fatal("foreign directory deleted", err)
 	}
 }

@@ -71,7 +71,6 @@ func (c *Controller) Check(ctx context.Context) (err error) {
 		cmd.Env = append(
 			c.buildEnvironment(),
 			"TREE_NATIVE_TESTS=1",
-			"TREE_TEST_WEED="+c.Config.Weed,
 			"TREE_TEST_TESSDATA="+c.Config.Tessdata,
 			"TREE_TEST_DISCORD="+c.Config.DiscordExporter,
 			"TREE_TEST_PYTHON_BASE="+c.pythonBase(),

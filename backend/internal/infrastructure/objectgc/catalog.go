@@ -45,7 +45,7 @@ func Collect(ctx context.Context, db *storage.Database, store *blob.Store) (Resu
 			return nil, err
 		}
 		rows, err := db.Pool.Query(ctx, `SELECT EXISTS(SELECT FROM app.objects o
-			WHERE o.bucket=$1 AND o.key=u.key AND o.version_id=u.version)
+			WHERE o.bucket=$1 AND o.key=u.key)
 			FROM unnest($2::text[], $3::text[]) WITH ORDINALITY u(key,version,n) ORDER BY n`, blob.DataBucket, keys, versions)
 		if err != nil {
 			return nil, err

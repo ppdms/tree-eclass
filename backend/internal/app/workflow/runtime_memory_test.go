@@ -91,7 +91,7 @@ func fixtureExtractionMemory(t *testing.T, c *Controller, before map[string]int6
 	}
 	after := map[string]int64{}
 	var total int64
-	for _, name := range []string{"api", "postgres", "seaweed"} {
+	for _, name := range []string{"api", "postgres"} {
 		var record process.Record
 		if err = platform.ReadJSON(filepath.Join(c.Processes.Root, name, "process.json"), &record); err != nil {
 			t.Fatal(err)

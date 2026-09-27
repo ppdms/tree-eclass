@@ -16,7 +16,7 @@ func collect(ctx context.Context, cfg Config) error {
 		return err
 	}
 	defer db.Close()
-	store, err := blob.New(cfg.S3Endpoint, cfg.S3Access, cfg.S3Secret)
+	store, err := blob.New(cfg.ObjectsRoot)
 	if err != nil {
 		return err
 	}

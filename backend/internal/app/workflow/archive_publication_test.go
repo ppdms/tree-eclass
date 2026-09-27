@@ -156,12 +156,12 @@ func archiveChildren(t *testing.T, fixture archivePublicationFixture) ([]string,
 		if err != nil {
 			t.Fatal(err)
 		}
-		source, err := fixture.objects.Get(ctx, content.Object, "")
+		source, err := fixture.objects.Open(ctx, content.Object)
 		if err != nil {
 			t.Fatal(err)
 		}
-		data, err := io.ReadAll(source.Body)
-		source.Body.Close()
+		data, err := io.ReadAll(source)
+		source.Close()
 		if err != nil {
 			t.Fatal(err)
 		}

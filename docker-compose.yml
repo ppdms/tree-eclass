@@ -10,6 +10,7 @@ x-api: &api
     GOMEMLIMIT: 192MiB
   volumes:
     - jobs:/jobs
+    - ${TREE_OBJECTS_DIR:?path to the host objects directory owned by uid 10001}:/data/objects
   secrets:
     - source: application
       target: application.json
@@ -50,52 +51,12 @@ services:
     stop_grace_period: 90s
     restart: 'no'
 
-  seaweed:
-    image: docker.io/chrislusf/seaweedfs:4.46
-    command:
-      - mini
-      - -dir=/data
-      - -ip=seaweed
-      - -ip.bind=0.0.0.0
-      - -master.telemetry=false
-      - -admin.ui=false
-      - -webdav=false
-      - -s3.port.iceberg=0
-      - -s3.port.lance=0
-      - -s3.iam=false
-      - -s3.config=/run/secrets/s3.json
-      - -s3.autoCreateBucket=false
-      - -s3.allowDeleteBucketNotEmpty=false
-      - -s3.cacheCapacityMB=0
-      - -master.volumeSizeLimitMB=128
-      - -volume.max=64
-      - -volume.index=leveldb
-      - -volume.readBufferSizeMB=1
-      - -filer.concurrentFileUploadLimit=1
-      - -s3.concurrentFileUploadLimit=1
-      - -s3.concurrentUploadLimitMB=64
-      - -volume.concurrentUploadLimitMB=64
-      - -volume.concurrentDownloadLimitMB=64
-      - -filer.disableDirListing=true
-      - -filer.exposeDirectoryData=false
-    environment:
-      GOMEMLIMIT: 192MiB
-    volumes:
-      - objects:/data
-    secrets:
-      - source: s3
-        target: s3.json
-    networks: [storage]
-    stop_grace_period: 90s
-    restart: 'no'
-
   migrate:
     <<: *api
     profiles: [maintenance]
     command: [container-migrate]
     depends_on:
       postgres: { condition: service_healthy }
-      seaweed: { condition: service_started }
 
   api:
     <<: *api
@@ -103,11 +64,9 @@ services:
     ports: [127.0.0.1:8000:8001]
     depends_on:
       postgres: { condition: service_healthy }
-      seaweed: { condition: service_started }
 
 volumes:
   postgres:
-  objects:
   jobs:
 
 networks:
@@ -118,7 +77,5 @@ networks:
 secrets:
   application:
     file: ${TREE_CONTAINER_CONFIG:?path to private application configuration}
-  s3:
-    file: ${TREE_S3_CONFIG:?path to private SeaweedFS identity configuration}
   postgres-password:
     file: ${TREE_POSTGRES_PASSWORD_FILE:?path to private PostgreSQL password file}

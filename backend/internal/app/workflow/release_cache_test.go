@@ -11,7 +11,7 @@ import (
 func TestBuildEnvironmentOmitsRuntimeFixtureVariables(t *testing.T) {
 	for _, name := range []string{
 		"TREE_NATIVE_TESTS", "TREE_NATIVE_TOOLS_TEST", "TREE_RUNTIME_CONFIG",
-		"TREE_FIXTURE_APPLICATION", "TREE_TEST_WEED",
+		"TREE_FIXTURE_APPLICATION",
 	} {
 		t.Setenv(name, "fixture")
 	}

@@ -76,8 +76,7 @@ func (c *Controller) startAPI(ctx context.Context, root, binary, code string, mi
 
 func (c *Controller) apiConfig(root, code, temp string) (server.Config, error) {
 	cfg := server.Config{
-		DatabaseURL: c.databaseURL(), S3Endpoint: c.endpoint(),
-		S3Access: c.Config.S3Access, S3Secret: c.Config.S3Secret,
+		DatabaseURL: c.databaseURL(), ObjectsRoot: c.objectsRoot(),
 		Address: fmt.Sprintf("127.0.0.1:%d", c.Config.Ports.HTTP),
 		Mode:    c.State.Mode, Release: c.State.Release, Session: c.State.Session,
 		Code: code, Temp: temp, ParserPython: pythonPath(root, c.State.Mode),

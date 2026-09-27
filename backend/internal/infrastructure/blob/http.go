@@ -2,16 +2,16 @@ package blob
 
 import (
 	"fmt"
-	"io"
 	"mime"
 	"net/http"
+	"os"
 	"strings"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
+	"time"
 )
 
-// Serve implements If-Range itself: SeaweedFS does not. A SHA-256 validator is
-// tied to the catalog revision, and range reads always pin that object's version.
+// Serve and ServeDownload keep the immutable SHA-256 validator contract: a
+// revision is pinned by its digest, so cached copies stay valid and range
+// reads always address the same bytes.
 func (s *Store) Serve(w http.ResponseWriter, r *http.Request, ref Reference, filename string) {
 	s.serve(w, r, ref, filename, "inline")
 }
@@ -45,23 +45,24 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request, ref Reference, fil
 		w.Header().Set("Content-Length", fmt.Sprint(ref.Bytes))
 		return
 	}
-	object, err := s.Get(r.Context(), ref, requested)
+	object, err := os.Open(s.path(ref.SHA256))
 	if err != nil {
-		if isCode(err, "InvalidRange") {
-			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", ref.Bytes))
-			w.WriteHeader(416)
-			return
-		}
 		http.Error(w, "Stored document is unavailable", http.StatusBadGateway)
 		return
 	}
-	defer object.Body.Close()
-	w.Header().Set("Content-Length", fmt.Sprint(aws.ToInt64(object.ContentLength)))
-	if object.ContentRange != nil {
-		w.Header().Set("Content-Range", *object.ContentRange)
-		w.WriteHeader(http.StatusPartialContent)
+	defer object.Close()
+	info, err := object.Stat()
+	if err == nil && info.Size() != ref.Bytes {
+		err = fmt.Errorf("stored object %s has %d bytes, expected %d", ref.Key, info.Size(), ref.Bytes)
 	}
-	_, _ = io.Copy(w, object.Body)
+	if err != nil {
+		http.Error(w, "Stored document is unavailable", http.StatusBadGateway)
+		return
+	}
+	if requested == "" {
+		r.Header.Del("Range")
+	}
+	http.ServeContent(w, r, "", time.Time{}, object)
 }
 
 func matches(values, tag string, weak bool) bool {

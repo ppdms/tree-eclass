@@ -156,8 +156,8 @@ func pdfDifferenceRouteChecks(t *testing.T, fixture *pdfDifferenceFixture) {
 		t.Fatal("invalid output catalog", object)
 	}
 	api, err := server.New(ctx, server.Config{
-		Mode: "test", DatabaseURL: c.databaseURL(), S3Endpoint: c.endpoint(),
-		S3Access: c.Config.S3Access, S3Secret: c.Config.S3Secret, Temp: fixture.temp,
+		Mode: "test", DatabaseURL: c.databaseURL(),
+		ObjectsRoot: c.testObjectsRoot(), Temp: fixture.temp,
 	})
 	if err != nil {
 		t.Fatal(err)

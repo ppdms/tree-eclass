@@ -2,7 +2,7 @@
 
 The laptop runs natively through `./tree` (see the README). This document is the
 contract for the optional Linux host: the same application, the same database
-schema and the same buckets, assembled from three images instead of Homebrew.
+schema and the same objects store, assembled from two images instead of Homebrew.
 
 `docker-compose.yml` is the reference assembly. The deployment on
 `sitzfleisch` uses the same topology with Podman Quadlets managed by the private
@@ -11,11 +11,10 @@ to run it, but the notes below are what that deployment depends on.
 
 ## Images
 
-| Role | Reference |
-| --- | --- |
+| Role                                                                   | Reference                          |
+| ---------------------------------------------------------------------- | ---------------------------------- |
 | Application (browser build, Go binary, parser, helpers, static assets) | built from `Dockerfile`, one image |
-| Database | `docker.io/library/postgres:18.6` |
-| Object storage | `docker.io/chrislusf/seaweedfs:4.46` |
+| Database                                                               | `docker.io/library/postgres:18.6`  |
 
 Base images in `Dockerfile` and `docker-compose.yml` are fully qualified
 (`docker.io/...`) because Podman enforces short-name resolution on hosts without
@@ -34,10 +33,10 @@ The compiled binary takes one of:
   `pdf_diff=/usr/local/bin/diff-pdf`. It validates that `temp` is absolute,
   `session` is non-empty and `mode` is `stable`.
 - `container-migrate` — the same wrapper running the child `migrate`: applies the
-  embedded Goose migrations, then creates/versions the S3 buckets. Run it while
-  no application instance is running; the advisory locks refuse otherwise
-  ("another application owns this database"). This is the **only** step that
-  creates buckets, and compose disables SeaweedFS auto-creation.
+  embedded Goose migrations, then creates the objects root and probe-writes it
+  (`blob.Setup`, mode 0700, idempotent). Run it while no application instance is
+  running; the advisory locks refuse otherwise ("another application owns this
+  database"). This is the **only** step that initializes the objects directory.
 - `migrate`, `collect`, `manifest`, `_supervise`, `_exec` — the native developer
   commands; `container-serve` never migrates, it only verifies the exact
   migration ledger at startup.
@@ -52,21 +51,19 @@ only these keys matter:
   "allowed_hosts": ["uni.apps.lan", "uni.ppdms.gr"],
   "allowed_origins": ["https://uni.apps.lan", "https://uni.ppdms.gr"],
   "database_url": "postgresql://tree:PASSWORD@tree-postgres:5432/tree_app?sslmode=disable",
-  "s3_endpoint": "http://tree-seaweed:8333",
-  "s3_access": "ACCESS_KEY",
-  "s3_secret": "SECRET_KEY",
+  "objects_root": "/data/objects",
   "address": "0.0.0.0:8001",
   "mode": "stable",
   "release": "3d125a3",
   "session": "RANDOM_SESSION_TOKEN",
   "temp": "/jobs",
   "external_workers": true,
-  "provider_keys": {"ZAI_API_KEY": "..."}
+  "provider_keys": { "ZAI_API_KEY": "..." }
 }
 ```
 
-- `database_url`, `s3_endpoint`, `s3_access`, `s3_secret`, `mode` and `session`
-  are mandatory; `address` defaults to port 80 if omitted.
+- `database_url`, `objects_root`, `mode` and `session` are mandatory; `address`
+  defaults to port 80 if omitted.
 - `external_workers` **must be `true`**: with the zero value the sync, Discord,
   notification and analysis workers park and their triggers answer 503.
 - `allowed_hosts` / `allowed_origins` must contain every name a reverse proxy
@@ -82,20 +79,14 @@ only these keys matter:
   `public.tree_go_migrations` ledger, so an existing pre-rewrite (Python-era)
   database cannot be adopted: create a fresh one. There is no SQLite import
   path; `eclass.db`, `knowledge.db` and `discord_knowledge.db` are legacy files.
-- **Buckets** — `tree-eclass-data` (versioned; every write needs a version id)
-  and `tree-eclass-cache` (7-day expiry). Keys are `objects/<sha256>`, objects
-  are capped at 50 MiB.
-- **SeaweedFS identity** (`-s3.config`, `s3.json`) — the shape the native
-  controller writes:
-
-```json
-{"identities":[{"name":"tree","credentials":[{"accessKey":"...","secretKey":"..."}],
-                "actions":["Admin","Read","Write","List","Tagging"]}]}
-```
-
-  `Admin` is required because `blob.Setup` creates buckets, enables versioning
-  and sets the cache lifecycle. `accessKey`/`secretKey` must equal `s3_access`
-  and `s3_secret`.
+- **Objects store** — a local content-addressed directory. Compose bind-mounts
+  the host path from `TREE_OBJECTS_DIR` at `/data/objects`, and the runtime
+  configuration points `objects_root` there; the host directory must already be
+  writable by the container user (uid 10001). Writes are content-addressed: a
+  file is named `<sha256>` and catalog rows address it as `objects/<sha256>` in
+  the `tree-eclass-data` namespace; objects are capped at 50 MiB. Identical
+  bytes reuse the same file, so writes are idempotent, and there is no network
+  storage to provision.
 
 - **`/jobs`** — the `temp` directory: parser workspaces, upload spool, PDF-diff
   and Discord staging, the helper registry (`.helpers`), the supervisor state
@@ -112,10 +103,10 @@ only these keys matter:
 - The static frontend is served by the same process; `index.html` must carry the
   `__TREE_RUNTIME__`, `__TREE_STORAGE__`, `__TREE_MODE__` and `__TREE_BUILD__`
   markers, which the Vite build inserts.
-- The helper memory supervisor samples descendant RSS through `ps -axo
-  pid=,ppid=,rss=`, so the final image must keep a `ps` implementation
-  (Debian trixie slim images provide `procps`). Without it every parse, PDF
-  difference and Discord export is killed after ~250 ms.
+- The helper memory supervisor samples descendant RSS through
+  `ps -axo pid=,ppid=,rss=`, so the final image must keep a `ps`
+  implementation (Debian trixie slim images provide `procps`). Without it every
+  parse, PDF difference and Discord export is killed after ~250 ms.
 - `container-serve` exits non-zero when it is asked to stop, so a container
   engine sees a graceful stop as a failure; run it with `Restart=no` (or
   `SuccessExitStatus=1` under systemd) and treat the exit code as informational.

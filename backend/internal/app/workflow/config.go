@@ -17,13 +17,15 @@ import (
 
 const reserveBytes uint64 = 5 * 1024 * 1024 * 1024
 
+// objectsFormat identifies the on-disk object store layout recorded in
+// dataset.json and checkpoint manifests.
+const objectsFormat = "fs-v1"
+
 type Config struct {
 	SourceRoot      string `json:"source_root"`
 	Format          int    `json:"format"`
 	PostgresBin     string `json:"postgres_bin"`
 	PostgresVersion string `json:"postgres_version"`
-	Weed            string `json:"weed"`
-	WeedVersion     string `json:"weed_version"`
 	Bun             string `json:"bun"`
 	ParserPython    string `json:"parser_python,omitempty"`
 	Tessdata        string `json:"tessdata"`
@@ -31,11 +33,9 @@ type Config struct {
 	PDFDiff         string `json:"pdf_diff"`
 	PDFDiffSHA      string `json:"pdf_diff_sha256"`
 	Password        string `json:"password"`
-	S3Access        string `json:"s3_access"`
-	S3Secret        string `json:"s3_secret"`
 	Ports           Ports  `json:"ports"`
 }
-type Ports struct{ Postgres, S3, Master, Volume, Filer, Admin, HTTP int }
+type Ports struct{ Postgres, HTTP int }
 type Selection struct {
 	Mode       string    `json:"mode"`
 	Release    string    `json:"release,omitempty"`
@@ -109,7 +109,8 @@ func (c *Controller) Close() {
 		c.lock = nil
 	}
 }
-func (c *Controller) active() string { return filepath.Join(c.Root, "active") }
+func (c *Controller) active() string      { return filepath.Join(c.Root, "active") }
+func (c *Controller) objectsRoot() string { return filepath.Join(c.active(), "objects") }
 func (c *Controller) save() error {
 	return platform.WriteJSON(filepath.Join(c.Root, "selection.json"), c.State)
 }
@@ -119,6 +120,24 @@ func (c *Controller) snapshots() checkpoint.Store {
 func (c *Controller) configured() error {
 	if c.Config.Format != 1 {
 		return errors.New("native runtime is not configured; run ./tree setup")
+	}
+	return nil
+}
+
+// migratedStorage refuses to start datasets whose objects still live in the
+// legacy on-disk layout; their contents must be exported into the filesystem
+// object store first.
+func (c *Controller) migratedStorage() error {
+	if _, err := os.Stat(filepath.Join(c.active(), "seaweed")); err != nil {
+		return nil
+	}
+	if _, err := os.Stat(c.objectsRoot()); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return errors.New(
+				"this dataset predates filesystem object storage; run ./tree storage export-s3 before starting",
+			)
+		}
+		return err
 	}
 	return nil
 }
@@ -153,7 +172,6 @@ func databaseName(name string) string {
 	}
 	return name
 }
-func (c *Controller) endpoint() string { return fmt.Sprintf("http://127.0.0.1:%d", c.Config.Ports.S3) }
 
 // Read the previous two-listener configuration without changing the user's public
 // URL. Subsequent configuration writes contain only the single HTTP listener.

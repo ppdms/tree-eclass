@@ -246,12 +246,12 @@ func syncArchiveChecks(t *testing.T, fixture *syncFixture) {
 	if err != nil || archive.Object.VersionID != fixture.firstObject.VersionID {
 		t.Fatal("deleted archive lost original version", err)
 	}
-	content, err := fixture.objects.Get(ctx, archive.Object, "")
+	content, err := fixture.objects.Open(ctx, archive.Object)
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := io.ReadAll(content.Body)
-	_ = content.Body.Close()
+	body, err := io.ReadAll(content)
+	_ = content.Close()
 	if err != nil || string(body) != "Ελληνικές σημειώσεις A" {
 		t.Fatal("archive bytes", string(body), err)
 	}

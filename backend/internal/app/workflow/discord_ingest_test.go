@@ -98,12 +98,12 @@ func discordInitialChecks(t *testing.T, fixture *discordIngestFixture) {
 	if result.Messages != 13 || result.Conversations != 2 {
 		t.Fatal("window publication", result)
 	}
-	object, err := fixture.blobs.Get(ctx, result.Object, "")
+	object, err := fixture.blobs.Open(ctx, result.Object)
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := io.ReadAll(object.Body)
-	object.Body.Close()
+	saved, err := io.ReadAll(object)
+	object.Close()
 	if err != nil || string(saved) != string(fixture.raw) {
 		t.Fatal("raw export changed", err)
 	}

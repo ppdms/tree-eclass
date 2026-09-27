@@ -32,9 +32,7 @@ type Config struct {
 	AllowedHosts     []string          `json:"allowed_hosts"`
 	AllowedOrigins   []string          `json:"allowed_origins"`
 	DatabaseURL      string            `json:"database_url"`
-	S3Endpoint       string            `json:"s3_endpoint"`
-	S3Access         string            `json:"s3_access"`
-	S3Secret         string            `json:"s3_secret"`
+	ObjectsRoot      string            `json:"objects_root"`
 	Address          string            `json:"address"`
 	Mode             string            `json:"mode"`
 	Release          string            `json:"release"`
@@ -98,7 +96,7 @@ func New(ctx context.Context, cfg Config, options ...Option) (*Server, error) {
 			return nil, err
 		}
 	}
-	blobs, err := blob.New(cfg.S3Endpoint, cfg.S3Access, cfg.S3Secret)
+	blobs, err := blob.New(cfg.ObjectsRoot)
 	if err != nil {
 		db.Close()
 		return nil, err

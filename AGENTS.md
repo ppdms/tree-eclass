@@ -14,14 +14,17 @@ shared authoritative database and document store**, switching between editable
 development and a fixed stable release, never running both application modes
 concurrently. The final approved plan supersedes the earlier shared-write proposal:
 **never keep development data**. Enter development from a cold stable checkpoint;
-exit restores its exact database, objects and mutable settings. A new release
+exit restores its exact database, objects directory and mutable settings. A new release
 promotes committed code only, then migrates the restored stable dataset. Keep
 synthetic verification disposable and separate from the live dataset.
 
 Run services **natively on macOS**, with containers retained as an optional future
 server deployment using the same application contracts. Move document/blob storage
-to **S3 through local SeaweedFS**; PostgreSQL remains the relational database.
-These user choices supersede the earlier Colima/WebDAV replacement proposal.
+to the **local content-addressed objects directory** of the active dataset;
+`active/objects` marks the current on-disk layout, and the controller refuses to
+run against a dataset stored in the legacy object-store layout until it has been
+migrated. PostgreSQL remains the relational database. These user choices
+supersede the earlier Colima/WebDAV replacement proposal.
 An idiomatic **Go backend and controller are required in this implementation**.
 Short-lived Python document parsers are allowed; a persistent Python API or worker
 is not the target architecture. Measure the complete process tree to verify memory
@@ -56,8 +59,8 @@ and must not be automatically removed.
 
 Native verification uses `go -C backend test ./cmd/... ./internal/...` (avoid `./...`, which
 also traverses Go files inside frontend dependencies). Opt-in native integration
-tests use `TREE_NATIVE_TESTS=1` and `TREE_TEST_WEED` pointing to the verified pinned
-SeaweedFS binary. They create and remove private synthetic clusters and never use
+tests use `TREE_NATIVE_TESTS=1`; they create and remove private synthetic
+PostgreSQL clusters and disposable objects directories and never use
 `DATABASE_URL` or the authoritative dataset. SQL queries are generated with sqlc
 from `backend/internal/domain/queries/*.sql`; qualify schema names in migrations because
 sqlc does not interpret the legacy `SET search_path` statements as PostgreSQL does.
@@ -97,14 +100,15 @@ must stop the watcher before deleting its build output. Schema checkpoints that
 contain development writes carry their baseline ID and must be removed on exit;
 never allow `snapshot restore` to promote them into stable data.
 
-S3 garbage collection is an offline controller operation using the selected
+Objects garbage collection is an offline controller operation using the selected
 release's exact schema contract. All publishers must remain stopped throughout
-catalog pruning and version deletion; a grace period alone does not protect
-in-flight uploads. Preserve every catalog foreign-key reference, including
-historical/deleted revisions, message media and PDF comparisons, and preserve
-unrecognized S3 namespaces. Check per-object deletion acknowledgements. SeaweedFS
-vacuum's HTTP response does not prove physical disk reclamation; inspect volume
-logs and account for blocks retained by cold checkpoints.
+catalog pruning and file deletion; a grace period alone does not protect in-flight
+uploads. Preserve every catalog foreign-key reference, including historical/deleted
+revisions, message media and PDF comparisons. Check per-file deletion
+acknowledgements: a file leaves the objects directory only when the catalog no
+longer references its content hash. Deletion completes synchronously, but
+physical reclamation must still account for file blocks retained by cold
+checkpoints; logical deleted bytes are not free-disk measurements.
 
 Checker notifications enter a durable outbox in the same transaction as their
 source updates. Delivery binds to the original destination hash, disables mentions,
@@ -115,11 +119,11 @@ Delivery is at least once: a lost acknowledgement can repeat one message, while
 acknowledged earlier batches remain sent. Development must never deliver webhooks.
 Verify with the synthetic notification publication/delivery fixture.
 
-Discord export intervals publish all validated partitions, raw S3 references,
+Discord export intervals publish all validated partitions, raw object references,
 media associations, derived conversations and the exclusive cursor in one
 transaction. EOF is successful only after the closing JSON object; truncated
 exports must not advance cursors. Mapping changes immediately hide old evidence
-and attachments; reindex from the registered S3 export into the new course.
+and attachments; reindex from the registered export into the new course.
 Settings and import must use the same `hashtextextended` advisory-lock namespace;
 the generic queue lock uses a different hash and cannot substitute for it.
 DiscordChatExporter is a pinned, short-lived native helper with its bundled .NET
@@ -141,9 +145,9 @@ relocated parser fixtures.
 
 The native synchronizer publishes a complete course tree in one transaction after
 its crawl succeeds. Preserve hidden-course synchronization and never interpret an
-upstream login/error page as an empty course. Current S3 reads must follow the
+upstream login/error page as an empty course. Current object reads must follow the
 catalog's content hash, not revision creation time: an upstream file can change
-A → B → A while reusing A's immutable object version. Upstream and user-uploaded
+A → B → A while reusing the same immutable content-addressed object. Upstream and user-uploaded
 materials occupy separate `eclass` and `external` catalog namespaces.
 
 Browser settings submit multipart `FormData`; native handlers must use the bounded
@@ -211,7 +215,7 @@ contracts with the native synthesis and community freshness fixtures.
 Knowledge maintenance shares the serial extraction queue. Rebuild derived chunks
 under existing document IDs, preserving object revisions, learner history and
 annotations; never delete `knowledge.documents` to rebuild search. Reconciliation
-repairs missing derived indexes against registered current S3 revisions, without
+repairs missing derived indexes against registered current object revisions, without
 starting an upstream sync. Exhausted retries reset their attempt budget. Verify
 these boundaries with the synthetic material-publication integration fixture.
 
@@ -351,7 +355,7 @@ agent should not have to rediscover?**
 - Frontend: React 19 + React Router under `frontend/`, built with Vite. Go serves its assets and API on one port; browser writes preserve their original page runtime session.
 - Document parsing is the pure Python boundary under `parser/`; stable artifacts contain only its explicitly inventoried parser sources. Application API, storage, workers and migrations are implemented in Go.
 - The design system is under `frontend/src/styles/`, assembled by `entry.css`. Navigation chrome is wired by `frontend/src/shell/navChrome.ts`.
-- Native storage is PostgreSQL 18 plus versioned S3 on SeaweedFS. Provider keys live in the active dataset's private settings.
+- Native storage is PostgreSQL 18 plus the active dataset's local content-addressed objects directory. Provider keys live in the active dataset's private settings.
 - The local catalog mirror is optional and configured by the Settings
   `download_base_path`; a course check refreshes upstream `eclass` files and
   current external-library objects, while stable browser uploads refresh the
@@ -363,7 +367,7 @@ agent should not have to rediscover?**
 ```text
 ./tree                  Installed Go lifecycle controller
 ├── PostgreSQL 18       One active native relational database
-├── SeaweedFS           One active native S3 object store
+├── Objects directory   One active content-addressed object store
 ├── tree-eclass         Go API, MCP, queues and background projections
 │   └── helpers         Short-lived Python, OCR, PDF and Discord processes
 └── Browser assets      React pages and routing, served by the same Go process
@@ -414,8 +418,8 @@ progress updates independently of immutable guidance.
 - Native tests live beside the Go packages under `backend/internal/` and
   `backend/cmd/`; run them with `go -C backend test ./cmd/... ./internal/...` and
   `go -C backend test -race ./cmd/... ./internal/...`. Native integration tests
-  opt in with `TREE_NATIVE_TESTS=1` and use private synthetic PostgreSQL/S3
-  fixtures. The parser fixture is short-lived and isolated; it never opens
+  opt in with `TREE_NATIVE_TESTS=1` and use private synthetic PostgreSQL and
+  objects-store fixtures. The parser fixture is short-lived and isolated; it never opens
   application storage or credentials.
 - Tests must stay offline and use disposable synthetic data. Never point native checks at the authoritative dataset. Browser behavior is checked by the native browser fixture and frontend tests.
 

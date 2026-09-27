@@ -1,5 +1,5 @@
 // Package mirror materializes the current eClass and external catalogs as ordinary files.
-// SeaweedFS remains authoritative; these trees are disposable local projections.
+// The object catalog remains authoritative; these trees are disposable local projections.
 package mirror
 
 import (

@@ -24,17 +24,17 @@ func (s *Store) Download(ctx context.Context, ref Reference, temp string) (strin
 	if free < 5*1024*1024*1024+uint64(ref.Bytes) {
 		return "", errors.New("source download paused: insufficient space for source plus 5 GiB reserve")
 	}
-	out, err := s.Get(ctx, ref, "")
+	source, err := os.Open(s.path(ref.SHA256))
 	if err != nil {
 		return "", err
 	}
-	defer out.Body.Close()
+	defer source.Close()
 	f, err := os.CreateTemp(temp, "source-*")
 	if err != nil {
 		return "", err
 	}
 	hash := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, hash), io.LimitReader(out.Body, MaxSourceBytes+1))
+	n, err := io.Copy(io.MultiWriter(f, hash), io.LimitReader(source, MaxSourceBytes+1))
 	if err == nil && (n != ref.Bytes || fmt.Sprintf("%x", hash.Sum(nil)) != ref.SHA256) {
 		err = errors.New("stored source content does not match its revision")
 	}

@@ -30,15 +30,14 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type storageInfo struct {
-		Endpoint   string `json:"endpoint"`
-		Configured bool   `json:"configured"`
+		Configured bool `json:"configured"`
 	}
 	writeJSON(w, http.StatusOK, struct {
 		settings.Page
 		Storage      storageInfo `json:"storage"`
 		MappingSaved bool        `json:"discord_mapping_saved"`
 		ExportSaved  bool        `json:"discord_export_saved"`
-	}{page, storageInfo{s.config.S3Endpoint, s.config.S3Endpoint != ""}, r.URL.Query().Get("discord_saved") == "1", r.URL.Query().Get("discord_export_saved") == "1"})
+	}{page, storageInfo{s.config.ObjectsRoot != ""}, r.URL.Query().Get("discord_saved") == "1", r.URL.Query().Get("discord_export_saved") == "1"})
 }
 
 func (s *Server) testStorage(w http.ResponseWriter, r *http.Request) {

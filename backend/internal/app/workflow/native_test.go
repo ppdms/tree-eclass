@@ -70,7 +70,7 @@ func TestMain(m *testing.M) {
 func nativeController(t *testing.T) *Controller {
 	t.Helper()
 	if os.Getenv("TREE_NATIVE_TESTS") != "1" {
-		t.Skip("set TREE_NATIVE_TESTS=1 for disposable native PostgreSQL/SeaweedFS checks")
+		t.Skip("set TREE_NATIVE_TESTS=1 for disposable native PostgreSQL checks")
 	}
 	repo, err := filepath.Abs("../../../..")
 	if err != nil {
@@ -84,10 +84,6 @@ func nativeController(t *testing.T) *Controller {
 	if err != nil {
 		t.Fatal(err)
 	}
-	weed, err := nativeWeedPath()
-	if err != nil {
-		t.Fatal(err)
-	}
 	c := &Controller{
 		Root:       t.TempDir(),
 		Repo:       repo,
@@ -96,11 +92,7 @@ func nativeController(t *testing.T) *Controller {
 			Format:          1,
 			PostgresBin:     pg,
 			PostgresVersion: "postgres (PostgreSQL) 18.6",
-			Weed:            weed,
-			WeedVersion:     weedVersion,
 			Password:        "synthetic-password",
-			S3Access:        "synthetic-access",
-			S3Secret:        "synthetic-secret",
 			Ports:           nativePorts(t),
 		},
 	}
@@ -129,31 +121,11 @@ func nativePostgresBin() (string, error) {
 	return filepath.Abs(path)
 }
 
-func nativeWeedPath() (string, error) {
-	if value := os.Getenv("TREE_TEST_WEED"); value != "" {
-		return value, nil
-	}
-	root := os.Getenv("TREE_WORKFLOW_HOME")
-	if root == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		root = filepath.Join(home, ".local", "share", "tree-eclass")
-	}
-	root, err := filepath.Abs(root)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, "native-v1", "tools", "seaweedfs-"+weedVersion, "weed"), nil
-}
-
 func startTestStorage(t *testing.T, c *Controller) (*pgx.Conn, *blob.Store) {
 	t.Helper()
 	ctx := context.Background()
 	if c.database == "" {
 		if err := c.infrastructure(ctx); err != nil {
-			_ = c.Logs("seaweed")
 			_ = c.Logs("postgres")
 			t.Fatal(err)
 		}
@@ -167,8 +139,11 @@ func startTestStorage(t *testing.T, c *Controller) (*pgx.Conn, *blob.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := blob.New(c.endpoint(), c.Config.S3Access, c.Config.S3Secret)
+	store, err := blob.New(c.testObjectsRoot())
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Setup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	return conn, store
@@ -202,4 +177,11 @@ func TestNativeMigrationTamperAndOwnership(t *testing.T) {
 	if err = storage.Migrate(ctx, c.databaseURL()); err == nil {
 		t.Fatal("tampered migration accepted")
 	}
+}
+
+func (c *Controller) testObjectsRoot() string {
+	if c.database != "" {
+		return sharedNative.objects
+	}
+	return c.objectsRoot()
 }

@@ -60,9 +60,9 @@ func newAskFixtureServer(
 	api, err := server.New(
 		ctx,
 		server.Config{
-			DatabaseURL: c.databaseURL(), S3Endpoint: c.endpoint(),
-			S3Access: c.Config.S3Access, S3Secret: c.Config.S3Secret,
-			Mode: "test", Session: "test-runtime",
+			DatabaseURL: c.databaseURL(),
+			ObjectsRoot: c.testObjectsRoot(),
+			Mode:        "test", Session: "test-runtime",
 			ProviderKeys: map[string]string{"SYNTHETIC_API_KEY": "synthetic-not-a-real-key"},
 		},
 		server.WithInferenceClient(askFixtureInference(entered, abandoned)),

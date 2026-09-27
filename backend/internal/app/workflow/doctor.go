@@ -29,10 +29,9 @@ func (c *Controller) Doctor(ctx context.Context) error {
 		return err
 	}
 	fmt.Printf(
-		"Native data: %s\nPostgreSQL: %s\nSeaweedFS: %s\nFree disk: %.2f GiB\n",
+		"Native data: %s\nPostgreSQL: %s\nFree disk: %.2f GiB\n",
 		c.active(),
 		c.Config.PostgresVersion,
-		c.Config.WeedVersion,
 		float64(free)/(1024*1024*1024),
 	)
 	return c.Status()
@@ -46,21 +45,21 @@ func (c *Controller) verifyStorageTools(ctx context.Context) error {
 	if strings.TrimSpace(string(result)) != c.Config.PostgresVersion {
 		return fmt.Errorf("PostgreSQL version changed; cold checkpoints require %s", c.Config.PostgresVersion)
 	}
-	return verifyWeed(c.Config.Weed)
+	return nil
 }
 func (c *Controller) Status() error {
 	fmt.Printf("Mode: %s\nRelease: %s\n", c.State.Mode, c.State.Release)
 	if c.State.Baseline != "" {
 		fmt.Printf("Development baseline: %s (development writes will be discarded)\n", c.State.Baseline)
 	}
-	for _, name := range []string{"postgres", "seaweed", "api", "frontend-build", "frontend", "migration", "collection", "watcher"} {
+	for _, name := range []string{"postgres", "api", "frontend-build", "frontend", "migration", "collection", "watcher"} {
 		fmt.Printf("%s: %t\n", name, c.Processes.Alive(name))
 	}
 	return nil
 }
 func (c *Controller) Logs(name string) error {
 	switch name {
-	case "postgres", "seaweed", "api", "frontend-build", "frontend", "migration", "collection", "watcher":
+	case "postgres", "api", "frontend-build", "frontend", "migration", "collection", "watcher":
 	default:
 		return fmt.Errorf("unknown service %q", name)
 	}

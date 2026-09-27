@@ -31,7 +31,6 @@ export interface SettingsPayload {
   has_credentials?: boolean;
   credential_username?: string;
   storage?: {
-    endpoint: string;
     configured: boolean;
   };
   ai_settings?: AISettings;

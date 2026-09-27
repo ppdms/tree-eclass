@@ -28,7 +28,7 @@ Evidence keeps its origin: official material, past exams, community-authored con
 ```text
 ./tree                  Installed Go lifecycle controller; manual start/stop
 ├── PostgreSQL 18       One authoritative relational database
-├── SeaweedFS           Local versioned S3 document/object storage
+├── Objects directory   Local content-addressed document/object storage
 ├── tree-eclass         Go JSON API, read-only MCP, queues and background jobs
 │   └── native helpers  Short-lived Python parsers, OCR, PDF and Discord export
 └── Browser assets      React UI, routing and direct API requests; served by Go
@@ -41,13 +41,13 @@ locked parser packages and relocated native document helpers.
 
 ## Local development and regular use
 
-The local machine owns the database and S3 store. Startup uses no login services,
+The local machine owns the database and the objects store. Startup uses no login services,
 container engine, or external Git hosting. The private `laptop` Git remote is a
 local bare repository; only sanitized, public-safe history is published.
 
 On a Linux server the same application runs from `Dockerfile` next to PostgreSQL
-18 and SeaweedFS; the container contract (commands, runtime configuration,
-buckets, `/jobs`, health) is documented in
+18; the container contract (commands, runtime configuration, objects directory,
+`/jobs`, health) is documented in
 [docs/linux-deployment.md](docs/linux-deployment.md).
 
 ### Daily Mac start and stop
@@ -71,9 +71,9 @@ When `Local mirror path` is configured in Settings, each successful course check
 refreshes the derived projection under that path in the user's home directory.
 Upstream files live under `<course>/eclass`; current external-library objects live
 under `<course>/external`, and stable browser uploads refresh that subtree
-immediately. Leave it blank to disable mirroring. It is never authoritative: S3
-object versions remain authoritative, external redirects stay in the course
-manifest, and a failed mirror never deletes the published catalog.
+immediately. Leave it blank to disable mirroring. It is never authoritative: the
+registered objects store remains authoritative, external redirects stay in the
+course manifest, and a failed mirror never deletes the published catalog.
 
 On a new setup there is no selected release. Development can start immediately;
 stable use first requires the reviewed implementation to be committed and built.
@@ -83,7 +83,7 @@ The controller does not create commits automatically.
 
 On Apple Silicon macOS, install Go, Bun, uv, PostgreSQL 18, Tesseract, Poppler,
 sevenzip and diff-pdf, then run `./tree setup`. Setup installs a durable Go controller,
-verifies pinned SeaweedFS, Python, parser packages, Greek/English OCR models and
+verifies pinned Python, parser packages, Greek/English OCR models and
 Discord export tools, installs frontend dependencies, and initializes fresh private
 storage only when no registered dataset exists. It preserves legacy caches and keys.
 If nix-darwin manages Homebrew, declare the Homebrew prerequisites in its
@@ -119,9 +119,10 @@ Local checkpoints protect switching and rollback; they remain on the same laptop
 
 While fully stopped, `./tree clean` removes disposable output and applies retention.
 `./tree storage collect` takes a cold checkpoint, prunes unreferenced catalog objects
-and explicit S3 versions, then requests SeaweedFS vacuum. It preserves historical
-references and unknown namespaces. Vacuum logs and retained checkpoints determine
-physical disk reclamation; logical deleted bytes are not free-disk measurements.
+and unregistered files from the objects directory. It preserves historical
+references and deletes only files it can acknowledge as unreferenced. Retained
+checkpoints determine physical disk reclamation; logical deleted bytes are not
+free-disk measurements.
 
 ## Verification
 
@@ -130,7 +131,7 @@ physical disk reclamation; logical deleted bytes are not free-disk measurements.
 ```
 
 The native gate suspends the application, builds the React browser app, runs Go race tests using
-private synthetic PostgreSQL/S3 clusters, verifies relocated parser/helpers and
+private synthetic PostgreSQL and objects-store fixtures, verifies relocated parser/helpers and
 static browser delivery, runs frontend tests and quality gates, cleans output, then resumes
 the previous mode. It does not synchronize real courses or call external providers.
 

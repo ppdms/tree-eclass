@@ -5,11 +5,8 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"tree-eclass/internal/app/server"
 	"tree-eclass/internal/domain/platform"
@@ -62,11 +59,8 @@ func (c *Controller) Collect(ctx context.Context) (err error) {
 	if err = c.Logs("collection"); err != nil {
 		return err
 	}
-	if err = c.vacuum(ctx); err != nil {
-		return err
-	}
 	fmt.Println(
-		"SeaweedFS vacuum request completed; retained checkpoints can still hold disk blocks. See ./tree logs seaweed for volume results.",
+		"Object collection completed; abandoned objects were removed from the filesystem store.",
 	)
 	return c.prune()
 }
@@ -74,9 +68,7 @@ func (c *Controller) Collect(ctx context.Context) (err error) {
 func (c *Controller) collectionConfig() server.Config {
 	return server.Config{
 		DatabaseURL: c.databaseURL(),
-		S3Endpoint:  c.endpoint(),
-		S3Access:    c.Config.S3Access,
-		S3Secret:    c.Config.S3Secret,
+		ObjectsRoot: c.objectsRoot(),
 	}
 }
 
@@ -85,26 +77,4 @@ func (c *Controller) collectionSpec(binary, path string) process.Spec {
 		Name: "collection", Token: rand.Text(), Command: []string{binary, "collect"},
 		Dir: c.Repo, Env: []string{"TREE_RUNTIME_CONFIG=" + path, "GOMEMLIMIT=192MiB"},
 	}
-}
-
-func (c *Controller) vacuum(ctx context.Context) error {
-	client := &http.Client{
-		Timeout:       5 * time.Minute,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	url := fmt.Sprintf("http://127.0.0.1:%d/vol/vacuum?garbageThreshold=0.01", c.Config.Ports.Master)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
-	if err != nil {
-		return err
-	}
-	response, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("SeaweedFS vacuum request failed: HTTP %d", response.StatusCode)
-	}
-	_, err = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
-	return err
 }

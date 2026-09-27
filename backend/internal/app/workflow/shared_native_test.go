@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -19,6 +20,7 @@ import (
 type sharedNativeEnvironment struct {
 	controller *Controller
 	root       string
+	objects    string
 	next       atomic.Uint64
 }
 
@@ -45,65 +47,32 @@ func reserveNativePorts() (ports Ports, err error) {
 			_ = listener.Close()
 		}
 	}()
-	pick := func(withOffset bool) (int, error) {
-		return reserveNativePort(used, &listeners, withOffset)
+	pick := func() (int, error) {
+		return reserveNativePort(used, &listeners)
 	}
-	if ports.Postgres, err = pick(false); err != nil {
+	if ports.Postgres, err = pick(); err != nil {
 		return Ports{}, err
 	}
-	if ports.S3, err = pick(true); err != nil {
-		return Ports{}, err
-	}
-	if ports.Master, err = pick(true); err != nil {
-		return Ports{}, err
-	}
-	if ports.Volume, err = pick(true); err != nil {
-		return Ports{}, err
-	}
-	if ports.Filer, err = pick(true); err != nil {
-		return Ports{}, err
-	}
-	if ports.Admin, err = pick(true); err != nil {
-		return Ports{}, err
-	}
-	if ports.HTTP, err = pick(false); err != nil {
+	if ports.HTTP, err = pick(); err != nil {
 		return Ports{}, err
 	}
 	return ports, nil
 }
 
-func reserveNativePort(used map[int]bool, listeners *[]net.Listener, withOffset bool) (int, error) {
+func reserveNativePort(used map[int]bool, listeners *[]net.Listener) (int, error) {
 	for range 100 {
 		listener, err := net.Listen("tcp4", "127.0.0.1:0")
 		if err != nil {
 			continue
 		}
 		port := listener.Addr().(*net.TCPAddr).Port
-		base := port
-		if withOffset && base+10000 > 65535 {
-			base -= 10000
-		}
-		if base < 1024 || used[base] || (withOffset && used[base+10000]) {
+		if port < 1024 || used[port] {
 			_ = listener.Close()
 			continue
 		}
-		held := []net.Listener{listener}
-		if withOffset {
-			offsetPort := base + 10000
-			if port == offsetPort {
-				offsetPort = base
-			}
-			offset, listenErr := net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", offsetPort))
-			if listenErr != nil {
-				_ = listener.Close()
-				continue
-			}
-			held = append(held, offset)
-			used[base+10000] = true
-		}
-		*listeners = append(*listeners, held...)
-		used[base] = true
-		return base, nil
+		*listeners = append(*listeners, listener)
+		used[port] = true
+		return port, nil
 	}
 	return 0, fmt.Errorf("could not reserve native fixture ports")
 }
@@ -113,7 +82,7 @@ func reserveNativePort(used map[int]bool, listeners *[]net.Listener, withOffset 
 func nativeSharedController(t *testing.T) *Controller {
 	t.Helper()
 	if os.Getenv("TREE_NATIVE_TESTS") != "1" {
-		t.Skip("set TREE_NATIVE_TESTS=1 for disposable native PostgreSQL/SeaweedFS checks")
+		t.Skip("set TREE_NATIVE_TESTS=1 for disposable native PostgreSQL checks")
 	}
 	sharedNativeOnce.Do(func() {
 		sharedNative, sharedNativeErr = setupSharedNativeEnvironment()
@@ -128,6 +97,9 @@ func nativeSharedController(t *testing.T) *Controller {
 	c := &Controller{
 		Root: t.TempDir(), Repo: sharedNative.controller.Repo, Executable: sharedNative.controller.Executable,
 		Config: sharedNative.controller.Config, database: name,
+	}
+	if err := os.MkdirAll(c.objectsRoot(), 0o700); err != nil {
+		t.Fatal(err)
 	}
 	c.Processes = process.Manager{Root: filepath.Join(c.Root, "processes"), Executable: c.Executable}
 	t.Cleanup(func() {
@@ -147,10 +119,6 @@ func setupSharedNativeEnvironment() (*sharedNativeEnvironment, error) {
 	if err != nil {
 		return nil, err
 	}
-	weed, err := nativeWeedPath()
-	if err != nil {
-		return nil, err
-	}
 	executable, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -167,8 +135,7 @@ func setupSharedNativeEnvironment() (*sharedNativeEnvironment, error) {
 		Root: root, Repo: repo, Executable: executable,
 		Config: Config{
 			Format: 1, PostgresBin: pg, PostgresVersion: "postgres (PostgreSQL) 18.6",
-			Weed: weed, WeedVersion: weedVersion, Password: "synthetic-password",
-			S3Access: "synthetic-access", S3Secret: "synthetic-secret", Ports: ports,
+			Password: "synthetic-password", Ports: ports,
 		},
 	}
 	c.Processes = process.Manager{Root: filepath.Join(root, "processes"), Executable: executable}
@@ -195,8 +162,14 @@ func setupSharedNativeEnvironment() (*sharedNativeEnvironment, error) {
 	if err = c.migrate(ctx); err != nil {
 		return nil, err
 	}
+	objects, err := os.MkdirTemp("", "tree-eclass-shared-objects-*")
+	if err != nil {
+		_ = c.stopAll()
+		_ = os.RemoveAll(root)
+		return nil, err
+	}
 	cleanup = false
-	return &sharedNativeEnvironment{controller: c, root: root}, nil
+	return &sharedNativeEnvironment{controller: c, root: root, objects: objects}, nil
 }
 
 func closeSharedNativeEnvironment() error {
@@ -205,6 +178,7 @@ func closeSharedNativeEnvironment() error {
 	}
 	err := sharedNative.controller.stopAll()
 	removeErr := os.RemoveAll(sharedNative.root)
+	removeErr = errors.Join(removeErr, os.RemoveAll(sharedNative.objects))
 	if err != nil {
 		return err
 	}

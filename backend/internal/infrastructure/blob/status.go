@@ -2,26 +2,28 @@ package blob
 
 import (
 	"context"
-	"errors"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"fmt"
+	"os"
 )
 
-// Check reads the storage contract without creating probe objects or buckets.
+// Check verifies the local storage contract without network access: the
+// objects root must be a directory that accepts and releases a probe file.
 func (s *Store) Check(ctx context.Context) error {
-	for _, bucket := range []string{DataBucket, CacheBucket} {
-		if _, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)}); err != nil {
-			return err
-		}
-	}
-	versioning, err := s.client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: aws.String(DataBucket)})
+	info, err := os.Stat(s.root)
 	if err != nil {
 		return err
 	}
-	if versioning.Status != types.BucketVersioningStatusEnabled {
-		return errors.New("document bucket versioning is disabled")
+	if !info.IsDir() {
+		return fmt.Errorf("objects root %s is not a directory", s.root)
 	}
-	return nil
+	probe, err := os.CreateTemp(s.root, "probe-*")
+	if err != nil {
+		return err
+	}
+	name := probe.Name()
+	if err = probe.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return os.Remove(name)
 }

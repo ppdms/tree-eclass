@@ -117,7 +117,7 @@ func stoppedFixture(t *testing.T, c *Controller) {
 	if err := c.stopped(); err != nil {
 		t.Fatal("runtime not completely stopped", err)
 	}
-	for _, service := range []string{"api", "frontend-build", "frontend", "postgres", "seaweed"} {
+	for _, service := range []string{"api", "frontend-build", "frontend", "postgres"} {
 		if c.Processes.Alive(service) {
 			t.Fatal("writer survived shutdown", service)
 		}

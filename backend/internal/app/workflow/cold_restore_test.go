@@ -8,9 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/infrastructure/checkpoint"
@@ -24,7 +21,6 @@ type coldRestoreFixture struct {
 	store    *blob.Store
 	ref      blob.Reference
 	snapshot checkpoint.Manifest
-	sdk      *s3.Client
 }
 
 func TestNativeColdRestore(t *testing.T) {
@@ -47,18 +43,12 @@ func prepareColdRestore(t *testing.T) coldRestoreFixture {
 		t.Fatal(err)
 	}
 	snapshot, err := c.snapshots().
-		Create(checkpoint.Manifest{Reason: "development", Versions: map[string]string{"postgres": c.Config.PostgresVersion, "seaweedfs": weedVersion}})
+		Create(checkpoint.Manifest{Reason: "development", Versions: c.versions()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	conn, store = startTestStorage(t, c)
-	sdk := s3.New(
-		s3.Options{
-			Region: "us-east-1", BaseEndpoint: aws.String(c.endpoint()), UsePathStyle: true,
-			Credentials: credentials.NewStaticCredentialsProvider(c.Config.S3Access, c.Config.S3Secret, ""),
-		},
-	)
-	return coldRestoreFixture{c: c, ctx: ctx, conn: conn, store: store, ref: ref, snapshot: snapshot, sdk: sdk}
+	return coldRestoreFixture{c: c, ctx: ctx, conn: conn, store: store, ref: ref, snapshot: snapshot}
 }
 
 func seedColdBaseline(
@@ -76,8 +66,8 @@ func seedColdBaseline(
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Conditional upload retries resolve the same version rather than allocating a new one.
-	same, err := store.Put(ctx, strings.NewReader("stable document"), "application/octet-stream", t.TempDir())
+	// Idempotent uploads resolve the same content-addressed object rather than duplicating it.
+	same, err := store.Put(ctx, strings.NewReader("stable document"), "text/plain", t.TempDir())
 	if err != nil || same.VersionID != ref.VersionID || same.MediaType != ref.MediaType {
 		t.Fatalf("immutable retry: %#v %v", same, err)
 	}
@@ -90,7 +80,7 @@ func seedColdBaseline(
 	changed := ref
 	changed.VersionID = "must-not-relabel-a-revision"
 	if err = storage.RegisterObject(ctx, conn, changed); err == nil {
-		t.Fatal("object ID silently relabeled to a different S3 version")
+		t.Fatal("object ID silently relabeled to a different object version")
 	}
 	if err = storage.Migrate(ctx, c.databaseURL()); err != nil {
 		t.Fatal("idempotent migration", err)
@@ -104,14 +94,8 @@ func mutateColdDevelopment(t *testing.T, fixture coldRestoreFixture) {
 	if _, err := conn.Exec(ctx, "ALTER TABLE app.courses DROP COLUMN name CASCADE; CREATE TABLE app.dev_only(id int)"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.sdk.DeleteObject(
-		ctx,
-		&s3.DeleteObjectInput{
-			Bucket:    aws.String(ref.Bucket),
-			Key:       aws.String(ref.Key),
-			VersionId: aws.String(ref.VersionID),
-		},
-	); err != nil {
+	// Out-of-band loss: the content-addressed file vanishes after the snapshot was taken.
+	if err := os.Remove(filepath.Join(c.testObjectsRoot(), ref.SHA256)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Put(ctx, strings.NewReader("dev-only document"), "text/plain", t.TempDir()); err != nil {
@@ -143,24 +127,21 @@ func restoreColdBaseline(t *testing.T, fixture coldRestoreFixture) {
 	if err := conn.QueryRow(ctx, "SELECT to_regclass('app.dev_only')::text").Scan(&extra); err != nil || extra != nil {
 		t.Fatalf("development schema survived: %v %v", extra, err)
 	}
-	object, err := store.Get(ctx, fixture.ref, "")
+	object, err := store.Open(ctx, fixture.ref)
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := io.ReadAll(object.Body)
-	object.Body.Close()
+	content, err := io.ReadAll(object)
+	object.Close()
 	if err != nil || string(content) != "stable document" {
 		t.Fatalf("object restore: %q %v", content, err)
 	}
 	if _, err = os.Stat(filepath.Join(c.active(), "settings", "dev-only")); !os.IsNotExist(err) {
 		t.Fatal("development settings survived")
 	}
-	versions, err := fixture.sdk.ListObjectVersions(
-		ctx,
-		&s3.ListObjectVersionsInput{Bucket: aws.String(fixture.ref.Bucket)},
-	)
-	if err != nil || len(versions.Versions) != 1 {
-		t.Fatalf("object inventory: %v %v", versions, err)
+	entries, err := os.ReadDir(filepath.Join(c.testObjectsRoot()))
+	if err != nil || len(entries) != 1 || entries[0].Name() != fixture.ref.SHA256 {
+		t.Fatalf("object inventory: %v %v", entries, err)
 	}
-	t.Logf("restored database, incompatible schema, deleted object version and settings from %s", fixture.snapshot.ID)
+	t.Logf("restored database, incompatible schema, deleted object file and settings from %s", fixture.snapshot.ID)
 }
