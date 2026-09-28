@@ -228,7 +228,7 @@ func (a *AI) modelFields() map[string]*string {
 		"ai_practice_model":          &a.PracticeModel,
 	}
 }
-func AIFromForm(form url.Values) (AI, error) {
+func AIFromValues(form url.Values) (AI, error) {
 	a := DefaultAI()
 	a.Disabled = []string{}
 	for _, provider := range Providers {

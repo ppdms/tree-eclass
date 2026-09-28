@@ -294,7 +294,7 @@ export function AIBackendSettings({ data, dirtySections }: { data: SettingsPaylo
       }
     >
       <ProviderCards settings={settings} />
-      <SettingsForm action="/api/settings/ai">
+      <SettingsForm action="/api/v1/settings/ai">
         <AskProviderOrder settings={settings} />
         <AnalysisProviderOrder settings={settings} />
         <AskModels settings={settings} />

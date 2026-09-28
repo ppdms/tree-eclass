@@ -80,9 +80,9 @@ func studyProjectionProgress(t *testing.T, pool *pgxpool.Pool, base, action stri
 		Type:     "completed",
 		Key:      "study-projection-complete",
 	}
-	apiJSON(t, "POST", base+"/api/study/actions/event", event, 200, &response)
-	if response["status"] != "recorded" || response["plan"] != nil || response["plan_error"] == nil {
-		t.Fatal("legacy mutation returned stale plan or hid committed event", response)
+	apiJSON(t, "POST", base+"/api/v1/study/actions/event", event, 200, &response)
+	if response["status"] != "recorded" || response["event"] == nil || response["overview"] == nil {
+		t.Fatal("mutation did not record event with overview", response)
 	}
 	var view map[string]any
 	apiJSON(t, "GET", base+"/api/v1/study/intelligence", nil, 200, &view)
@@ -96,8 +96,8 @@ func studyProjectionProgress(t *testing.T, pool *pgxpool.Pool, base, action stri
 		raw, _ := json.Marshal(plan)
 		t.Fatal("completed action remained scheduled", string(raw))
 	}
-	apiJSON(t, "POST", base+"/api/study/actions/event", event, 200, &response)
-	if response["plan"] == nil || response["plan_error"] != nil {
-		t.Fatal("idempotent retry unnecessarily invalidated ready plan", response)
+	apiJSON(t, "POST", base+"/api/v1/study/actions/event", event, 200, &response)
+	if response["status"] != "recorded" || response["event"] == nil || response["overview"] == nil {
+		t.Fatal("idempotent retry did not record event with overview", response)
 	}
 }

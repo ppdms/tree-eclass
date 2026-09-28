@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"strings"
+	"strconv"
 
 	"tree-eclass/internal/domain/settings"
 )
@@ -12,20 +12,20 @@ import (
 func (s *Server) settingsRoutes() {
 	s.mux.HandleFunc("GET /api/notifications/status", s.notificationStatus)
 	s.mux.HandleFunc("POST /api/notifications/retry", s.retryNotifications)
-	s.mux.HandleFunc("POST /settings/credentials", s.saveCredentials)
-	s.mux.HandleFunc("POST /settings/webhook", s.saveWebhook)
-	s.mux.HandleFunc("POST /settings/preferences", s.savePreferences)
+	s.mux.HandleFunc("POST /api/v1/settings/credentials", s.saveCredentials)
+	s.mux.HandleFunc("POST /api/v1/settings/webhook", s.saveWebhook)
+	s.mux.HandleFunc("POST /api/v1/settings/preferences", s.savePreferences)
 	s.mux.HandleFunc("GET /api/settings/sync-status", s.syncStatus)
 	s.mux.HandleFunc("GET /api/check-status", s.checkStatus)
-	s.mux.HandleFunc("POST /api/settings/ai", s.saveAI)
+	s.mux.HandleFunc("POST /api/v1/settings/ai", s.saveAI)
 }
 
 func (s *Server) saveAI(w http.ResponseWriter, r *http.Request) {
-	form, ok := formBody(w, r)
+	form, ok := jsonFields(w, r)
 	if !ok {
 		return
 	}
-	value, err := settings.AIFromForm(form)
+	value, err := settings.AIFromValues(form)
 	if err != nil {
 		s.settingsError(w, err, 422)
 		return
@@ -37,24 +37,60 @@ func (s *Server) saveAI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "saved", "chat_provider_order": value.ChatOrder})
 }
 func (s *Server) settingsService() settings.Service { return settings.Service{Pool: s.db.Pool} }
-func formBody(w http.ResponseWriter, r *http.Request) (url.Values, bool) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
-	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
-		err := r.ParseMultipartForm(1024 * 1024)
-		if r.MultipartForm != nil {
-			defer r.MultipartForm.RemoveAll()
-		}
-		if err != nil || r.MultipartForm == nil || len(r.MultipartForm.File) > 0 {
-			writeFailure(w, http.StatusUnprocessableEntity, "Expected form fields without file attachments")
-			return nil, false
-		}
-		return r.PostForm, true
-	}
-	if err := r.ParseForm(); err != nil {
-		writeFailure(w, http.StatusUnprocessableEntity, "Invalid form")
+// jsonFields decodes a JSON object with form-shaped keys into url.Values,
+// preserving field presence so partial updates behave like form posts.
+func jsonFields(w http.ResponseWriter, r *http.Request) (url.Values, bool) {
+	var raw map[string]any
+	if !bodyJSON(w, r, &raw) {
 		return nil, false
 	}
-	return r.PostForm, true
+	form := make(url.Values, len(raw))
+	for key, value := range raw {
+		switch v := value.(type) {
+		case nil:
+			form.Set(key, "")
+		case string:
+			form.Set(key, v)
+		case bool:
+			if v {
+				form.Set(key, "on")
+			} else {
+				form.Set(key, "false")
+			}
+		case float64:
+			form.Set(key, strconv.FormatFloat(v, 'f', -1, 64))
+		case []any:
+			for _, item := range v {
+				text, ok := jsonScalar(item)
+				if !ok {
+					writeFailure(w, http.StatusUnprocessableEntity, "Invalid JSON fields")
+					return nil, false
+				}
+				form.Add(key, text)
+			}
+		default:
+			writeFailure(w, http.StatusUnprocessableEntity, "Invalid JSON fields")
+			return nil, false
+		}
+	}
+	return form, true
+}
+func jsonScalar(value any) (string, bool) {
+	switch v := value.(type) {
+	case nil:
+		return "", true
+	case string:
+		return v, true
+	case bool:
+		if v {
+			return "on", true
+		}
+		return "false", true
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	default:
+		return "", false
+	}
 }
 func formBool(form url.Values, key string) bool {
 	return form.Get(key) == "on" || form.Get(key) == "true" || form.Get(key) == "1"
@@ -68,7 +104,7 @@ func (s *Server) settingsError(w http.ResponseWriter, err error, status int) {
 	s.internal(w, err)
 }
 func (s *Server) saveCredentials(w http.ResponseWriter, r *http.Request) {
-	form, ok := formBody(w, r)
+	form, ok := jsonFields(w, r)
 	if !ok {
 		return
 	}
@@ -76,10 +112,10 @@ func (s *Server) saveCredentials(w http.ResponseWriter, r *http.Request) {
 		s.settingsError(w, err, 400)
 		return
 	}
-	http.Redirect(w, r, "/settings?credentials_saved=1#credentials", http.StatusSeeOther)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "saved"})
 }
 func (s *Server) saveWebhook(w http.ResponseWriter, r *http.Request) {
-	form, ok := formBody(w, r)
+	form, ok := jsonFields(w, r)
 	if !ok {
 		return
 	}
@@ -87,10 +123,10 @@ func (s *Server) saveWebhook(w http.ResponseWriter, r *http.Request) {
 		s.settingsError(w, err, 400)
 		return
 	}
-	http.Redirect(w, r, "/settings?webhook_saved=1#webhook", http.StatusSeeOther)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "saved"})
 }
 func (s *Server) savePreferences(w http.ResponseWriter, r *http.Request) {
-	form, ok := formBody(w, r)
+	form, ok := jsonFields(w, r)
 	if !ok {
 		return
 	}
@@ -98,7 +134,7 @@ func (s *Server) savePreferences(w http.ResponseWriter, r *http.Request) {
 		s.settingsError(w, err, 422)
 		return
 	}
-	http.Redirect(w, r, "/settings?preferences_saved=1#preferences", http.StatusSeeOther)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "saved"})
 }
 func (s *Server) checkStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := s.settingsService().Check(r.Context())

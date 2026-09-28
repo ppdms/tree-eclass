@@ -35,7 +35,11 @@ INSERT INTO app.nodes(course_id,name,url,local_path) VALUES(101,'folder','https:
 		"enabled_102":        {"on"},
 		"exam_at_102":        {"2026-09-26T11:00"},
 	}
-	postForm(t, base+"/study/planner", form, 303)
+	payload := map[string]string{}
+	for key, values := range form {
+		payload[key] = values[0]
+	}
+	apiJSON(t, "POST", base+"/api/v1/study/planner", payload, 200, nil)
 	planner, err := service.Planner(ctx)
 	if err != nil || planner.Weekly["0"] != 90 || planner.Weekly["1"] != 150 || planner.BlockMinutes != 45 ||
 		len(planner.Blackouts) != 2 ||

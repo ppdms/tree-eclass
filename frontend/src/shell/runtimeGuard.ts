@@ -1,5 +1,7 @@
-/** Runs before React mounts, so SDK transports and early form submissions carry
- * the generation of the page that created them. Never read a refreshed cookie. */
+/** Runs before React mounts, so SDK transports carry the generation of the
+ * page that created them. All mutations go through fetch with the
+ * X-Tree-Runtime header; native form posts no longer exist. Never read a
+ * refreshed cookie. */
 export const RUNTIME_GUARD_SCRIPT = `
 (() => {
   const session = document.documentElement.dataset.treeRuntime;
@@ -25,21 +27,5 @@ export const RUNTIME_GUARD_SCRIPT = `
     }
     return response;
   };
-  document.addEventListener('submit', (event) => {
-    const form = event.target;
-    if (!(form instanceof HTMLFormElement)) return;
-    const submitter = event.submitter;
-    const action = submitter?.hasAttribute('formaction') ? submitter.formAction : form.action;
-    const method = (submitter?.hasAttribute('formmethod') ? submitter.formMethod : form.method).toLowerCase();
-    if (method !== 'post' || new URL(action, window.location.href).origin !== origin) return;
-    let field = form.querySelector('input[name="_tree_runtime"]');
-    if (!field) {
-      field = document.createElement('input');
-      field.type = 'hidden';
-      field.name = '_tree_runtime';
-      form.appendChild(field);
-    }
-    field.value = session;
-  }, true);
 })();
 `;

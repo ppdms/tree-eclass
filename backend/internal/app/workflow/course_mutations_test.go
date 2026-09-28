@@ -1,6 +1,8 @@
 package workflow
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,7 +32,7 @@ func destructiveChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 		t.Fatal(err)
 	}
 	lock.Release()
-	mutationHTTP(t, base, "reset", "reset:201", "reset-1", 303)
+	mutationHTTP(t, base, "reset", "reset:201", "reset-1", 200)
 	mutationHTTP(t, base, "reset", "reset:201", "reset-1", 409)
 	for table, want := range map[string]int64{"app.nodes": 0, "app.announcements": 0, "app.study_annotations": 1, "app.courses": 1} {
 		var count int64
@@ -65,7 +67,7 @@ CREATE TRIGGER synthetic_delete_failure BEFORE DELETE ON app.courses FOR EACH RO
 	if _, err = pool.Exec(ctx, `DROP TRIGGER synthetic_delete_failure ON app.courses; DROP FUNCTION app.synthetic_delete_failure()`); err != nil {
 		t.Fatal(err)
 	}
-	mutationHTTP(t, base, "delete", "delete:201", "delete-1", 303)
+	mutationHTTP(t, base, "delete", "delete:201", "delete-1", 200)
 	for _, table := range []string{"knowledge.documents", "app.study_annotations", "app.document_revisions"} {
 		if err = pool.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE course_id=201").Scan(&count); err != nil ||
 			count != 0 {
@@ -84,13 +86,15 @@ CREATE TRIGGER synthetic_delete_failure BEFORE DELETE ON app.courses FOR EACH RO
 
 func mutationHTTP(t *testing.T, base, action, confirmation, key string, status int) {
 	t.Helper()
-	r, err := http.NewRequest("POST", fmt.Sprintf("%s/courses/201/%s", base, action), nil)
+	encoded, _ := json.Marshal(map[string]any{})
+	r, err := http.NewRequest("POST", fmt.Sprintf("%s/api/v1/courses/201/%s", base, action), bytes.NewReader(encoded))
 	if err != nil {
 		t.Fatal(err)
 	}
+	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-Tree-Eclass-Confirmation", confirmation)
 	r.Header.Set("X-Idempotency-Key", key)
-	client := http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := http.Client{}
 	response, err := client.Do(r)
 	if err != nil {
 		t.Fatal(err)

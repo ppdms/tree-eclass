@@ -23,7 +23,11 @@ export function RunCheckButton() {
     setOpen(false);
     setState('Starting course check…');
     try {
-      await fetchJson('api/run-check', { method: 'POST' });
+      await fetchJson('api/run-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
       setState('Course check started. Study guidance will refresh when it finishes.');
     } catch (error) {
       setState(error instanceof Error ? error.message : 'Could not start the course check.');

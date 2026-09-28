@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -44,12 +43,12 @@ func (s *Server) courseRoutes() {
 	s.mux.HandleFunc("GET /api/v1/courses/{$}", s.listCourses)
 	s.mux.HandleFunc("GET /api/v1/navigation/courses", s.navigationCourses)
 	s.mux.HandleFunc("GET /api/v1/courses/{course_id}/tree", s.courseTree)
-	s.mux.HandleFunc("POST /courses/add", s.addCourse)
-	s.mux.HandleFunc("POST /courses/{course_id}/update", s.renameCourse)
-	s.mux.HandleFunc("POST /courses/{course_id}/hide", s.hideCourse)
-	s.mux.HandleFunc("POST /courses/{course_id}/show", s.hideCourse)
-	s.mux.HandleFunc("POST /courses/{course_id}/delete", s.destructiveCourse)
-	s.mux.HandleFunc("POST /courses/{course_id}/reset", s.destructiveCourse)
+	s.mux.HandleFunc("POST /api/v1/courses", s.addCourse)
+	s.mux.HandleFunc("PATCH /api/v1/courses/{course_id}", s.renameCourse)
+	s.mux.HandleFunc("POST /api/v1/courses/{course_id}/hide", s.hideCourse)
+	s.mux.HandleFunc("POST /api/v1/courses/{course_id}/show", s.hideCourse)
+	s.mux.HandleFunc("POST /api/v1/courses/{course_id}/delete", s.destructiveCourse)
+	s.mux.HandleFunc("POST /api/v1/courses/{course_id}/reset", s.destructiveCourse)
 	s.mux.HandleFunc("POST /api/courses/reorder", s.reorderCourses)
 	s.mux.HandleFunc("POST /api/courses/{course_id}/files/study-level", s.setStudyLevel)
 	s.mux.HandleFunc("POST /api/courses/{course_id}/folders/collapsed", s.setFolderCollapsed)
@@ -80,16 +79,14 @@ func (s *Server) navigationCourses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"courses": items})
 }
 func (s *Server) addCourse(w http.ResponseWriter, r *http.Request) {
-	form, ok := formBody(w, r)
-	if !ok {
+	var body struct {
+		CourseID int64  `json:"course_id"`
+		Name     string `json:"name"`
+	}
+	if !bodyJSON(w, r, &body) {
 		return
 	}
-	id, err := strconv.ParseInt(form.Get("course_id"), 10, 64)
-	if err != nil {
-		writeFailure(w, http.StatusUnprocessableEntity, "Course ID must be an integer")
-		return
-	}
-	if err = s.courseService().Add(r.Context(), id, form.Get("name")); err != nil {
+	if err := s.courseService().Add(r.Context(), body.CourseID, body.Name); err != nil {
 		var pg *pgconn.PgError
 		if errors.As(err, &pg) && pg.Code == "23505" {
 			writeFailure(w, http.StatusBadRequest, "Course already exists")
@@ -98,38 +95,36 @@ func (s *Server) addCourse(w http.ResponseWriter, r *http.Request) {
 		writeFailure(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	http.Redirect(w, r, "/courses", http.StatusSeeOther)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "created", "id": body.CourseID})
 }
 func (s *Server) renameCourse(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "course_id")
 	if !ok {
 		return
 	}
-	form, ok := formBody(w, r)
-	if !ok {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if !bodyJSON(w, r, &body) {
 		return
 	}
-	if err := s.courseService().Rename(r.Context(), id, form.Get("name")); err != nil {
+	if err := s.courseService().Rename(r.Context(), id, body.Name); err != nil {
 		s.courseError(w, err)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/courses/%d", id), http.StatusSeeOther)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "id": id})
 }
 func (s *Server) hideCourse(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "course_id")
 	if !ok {
 		return
 	}
-	hidden := r.Pattern == "POST /courses/{course_id}/hide"
+	hidden := r.Pattern == "POST /api/v1/courses/{course_id}/hide"
 	if err := s.courseService().Hide(r.Context(), id, hidden); err != nil {
 		s.courseError(w, err)
 		return
 	}
-	target := "/settings"
-	if hidden {
-		target = "/courses"
-	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "id": id, "hidden": hidden})
 }
 func (s *Server) reorderCourses(w http.ResponseWriter, r *http.Request) {
 	var ids []int64

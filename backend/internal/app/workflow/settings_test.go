@@ -3,8 +3,6 @@ package workflow
 import (
 	"context"
 	"encoding/json"
-	"net/http"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -16,13 +14,15 @@ func settingsChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 	t.Helper()
 	ctx := context.Background()
 	service := settings.Service{Pool: pool}
-	postForm(
+	apiJSON(
 		t,
-		base+"/settings/preferences",
-		url.Values{"semester_start": {"2026-09-01"}, "download_base_path": {"/Σπουδές"}},
-		303,
+		"POST",
+		base+"/api/v1/settings/preferences",
+		map[string]any{"semester_start": "2026-09-01", "download_base_path": "/Σπουδές"},
+		200,
+		nil,
 	)
-	postForm(t, base+"/settings/preferences", url.Values{"check_interval_minutes": {"90"}}, 303)
+	apiJSON(t, "POST", base+"/api/v1/settings/preferences", map[string]any{"check_interval_minutes": "90"}, 200, nil)
 	prefs, err := service.Preferences(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -31,21 +31,23 @@ func settingsChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 		prefs.BasePath != "/Σπουδές" {
 		t.Fatal("partial preferences overwrite previous fields")
 	}
-	postForm(t, base+"/settings/preferences", url.Values{"download_base_path": {""}}, 303)
+	apiJSON(t, "POST", base+"/api/v1/settings/preferences", map[string]any{"download_base_path": ""}, 200, nil)
 	prefs, err = service.Preferences(ctx)
 	if err != nil || prefs.BasePath != "" {
 		t.Fatal("empty mirror path did not disable mirroring", prefs, err)
 	}
-	postForm(t, base+"/settings/preferences", url.Values{"download_base_path": {"/"}}, 422)
+	apiJSON(t, "POST", base+"/api/v1/settings/preferences", map[string]any{"download_base_path": "/"}, 422, nil)
 	prefs, err = service.Preferences(ctx)
 	if err != nil || prefs.BasePath != "" {
 		t.Fatal("invalid root mirror path changed preferences", prefs, err)
 	}
-	postForm(
+	apiJSON(
 		t,
-		base+"/settings/preferences",
-		url.Values{"semester_start": {"must-not-save"}, "retry_attempts": {"11"}},
+		"POST",
+		base+"/api/v1/settings/preferences",
+		map[string]any{"semester_start": "must-not-save", "retry_attempts": "11"},
 		422,
+		nil,
 	)
 	prefs, err = service.Preferences(ctx)
 	if err != nil {
@@ -54,13 +56,15 @@ func settingsChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 	if *prefs.SemesterStart != "2026-09-01" {
 		t.Fatal("failed preferences save partially committed")
 	}
-	postForm(
+	apiJSON(
 		t,
-		base+"/settings/credentials",
-		url.Values{"username": {"synthetic-student"}, "password": {"synthetic-password"}},
-		303,
+		"POST",
+		base+"/api/v1/settings/credentials",
+		map[string]any{"username": "synthetic-student", "password": "synthetic-password"},
+		200,
+		nil,
 	)
-	postForm(t, base+"/settings/credentials", url.Values{"username": {"synthetic-other"}}, 400)
+	apiJSON(t, "POST", base+"/api/v1/settings/credentials", map[string]any{"username": "synthetic-other"}, 400, nil)
 	credentials, err := service.Credentials(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -72,11 +76,13 @@ func settingsChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 	if strings.Contains(string(encoded), "synthetic-password") {
 		t.Fatal("credential DTO serializes a secret")
 	}
-	postForm(
+	apiJSON(
 		t,
-		base+"/settings/credentials",
-		url.Values{"username": {"synthetic-student"}, "clear_password": {"on"}},
-		303,
+		"POST",
+		base+"/api/v1/settings/credentials",
+		map[string]any{"username": "synthetic-student", "clear_password": "on"},
+		200,
+		nil,
 	)
 	credentials, err = service.Credentials(ctx)
 	if err != nil {
@@ -87,21 +93,4 @@ func settingsChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 	}
 	apiJSON(t, "GET", base+"/api/settings/sync-status", nil, 200, nil)
 	settingsPageChecks(t, pool, base)
-}
-func postForm(t *testing.T, target string, form url.Values, status int) {
-	t.Helper()
-	req, err := http.NewRequest("POST", target, strings.NewReader(form.Encode()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	client := http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	response, err := client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != status {
-		t.Fatalf("form %s: expected %d, got %d", target, status, response.StatusCode)
-	}
 }

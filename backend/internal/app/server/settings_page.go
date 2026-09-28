@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	"tree-eclass/internal/domain/settings"
@@ -19,8 +18,8 @@ func (s *Server) settingsPageRoutes() {
 	}
 	s.mux.HandleFunc("POST /api/settings/test-storage", s.testStorage)
 	s.mux.HandleFunc("GET /api/settings/export", s.exportLearner)
-	s.mux.HandleFunc("POST /settings/discord-exporter", s.saveDiscord)
-	s.mux.HandleFunc("POST /settings/discord-course-map", s.saveDiscordMap)
+	s.mux.HandleFunc("POST /api/v1/settings/discord-exporter", s.saveDiscord)
+	s.mux.HandleFunc("POST /api/v1/settings/discord-course-map", s.saveDiscordMap)
 }
 
 func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -34,10 +33,8 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, struct {
 		settings.Page
-		Storage      storageInfo `json:"storage"`
-		MappingSaved bool        `json:"discord_mapping_saved"`
-		ExportSaved  bool        `json:"discord_export_saved"`
-	}{page, storageInfo{s.config.ObjectsRoot != ""}, r.URL.Query().Get("discord_saved") == "1", r.URL.Query().Get("discord_export_saved") == "1"})
+		Storage storageInfo `json:"storage"`
+	}{page, storageInfo{s.config.ObjectsRoot != ""}})
 }
 
 func (s *Server) testStorage(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +49,7 @@ func (s *Server) testStorage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) saveDiscord(w http.ResponseWriter, r *http.Request) {
-	form, ok := formBody(w, r)
+	form, ok := jsonFields(w, r)
 	if !ok {
 		return
 	}
@@ -60,11 +57,11 @@ func (s *Server) saveDiscord(w http.ResponseWriter, r *http.Request) {
 		s.settingsError(w, err, 400)
 		return
 	}
-	http.Redirect(w, r, "/settings?discord_export_saved=1#discord-exporter", http.StatusSeeOther)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "saved"})
 }
 
 func (s *Server) saveDiscordMap(w http.ResponseWriter, r *http.Request) {
-	form, ok := formBody(w, r)
+	form, ok := jsonFields(w, r)
 	if !ok {
 		return
 	}
@@ -73,9 +70,5 @@ func (s *Server) saveDiscordMap(w http.ResponseWriter, r *http.Request) {
 		s.settingsError(w, err, 400)
 		return
 	}
-	if strings.Contains(r.Header.Get("Accept"), "application/json") {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "saved", "mapped": mapped})
-		return
-	}
-	http.Redirect(w, r, "/settings?discord_saved=1#discord-course-mapping", http.StatusSeeOther)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "saved", "mapped": mapped})
 }

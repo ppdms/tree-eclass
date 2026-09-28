@@ -73,7 +73,7 @@ export function Preferences({ data, dirtySections }: PreferencesProps) {
       dirty={dirtySections.has('preferences')}
       description="Control checker timing, the automatic course mirror, and global announcement feeds."
     >
-      <SettingsForm action="/settings/preferences">
+      <SettingsForm action="/api/v1/settings/preferences">
         <div {...stylex.props(styles.settingsMatrix)}>
           <Field
             label="Check interval (minutes)"

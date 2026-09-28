@@ -22,7 +22,6 @@ func (s *Server) syncService() synchronization.Service {
 }
 func (s *Server) syncRoutes() {
 	s.mux.HandleFunc("POST /api/run-check", s.enqueueCheck)
-	s.mux.HandleFunc("POST /courses/{course_id}/check", s.enqueueCheck)
 }
 func (s *Server) enqueueCheck(w http.ResponseWriter, r *http.Request) {
 	if !s.config.ExternalWorkers {
@@ -30,12 +29,20 @@ func (s *Server) enqueueCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var id *int64
-	if r.PathValue("course_id") != "" {
-		value, ok := pathID(w, r, "course_id")
-		if !ok {
+	if r.ContentLength != 0 {
+		var body struct {
+			Course *json.Number `json:"course_id"`
+		}
+		if !bodyJSON(w, r, &body) {
 			return
 		}
-		id = &value
+		if body.Course != nil {
+			value, ok := number(w, *body.Course, "course_id", 1, 1<<63-1)
+			if !ok {
+				return
+			}
+			id = &value
+		}
 	}
 	_, err := s.syncService().EnqueueManual(r.Context(), id)
 	if errors.Is(err, synchronization.ErrBusy) {

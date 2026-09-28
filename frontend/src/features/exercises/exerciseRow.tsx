@@ -160,7 +160,8 @@ async function postExerciseAction(
   try {
     const response = await fetch(path, {
       method: 'POST',
-      headers: { Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: '{}',
     });
     if (!response.ok) {
       const parsed = errorBodySchema.safeParse(await response.json().catch(() => ({})));
@@ -194,11 +195,19 @@ export function useIgnoreAction(
   const [error, setError] = React.useState<string | null>(null);
   const post = (path: string): Promise<boolean> => postExerciseAction(path, setBusy, setError);
   const ignore = async () => {
-    if (await post(`/exercises/${exercise.course_id}/${encodeURIComponent(String(exercise.exercise_id))}/ignore`))
+    if (
+      await post(
+        `/api/v1/courses/${exercise.course_id}/exercises/${encodeURIComponent(String(exercise.exercise_id))}/ignore`,
+      )
+    )
       onIgnore(exercise.course_id, exercise.exercise_id);
   };
   const restore = async () => {
-    if (await post(`/exercises/${exercise.course_id}/${encodeURIComponent(String(exercise.exercise_id))}/unignore`))
+    if (
+      await post(
+        `/api/v1/courses/${exercise.course_id}/exercises/${encodeURIComponent(String(exercise.exercise_id))}/unignore`,
+      )
+    )
       onRestore(exercise.course_id, exercise.exercise_id);
   };
   const action = exercise.ignored ? restore : ignore;

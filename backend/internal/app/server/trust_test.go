@@ -18,7 +18,7 @@ func TestNativeTrustBoundary(t *testing.T) {
 		{"127.0.0.1:8001", "null", false},
 		{"127.0.0.1:8001", "https://localhost.untrusted.example", false},
 	} {
-		r := httptest.NewRequest("POST", "http://"+test.host+"/courses/add", nil)
+		r := httptest.NewRequest("POST", "http://"+test.host+"/api/v1/courses", nil)
 		r.Header.Set("Origin", test.origin)
 		if s.trusted(r) != test.allowed {
 			t.Errorf("host=%q origin=%q", test.host, test.origin)

@@ -2,7 +2,6 @@ package server
 
 import (
 	"net/http"
-	"strings"
 )
 
 // The page's generation travels with its writes. A cookie or a token inserted by
@@ -20,13 +19,6 @@ func (s *Server) currentRuntime(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	token := r.Header.Get("X-Tree-Runtime")
-	if token == "" && legacyFormPath(r.URL.Path) {
-		form, ok := formBody(w, r)
-		if !ok {
-			return false
-		}
-		token = form.Get("_tree_runtime")
-	}
 	if s.config.Session != "" && token == s.config.Session {
 		return true
 	}
@@ -38,14 +30,5 @@ func (s *Server) currentRuntime(w http.ResponseWriter, r *http.Request) bool {
 			"detail": "Tree-eClass has restarted or changed modes. Reload this page before saving; this request made no changes.",
 		},
 	)
-	return false
-}
-
-func legacyFormPath(path string) bool {
-	for _, prefix := range []string{"/courses/", "/settings/", "/study/", "/exercises/"} {
-		if strings.HasPrefix(path, prefix) {
-			return true
-		}
-	}
 	return false
 }

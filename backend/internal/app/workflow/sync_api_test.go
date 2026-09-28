@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"tree-eclass/internal/app/server"
@@ -53,7 +54,7 @@ func syncAPIChecks(t *testing.T, c *Controller) {
 	if err != nil || response.StatusCode != 200 || len(body) == 0 {
 		t.Fatal("version download", response.StatusCode, err)
 	}
-	response, err = http.Post(host.URL+"/api/run-check", "application/json", nil)
+	response, err = http.Post(host.URL+"/api/run-check", "application/json", strings.NewReader("{}"))
 	if err != nil {
 		t.Fatal(err)
 	}

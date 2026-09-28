@@ -3,7 +3,6 @@ package workflow
 import (
 	"encoding/json"
 	"io"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -15,19 +14,21 @@ func settingsPageChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 	t.Helper()
 	ctx := t.Context()
 	service := settings.Service{Pool: pool}
-	postForm(
+	apiJSON(
 		t,
-		base+"/settings/discord-exporter",
-		url.Values{
-			"token":            {"synthetic-discord-secret"},
-			"interval_minutes": {"30"},
-			"include_threads":  {"active"},
-			"enabled":          {"on"},
-			"media":            {"on"},
+		"POST",
+		base+"/api/v1/settings/discord-exporter",
+		map[string]any{
+			"token":            "synthetic-discord-secret",
+			"interval_minutes": "30",
+			"include_threads":  "active",
+			"enabled":          true,
+			"media":            true,
 		},
-		303,
+		200,
+		nil,
 	)
-	postForm(t, base+"/settings/discord-exporter", url.Values{"interval_minutes": {"0"}, "clear_token": {"on"}}, 400)
+	apiJSON(t, "POST", base+"/api/v1/settings/discord-exporter", map[string]any{"interval_minutes": "0", "clear_token": "on"}, 400, nil)
 	d, err := service.Discord(ctx)
 	if err != nil || d.Token != "synthetic-discord-secret" || d.Interval != 1800 || d.Threads != "Active" || !d.Media {
 		t.Fatal("Discord settings", d.Interval, d.Threads, err)
@@ -35,8 +36,15 @@ func settingsPageChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 	if _, err = pool.Exec(ctx, `INSERT INTO app.discord_root_channels(root_channel_id,name) VALUES('1234567890123456789','Συνθετικό κανάλι')`); err != nil {
 		t.Fatal(err)
 	}
-	postForm(t, base+"/settings/discord-course-map", url.Values{"discord_course_1234567890123456789": {"101"}}, 303)
-	postForm(t, base+"/settings/discord-course-map", url.Values{"discord_course_1234567890123456789": {"999999"}}, 400)
+	var mapped struct {
+		Status string `json:"status"`
+		Mapped int    `json:"mapped"`
+	}
+	apiJSON(t, "POST", base+"/api/v1/settings/discord-course-map", map[string]any{"discord_course_1234567890123456789": "101"}, 200, &mapped)
+	if mapped.Status != "saved" || mapped.Mapped != 1 {
+		t.Fatal("discord course map response", mapped)
+	}
+	apiJSON(t, "POST", base+"/api/v1/settings/discord-course-map", map[string]any{"discord_course_1234567890123456789": "999999"}, 400, nil)
 	channels, err := service.DiscordChannels(ctx)
 	if err != nil || len(channels) != 1 || channels[0].CourseID == nil || *channels[0].CourseID != 101 {
 		t.Fatal("mapping validation erased valid mapping", channels, err)
@@ -67,7 +75,7 @@ func settingsPageChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 	if !probe.OK {
 		t.Fatal("local S3 contract probe failed")
 	}
-	postForm(t, base+"/settings/discord-exporter", url.Values{"clear_token": {"on"}}, 303)
+	apiJSON(t, "POST", base+"/api/v1/settings/discord-exporter", map[string]any{"clear_token": "on"}, 200, nil)
 	d, err = service.Discord(ctx)
 	if err != nil || d.Token != "" {
 		t.Fatal("explicit Discord token clear", err)

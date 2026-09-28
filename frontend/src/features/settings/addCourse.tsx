@@ -64,11 +64,11 @@ interface AddCourseResult {
   message?: string;
 }
 
-async function postAddCourse(form: HTMLFormElement): Promise<AddCourseResult> {
-  const response = await fetch('/courses/add', {
+async function postAddCourse(courseId: string, name: string): Promise<AddCourseResult> {
+  const response = await fetch('/api/v1/courses', {
     method: 'POST',
-    body: new FormData(form),
-    headers: { Accept: 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ course_id: Number(courseId), name }),
   });
   if (response.ok) return { ok: true };
   let message = `Could not add course (HTTP ${response.status}).`;
@@ -119,7 +119,7 @@ function useAddCourse(data: SettingsPayload) {
     setBusy(true);
     setFeedback(null);
     try {
-      const result = await postAddCourse(form);
+      const result = await postAddCourse(courseId, name);
       if (result.ok) {
         navigate('/courses');
         return;
@@ -165,8 +165,6 @@ export function AddCourseForm({ data }: AddCourseFormProps) {
   const [ready, setReady] = React.useState(false);
   return (
     <form
-      method="POST"
-      action="/courses/add"
       onSubmit={submit}
       onInput={(event) => {
         const form = event.currentTarget;

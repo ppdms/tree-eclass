@@ -63,9 +63,10 @@ export function HiddenCourseRow({ course }: HiddenCourseRowProps) {
   const show = async () => {
     setState('busy');
     try {
-      const response = await fetch(`/courses/${course.id}/show`, {
+      const response = await fetch(`/api/v1/courses/${course.id}/show`, {
         method: 'POST',
-        headers: { Accept: 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: '{}',
       });
       if (!response.ok) throw new Error('Could not restore this course.');
       navigate('/settings#hidden-courses');

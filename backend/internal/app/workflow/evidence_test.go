@@ -98,7 +98,7 @@ func exerciseChecks(t *testing.T, db *pgx.Conn, base string) {
 	if len(list.Exercises) != 1 || list.Exercises[0].Description != nil || list.Exercises[0].Urgency != "ex-overdue" {
 		t.Fatalf("exercise summary: %+v", list)
 	}
-	apiJSON(t, "POST", base+"/exercises/101/assignment-1/ignore", nil, 200, nil)
+	apiJSON(t, "POST", base+"/api/v1/courses/101/exercises/assignment-1/ignore", map[string]any{}, 200, nil)
 	apiJSON(t, "GET", base+"/api/v1/exercises", nil, 200, &list)
 	if len(list.Exercises) != 0 {
 		t.Fatal("ignored exercise visible")

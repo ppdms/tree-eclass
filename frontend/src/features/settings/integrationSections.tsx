@@ -34,7 +34,7 @@ export function WebhookSection({ dirtySections }: WebhookSectionProps) {
       dirty={dirtySections.has('webhook')}
       description="Send checker notifications to a Discord-compatible webhook."
     >
-      <SettingsForm action="/settings/webhook">
+      <SettingsForm action="/api/v1/settings/webhook">
         <Field
           label="Webhook URL"
           name="webhook_url"
@@ -63,7 +63,7 @@ export function CredentialsSection({ data, dirtySections }: CredentialsSectionPr
       dirty={dirtySections.has('credentials')}
       description="Credentials are used only for authenticated course checks."
     >
-      <SettingsForm action="/settings/credentials">
+      <SettingsForm action="/api/v1/settings/credentials">
         <div {...stylex.props(styles.settingsMatrix)}>
           <Field label="Username" name="username" defaultValue={data.credential_username || ''} required />
           <Field

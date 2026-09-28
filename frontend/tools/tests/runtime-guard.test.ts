@@ -33,7 +33,7 @@ test('page generation follows SDK Request uploads without buffering or changing 
   expect(new Headers(calls[0].init?.headers).get('Content-Type')).toBe('text/plain');
   expect(new Headers(calls[0].init?.headers).get('X-Tree-Runtime')).toBe('development-one');
   dataset.treeRuntime = 'stable-two';
-  await window.fetch('/settings/credentials', { method: 'POST', signal: abort.signal });
+  await window.fetch('/api/v1/settings/credentials', { method: 'POST', signal: abort.signal });
   expect(new Headers(calls[1].init?.headers).get('X-Tree-Runtime')).toBe('development-one');
   expect(calls[1].init?.signal).toBe(abort.signal);
 });

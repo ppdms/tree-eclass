@@ -116,11 +116,29 @@ interface UseSettingsFormResult {
   setConfirmOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
+type SettingsJson = { [key: string]: string | Array<string> };
+
+function formDataToJson(formData: FormData) {
+  const result: SettingsJson = {};
+  for (const [key, value] of formData.entries()) {
+    const text = value instanceof File ? value.name : value;
+    const current = result[key];
+    if (current === undefined) {
+      result[key] = text;
+    } else if (Array.isArray(current)) {
+      current.push(text);
+    } else {
+      result[key] = [current, text];
+    }
+  }
+  return result satisfies SettingsJson;
+}
+
 async function saveSettings(action: string, formData: FormData): Promise<void> {
   const response = await fetch(action, {
     method: 'POST',
-    body: formData,
-    headers: { Accept: 'application/json' },
+    body: JSON.stringify(formDataToJson(formData)),
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
   });
   if (!response.ok) {
     let message = `Could not save settings (HTTP ${response.status}).`;

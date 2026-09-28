@@ -75,6 +75,8 @@ async function startCheck(args: StartCheckArgs): Promise<void> {
   try {
     const result: { current_course?: string } = await fetchJson('api/run-check', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
     });
     setStatus({ is_checking: true, course_name: result.current_course });
     load();

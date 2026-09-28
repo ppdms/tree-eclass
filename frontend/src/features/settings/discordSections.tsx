@@ -184,7 +184,7 @@ export function DiscordCourseMappingSection({ data, dirtySections }: DiscordCour
       status={`${data.discord_mapped_count || 0} of ${(data.discord_channels || []).length} mapped`}
       description="Associate each archive channel with the eClass course whose discussions it contains."
     >
-      <SettingsForm action="/settings/discord-course-map">
+      <SettingsForm action="/api/v1/settings/discord-course-map">
         <div {...stylex.props(styles.channelList)}>
           {(data.discord_channels || []).map((channel) => (
             <DiscordMapRow channel={channel} courses={data.courses || []} key={channel.root_id} />
@@ -286,7 +286,7 @@ export function DiscordExporterSection({ data, dirtySections }: DiscordExporterS
         'even when the exporter is configured.'
       }
     >
-      <SettingsForm action="/settings/discord-exporter">
+      <SettingsForm action="/api/v1/settings/discord-exporter">
         <ExporterFields exporter={exporter} tokenConfigured={data.discord_export_token_configured} />
         <ExporterThreads exporter={exporter} />
       </SettingsForm>

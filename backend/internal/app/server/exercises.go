@@ -13,8 +13,8 @@ func (s *Server) exerciseRoutes() {
 	s.mux.HandleFunc("GET /api/v1/exercises", s.listExercises)
 	s.mux.HandleFunc("GET /api/v1/exercises/{$}", s.listExercises)
 	s.mux.HandleFunc("GET /api/v1/courses/{course_id}/exercises/{exercise_id}", s.exerciseDetail)
-	s.mux.HandleFunc("POST /exercises/{course_id}/{exercise_id}/ignore", s.ignoreExercise)
-	s.mux.HandleFunc("POST /exercises/{course_id}/{exercise_id}/unignore", s.ignoreExercise)
+	s.mux.HandleFunc("POST /api/v1/courses/{course_id}/exercises/{exercise_id}/ignore", s.ignoreExercise)
+	s.mux.HandleFunc("POST /api/v1/courses/{course_id}/exercises/{exercise_id}/unignore", s.ignoreExercise)
 	for _, path := range []string{"/api/v1/exercises", "/api/v1/exercises/{$}", "/api/v1/courses", "/api/v1/courses/{$}"} {
 		s.mux.HandleFunc("OPTIONS "+path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Allow", "GET, HEAD, OPTIONS")
@@ -83,11 +83,15 @@ func (s *Server) ignoreExercise(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	var body struct{}
+	if !bodyJSON(w, r, &body) {
+		return
+	}
 	err := (exercises.Service{Pool: s.db.Pool}).Ignore(
 		r.Context(),
 		id,
 		r.PathValue("exercise_id"),
-		r.Pattern == "POST /exercises/{course_id}/{exercise_id}/ignore",
+		r.Pattern == "POST /api/v1/courses/{course_id}/exercises/{exercise_id}/ignore",
 	)
 	if err != nil {
 		s.internal(w, err)

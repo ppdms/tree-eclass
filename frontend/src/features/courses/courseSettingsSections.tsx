@@ -154,8 +154,6 @@ export function CourseRenameForm({
 }) {
   return (
     <form
-      method="POST"
-      action={`/courses/${course.id}/update`}
       {...stylex.props(styles.courseSettingsCard, styles.courseSettingsProfile)}
       onSubmit={onSubmit}
     >

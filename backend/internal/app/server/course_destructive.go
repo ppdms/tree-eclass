@@ -15,7 +15,7 @@ func (s *Server) destructiveCourse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	action := "reset"
-	if r.Pattern == "POST /courses/{course_id}/delete" {
+	if r.Pattern == "POST /api/v1/courses/{course_id}/delete" {
 		action = "delete"
 	}
 	if r.Header.Get("X-Tree-Eclass-Confirmation") != fmt.Sprintf("%s:%d", action, id) {
@@ -35,9 +35,5 @@ func (s *Server) destructiveCourse(w http.ResponseWriter, r *http.Request) {
 		s.courseError(w, err)
 		return
 	}
-	target := "/courses"
-	if action == "reset" {
-		target = fmt.Sprintf("/courses/%d", id)
-	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	writeJSON(w, http.StatusOK, map[string]any{"status": action, "id": id})
 }

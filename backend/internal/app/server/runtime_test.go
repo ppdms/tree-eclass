@@ -2,7 +2,7 @@ package server
 
 import (
 	"bytes"
-	"mime/multipart"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,36 +32,37 @@ func TestRuntimeSwitchRejectsStaleWriters(t *testing.T) {
 	}
 }
 
-func TestRuntimeFormTokenPreservesBodyAndIgnoresQuery(t *testing.T) {
+func TestRuntimeHeaderAdmitsCurrentGenerationAndIgnoresQuery(t *testing.T) {
 	s := &Server{config: Config{Mode: "stable", Session: "stable-two"}, mux: http.NewServeMux()}
-	s.mux.HandleFunc("POST /settings/preferences", func(w http.ResponseWriter, r *http.Request) {
-		form, ok := formBody(w, r)
-		if !ok || form.Get("check_interval_minutes") != "90" {
+	s.mux.HandleFunc("POST /api/v1/settings/preferences", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if !bodyJSON(w, r, &body) {
+			t.Error("guard consumed JSON body")
+			return
+		}
+		if body["check_interval_minutes"] != "90" {
 			t.Error("guard consumed form fields")
 		}
 		w.WriteHeader(204)
 	})
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	_ = writer.WriteField("_tree_runtime", "stable-two")
-	_ = writer.WriteField("check_interval_minutes", "90")
-	_ = writer.Close()
-	r := httptest.NewRequest("POST", "http://127.0.0.1/settings/preferences", &body)
-	r.Header.Set("Content-Type", writer.FormDataContentType())
+	encoded, _ := json.Marshal(map[string]any{"check_interval_minutes": "90"})
+	r := httptest.NewRequest("POST", "http://127.0.0.1/api/v1/settings/preferences", bytes.NewReader(encoded))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("X-Tree-Runtime", "stable-two")
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)
 	if w.Code != 204 {
-		t.Fatal("current form rejected", w.Code, w.Body.String())
+		t.Fatal("current request rejected", w.Code, w.Body.String())
 	}
 	r = httptest.NewRequest(
 		"POST",
-		"http://127.0.0.1/settings/preferences?_tree_runtime=stable-two",
+		"http://127.0.0.1/api/v1/settings/preferences?_tree_runtime=stable-two",
 		strings.NewReader("check_interval_minutes=90"),
 	)
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, r)
 	if w.Code != 409 {
-		t.Fatal("query blessed a form with no page generation", w.Code)
+		t.Fatal("query blessed a request with no page generation", w.Code)
 	}
 }

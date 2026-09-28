@@ -123,8 +123,6 @@ export function PlannerForm({
 }) {
   return (
     <form
-      method="POST"
-      action="/study/planner"
       onSubmit={onSubmit}
       {...stylex.props(styles.studyPlannerForm)}
       aria-describedby="planner-errors"
@@ -227,10 +225,14 @@ const detailItemSchema = z
 
 async function submitPlannerForm(form: HTMLFormElement): Promise<{ ok: true } | { ok: false; messages: string[] }> {
   try {
-    const response = await fetch('/study/planner', {
+    const payload: Record<string, string> = {};
+    for (const [key, value] of new FormData(form).entries()) {
+      payload[key] = String(value);
+    }
+    const response = await fetch('/api/v1/study/planner', {
       method: 'POST',
-      body: new FormData(form),
-      headers: { Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
     });
     const parsed = errorBodySchema.safeParse(await response.json().catch(() => ({})));
     if (!response.ok) {
@@ -257,10 +259,6 @@ async function submitPlannerForm(form: HTMLFormElement): Promise<{ ok: true } | 
 function usePlanner(onSaved?: () => void | Promise<void>) {
   const [saveState, setSaveState] = React.useState<string | null>(null);
   const [errors, setErrors] = React.useState<string[]>([]);
-  React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setSaveState(params.get('planner_saved') === '1' ? 'Study plan updated.' : params.get('planner_error') || null);
-  }, []);
   const saving = saveState === 'Saving study plan…';
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

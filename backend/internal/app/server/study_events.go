@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
 
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/study"
@@ -60,10 +59,6 @@ func (s *Server) studyEvent(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if r.URL.Path == "/api/study/actions/event" {
-		s.studyEventPlan(w, r, event)
-		return
-	}
 	view, err := (navigation.Service{Pool: s.db.Pool}).Read(
 		r.Context(),
 		navigation.Request{CourseID: course, IncludeHidden: true},
@@ -86,22 +81,5 @@ func (s *Server) studyEvent(w http.ResponseWriter, r *http.Request) {
 			"status":         "recorded",
 			"overview_error": refreshError,
 		},
-	)
-}
-
-func (s *Server) studyEventPlan(w http.ResponseWriter, r *http.Request, event study.Event) {
-	view, err := (study.Service{Pool: s.db.Pool}).Intelligence(r.Context(), nil, time.Now())
-	var plan, planError any
-	if err != nil {
-		planError = "Progress was saved, but the study plan could not be refreshed."
-	} else if view["adaptive_plan_available"] != true {
-		planError = "Progress was saved. The study plan is being updated."
-	} else {
-		plan = view["adaptive_plan"]
-	}
-	writeJSON(
-		w,
-		http.StatusOK,
-		map[string]any{"status": "recorded", "event": event, "plan": plan, "plan_error": planError},
 	)
 }

@@ -22,7 +22,7 @@ func (s *Server) routes() {
 	s.syncRoutes()
 	s.historyRoutes()
 	s.activityRoutes()
-	s.mux.HandleFunc("POST /study/planner", s.savePlanner)
+	s.mux.HandleFunc("POST /api/v1/study/planner", s.savePlanner)
 	s.mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.db.Pool.Ping(r.Context()); err != nil {
 			writeFailure(w, http.StatusServiceUnavailable, "Database unavailable")

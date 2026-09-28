@@ -14,7 +14,6 @@ func (s *Server) studyRoutes() {
 	s.mux.HandleFunc("GET /api/v1/study/intelligence", s.studyIntelligence)
 	s.mux.HandleFunc("GET /api/v1/study/snapshot", s.studySnapshot)
 	s.mux.HandleFunc("POST /api/v1/study/actions/event", s.studyEvent)
-	s.mux.HandleFunc("POST /api/study/actions/event", s.studyEvent)
 }
 
 func (s *Server) studyFull(w http.ResponseWriter, r *http.Request) {

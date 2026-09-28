@@ -2,45 +2,41 @@ package server
 
 import (
 	"bytes"
-	"mime/multipart"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func TestFormBodyAcceptsBrowserMultipartAndExcludesQueryFields(t *testing.T) {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	_ = writer.WriteField("username", "synthetic-student")
-	_ = writer.WriteField("password", "synthetic-password")
-	_ = writer.Close()
-	req := httptest.NewRequest("POST", "/settings/credentials?username=wrong&clear_password=on", &body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	form, ok := formBody(httptest.NewRecorder(), req)
-	if !ok || form.Get("username") != "synthetic-student" || form.Get("password") != "synthetic-password" ||
-		form.Has("clear_password") {
-		t.Fatal("multipart form boundary failed")
+func TestJSONFieldsPreservesPresenceAndRejectsNested(t *testing.T) {
+	raw, _ := json.Marshal(map[string]any{
+		"username": "synthetic-student",
+		"enabled":  true,
+		"interval": 30.0,
+		"tags":     []any{"a", "b"},
+		"empty":    nil,
+	})
+	req := httptest.NewRequest("POST", "/api/v1/settings/credentials", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	form, ok := jsonFields(httptest.NewRecorder(), req)
+	if !ok || form.Get("username") != "synthetic-student" || form.Get("enabled") != "on" ||
+		form.Get("interval") != "30" || form["tags"][0] != "a" || form["tags"][1] != "b" ||
+		!form.Has("empty") {
+		t.Fatal("JSON field mapping failed", form)
 	}
-}
-
-func TestFormBodyRejectsFilesAndOversizedFields(t *testing.T) {
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	file, _ := writer.CreateFormFile("token", "attachment.txt")
-	_, _ = file.Write([]byte("unexpected"))
-	_ = writer.Close()
-	req := httptest.NewRequest("POST", "/settings/discord-exporter", &body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	if _, ok := formBody(httptest.NewRecorder(), req); ok {
-		t.Fatal("unexpected file attachment accepted")
+	raw, _ = json.Marshal(map[string]any{"nested": map[string]any{"a": "b"}})
+	req = httptest.NewRequest("POST", "/api/v1/settings/credentials", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	if _, ok := jsonFields(httptest.NewRecorder(), req); ok {
+		t.Fatal("nested JSON object accepted")
 	}
 	req = httptest.NewRequest(
 		"POST",
-		"/settings/credentials",
-		strings.NewReader("username="+strings.Repeat("x", 1024*1024)),
+		"/api/v1/settings/credentials",
+		strings.NewReader(`{"username":`+strings.Repeat(`"x"`, 512*1024)+`}`),
 	)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if _, ok := formBody(httptest.NewRecorder(), req); ok {
-		t.Fatal("unbounded form accepted")
+	req.Header.Set("Content-Type", "application/json")
+	if _, ok := jsonFields(httptest.NewRecorder(), req); ok {
+		t.Fatal("unbounded JSON accepted")
 	}
 }
