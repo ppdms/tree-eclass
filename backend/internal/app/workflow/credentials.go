@@ -12,16 +12,39 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"tree-eclass/internal/domain/settings"
 )
 
-var providerSecrets = []string{
-	"SYNTHETIC_API_KEY",
-	"OLLAMA_API_KEY",
-	"ZAI_API_KEY",
-	"ALIBABA_API_KEY",
-	"OPENCODE_GO_API_KEY",
-	"HF_TOKEN",
-	"OLLAMA_COOKIE_HEADER",
+// providerSecrets is the credential allowlist for import and validation.
+// Provider key names derive from the settings registry so a new provider
+// needs only a registry entry; the trailing names are non-provider secrets
+// (cookies, future-provider placeholders) sharing the same credential file.
+var providerSecrets = providerSecretAllowlist()
+
+func providerSecretAllowlist() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, names := range settings.ProviderKeys {
+		for _, name := range names {
+			if !seen[name] {
+				seen[name] = true
+				out = append(out, name)
+			}
+		}
+	}
+	for _, name := range []string{
+		"OLLAMA_COOKIE_HEADER",
+		"OPENROUTER_API_KEY",
+		"OPENAI_API_KEY",
+		"KNOWLEDGE_EMBEDDING_API_KEY",
+	} {
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // Import only provider keys from surviving configuration. This is never used by
