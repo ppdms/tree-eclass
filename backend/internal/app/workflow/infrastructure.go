@@ -26,9 +26,6 @@ func (c *Controller) infrastructure(ctx context.Context) error {
 	if err := c.verifyStorageTools(ctx); err != nil {
 		return err
 	}
-	if err := c.migratedStorage(); err != nil {
-		return err
-	}
 	if err := c.freePorts(); err != nil {
 		return err
 	}

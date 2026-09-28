@@ -134,14 +134,3 @@ func waitBrowserBuild(t *testing.T, c *Controller, ready func() bool) {
 	_ = c.Logs("frontend-build")
 	t.Fatal("browser rebuild did not reach expected state")
 }
-
-func TestSingleHTTPPortReadsPreviousConfiguration(t *testing.T) {
-	var p Ports
-	if err := p.UnmarshalJSON([]byte(`{"Frontend":8000,"API":8001,"Postgres":15432}`)); err != nil || p.HTTP != 8000 ||
-		p.Postgres != 15432 {
-		t.Fatal(p, err)
-	}
-	if err := p.UnmarshalJSON([]byte(`{"HTTP":8123,"Frontend":8000}`)); err != nil || p.HTTP != 8123 {
-		t.Fatal(p, err)
-	}
-}

@@ -32,7 +32,6 @@ const usage = `tree — native laptop workflow
   logs SERVICE             Show recent api/frontend-build/postgres/migration/collection/watcher output
   check                    Suspend, validate with synthetic data, clean and resume
   storage collect          Remove abandoned objects while stopped
-  storage export-s3        Copy legacy S3 objects into the filesystem store while stopped
   clean                    Remove owned disposable output while stopped
 `
 
@@ -64,9 +63,6 @@ func Run(ctx context.Context, args []string) error {
 		return err
 	}
 	defer c.Close()
-	if len(args) >= 2 && args[0] == "storage" && args[1] == "export-s3" {
-		return c.ExportS3(ctx, args[2:])
-	}
 	return c.command(ctx, args)
 }
 func (c *Controller) command(ctx context.Context, args []string) error {

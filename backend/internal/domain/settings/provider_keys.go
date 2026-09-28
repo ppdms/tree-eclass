@@ -2,13 +2,13 @@ package settings
 
 import "strings"
 
-// ProviderKey selects aliases without copying unrelated runtime configuration.
+// ProviderKey selects the configured key without copying unrelated runtime configuration.
 func ProviderKey(keys map[string]string, provider string) string {
 	names := map[string][]string{
 		"synthetic":   {"SYNTHETIC_API_KEY"},
 		"ollama":      {"OLLAMA_API_KEY"},
 		"huggingface": {"HF_TOKEN"},
-		"alibaba":     {"ALIBABA_API_KEY", "DASHSCOPE_API_KEY"},
+		"alibaba":     {"ALIBABA_API_KEY"},
 		"zai":         {"ZAI_API_KEY"},
 		"opencode-go": {"OPENCODE_GO_API_KEY"},
 	}

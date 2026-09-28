@@ -19,13 +19,9 @@ var providerSecrets = []string{
 	"OLLAMA_API_KEY",
 	"ZAI_API_KEY",
 	"ALIBABA_API_KEY",
-	"OPENROUTER_API_KEY",
 	"OPENCODE_GO_API_KEY",
 	"HF_TOKEN",
 	"OLLAMA_COOKIE_HEADER",
-	"DASHSCOPE_API_KEY",
-	"OPENAI_API_KEY",
-	"KNOWLEDGE_EMBEDDING_API_KEY",
 }
 
 // Import only provider keys from surviving configuration. This is never used by

@@ -2,7 +2,6 @@
 package workflow
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -124,23 +123,6 @@ func (c *Controller) configured() error {
 	return nil
 }
 
-// migratedStorage refuses to start datasets whose objects still live in the
-// legacy on-disk layout; their contents must be exported into the filesystem
-// object store first.
-func (c *Controller) migratedStorage() error {
-	if _, err := os.Stat(filepath.Join(c.active(), "seaweed")); err != nil {
-		return nil
-	}
-	if _, err := os.Stat(c.objectsRoot()); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return errors.New(
-				"this dataset predates filesystem object storage; run ./tree storage export-s3 before starting",
-			)
-		}
-		return err
-	}
-	return nil
-}
 func (c *Controller) space() error {
 	free, err := platform.Available(c.Root)
 	if err != nil {
@@ -171,25 +153,4 @@ func databaseName(name string) string {
 		return "tree"
 	}
 	return name
-}
-
-// Read the previous two-listener configuration without changing the user's public
-// URL. Subsequent configuration writes contain only the single HTTP listener.
-func (p *Ports) UnmarshalJSON(data []byte) error {
-	type current Ports
-	var value struct {
-		current
-		Frontend, API int
-	}
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	*p = Ports(value.current)
-	if p.HTTP == 0 {
-		p.HTTP = value.Frontend
-	}
-	if p.HTTP == 0 {
-		p.HTTP = value.API
-	}
-	return nil
 }

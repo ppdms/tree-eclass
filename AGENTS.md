@@ -21,9 +21,7 @@ synthetic verification disposable and separate from the live dataset.
 Run services **natively on macOS**, with containers retained as an optional future
 server deployment using the same application contracts. Move document/blob storage
 to the **local content-addressed objects directory** of the active dataset;
-`active/objects` marks the current on-disk layout, and the controller refuses to
-run against a dataset stored in the legacy object-store layout until it has been
-migrated. PostgreSQL remains the relational database. These user choices
+`active/objects` is the on-disk layout. PostgreSQL remains the relational database. These user choices
 supersede the earlier Colima/WebDAV replacement proposal.
 An idiomatic **Go backend and controller are required in this implementation**.
 Short-lived Python document parsers are allowed; a persistent Python API or worker

@@ -17,7 +17,7 @@ func (s Service) Export(ctx context.Context, out io.Writer) error {
 	}
 	defer tx.Rollback(ctx)
 	var version int64
-	if err = tx.QueryRow(ctx, `SELECT coalesce(max(version_id),0) FROM public.goose_db_version WHERE is_applied`).Scan(&version); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT coalesce(max(version),0) FROM public.tree_go_migrations`).Scan(&version); err != nil {
 		return err
 	}
 	prefs, err := readPreferences(ctx, tx)

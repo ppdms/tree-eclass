@@ -31,8 +31,8 @@ type Store interface {
 	Open(ctx context.Context, ref Reference) (io.ReadCloser, error)
 }
 
-// RegisterObject refuses to relabel an old object ID after out-of-band S3 loss
-// and recreation. Existing document revisions still refer to that exact version.
+// RegisterObject refuses to relabel an old object ID after out-of-band object
+// loss and recreation. Existing document revisions still refer to that exact version.
 func RegisterObject(ctx context.Context, db queries.DBTX, object Reference) error {
 	n, err := queries.New(db).
 		RegisterObject(
@@ -52,7 +52,7 @@ func RegisterObject(ctx context.Context, db queries.DBTX, object Reference) erro
 	}
 	if n != 1 {
 		return errors.New(
-			"object catalog identity differs from S3; restore or reconcile the stored revision before publishing",
+			"object catalog identity differs from storage; restore or reconcile the stored revision before publishing",
 		)
 	}
 	return nil
