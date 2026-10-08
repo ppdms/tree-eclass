@@ -24,6 +24,12 @@ orchestrator can report which code a floating tag holds. Base images in
 an interactive terminal. Pin the built application image by immutable id or
 digest; the deployment does.
 
+The Go build stage pins Go **1.27.1 / Alpine 3.24** by immutable
+multi-architecture index. Its linux/amd64 image was published on
+2026-09-18 and qualifies under the server's seven-day upstream-image gate.
+`CGO_ENABLED=0` keeps the backend independent of the builder's libc; the
+final runtime remains the Debian-based Python stage.
+
 ## Commands
 
 The compiled binary takes one of:

@@ -6,7 +6,7 @@ COPY frontend ./
 RUN bun run build
 
 # Optional future Linux deployment. The laptop uses ./tree and native services.
-FROM docker.io/library/golang:1.27.1 AS go-build
+FROM docker.io/library/golang:1.27.1-alpine3.24@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS go-build
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
