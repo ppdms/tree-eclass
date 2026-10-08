@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/net/html"
 
 	"tree-eclass/internal/domain/identity"
@@ -14,12 +14,12 @@ import (
 	"tree-eclass/internal/integrations/eclass"
 )
 
-func courseHeader(ctx context.Context, tx pgx.Tx, id int64, title string) (string, error) {
+func courseHeader(ctx context.Context, tx rdbms.Tx, id int64, title string) (string, error) {
 	var name string
 	err := tx.QueryRow(ctx, `SELECT name FROM app.courses WHERE id=$1`, id).Scan(&name)
 	return "**" + title + " — " + notifications.Plain(identity.Decode(name)) + "**", err
 }
-func announceChanges(ctx context.Context, tx pgx.Tx, course, record int64, changes []Change) error {
+func announceChanges(ctx context.Context, tx rdbms.Tx, course, record int64, changes []Change) error {
 	header, err := courseHeader(ctx, tx, course, "Course changes")
 	if err != nil {
 		return err
@@ -85,7 +85,7 @@ func htmlText(source string) string {
 	}
 	return strings.Join(strings.Fields(text.String()), " ")
 }
-func announceExercises(ctx context.Context, tx pgx.Tx, course int64, lines []string) error {
+func announceExercises(ctx context.Context, tx rdbms.Tx, course int64, lines []string) error {
 	if len(lines) == 0 {
 		return nil
 	}
@@ -103,13 +103,13 @@ func announceExercises(ctx context.Context, tx pgx.Tx, course int64, lines []str
 		},
 	)
 }
-func exerciseEvents(ctx context.Context, tx pgx.Tx, course int64, ex eclass.Exercise) ([]string, error) {
+func exerciseEvents(ctx context.Context, tx rdbms.Tx, course int64, ex eclass.Exercise) ([]string, error) {
 	var grade, comments, file, url string
 	err := tx.QueryRow(ctx, `SELECT coalesce(grade,''),coalesce(grade_comments,''),coalesce(assignment_file_name,''),coalesce(assignment_file_url,'') FROM app.exercises WHERE course_id=$1 AND exercise_id=$2`, course, identity.Encode(ex.ID)).
 		Scan(&grade, &comments, &file, &url)
 	title := notifications.Plain(ex.Title)
 	lines := []string{}
-	if err == pgx.ErrNoRows {
+	if err == rdbms.ErrNoRows {
 		line := "• New exercise: **" + title + "**"
 		if ex.Deadline != "" {
 			line += "\nDeadline: " + notifications.Plain(ex.Deadline)

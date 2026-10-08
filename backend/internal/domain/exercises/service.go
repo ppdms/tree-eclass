@@ -6,11 +6,11 @@ import (
 	"sort"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool *pgxpool.Pool }
+type Service struct{ Pool rdbms.Pool }
 
 // Detail is a pointer so summary responses omit descriptions instead of fetching
 // and retaining every potentially large assignment body.
@@ -79,7 +79,7 @@ func (s Service) List(ctx context.Context, ignored, details bool, now time.Time)
 	}
 	rows, err := s.Pool.Query(
 		ctx,
-		`SELECT row_to_json(x) FROM (SELECT `+columns+` FROM app.exercises e JOIN app.courses c ON c.id=e.course_id WHERE c.hidden=0 AND ($1 OR e.ignored=0) ORDER BY e.course_id,e.id DESC LIMIT 200) x`,
+		`SELECT `+columns+` FROM app.exercises e JOIN app.courses c ON c.id=e.course_id WHERE c.hidden=0 AND ($1 OR e.ignored=0) ORDER BY e.course_id,e.id DESC LIMIT 200`,
 		ignored,
 	)
 	if err != nil {
@@ -88,11 +88,7 @@ func (s Service) List(ctx context.Context, ignored, details bool, now time.Time)
 	defer rows.Close()
 	result := make([]Exercise, 0)
 	for rows.Next() {
-		var raw []byte
-		if err = rows.Scan(&raw); err != nil {
-			return nil, err
-		}
-		item, err := decode(raw)
+		item, err := scanExercise(rows, details)
 		if err != nil {
 			return nil, err
 		}
@@ -109,6 +105,35 @@ func (s Service) List(ctx context.Context, ignored, details bool, now time.Time)
 	return result, rows.Err()
 }
 
+// scanExercise reads one explicit-column exercise row in summaryColumns (+
+// detailColumns when details) order and decodes it the way the old
+// row_to_json blob decoded.
+func scanExercise(rows rdbms.Rows, details bool) (Exercise, error) {
+	var item Exercise
+	var ignored int64
+	args := []any{
+		&item.ID, &item.CourseID, &item.CourseName, &item.ExerciseID,
+		&item.Title, &item.Link, &item.Deadline, &item.SubmissionStatus,
+		&item.Grade, &item.MaxGrade, &ignored, &item.FetchedAt,
+	}
+	if details {
+		args = append(args,
+			&item.Description, &item.WorkType, &item.StartDate,
+			&item.AssignmentFileName, &item.AssignmentFileURL,
+			&item.GradeComments, &item.SubmissionDate,
+		)
+	}
+	if err := rows.Scan(args...); err != nil {
+		return Exercise{}, err
+	}
+	item.Ignored = ignored
+	raw, err := json.Marshal(item)
+	if err != nil {
+		return Exercise{}, err
+	}
+	return decode(raw)
+}
+
 func (e *Exercise) annotate(now time.Time) {
 	var deadline time.Time
 	if e.Deadline != nil {
@@ -123,9 +148,26 @@ func (e *Exercise) annotate(now time.Time) {
 }
 
 func (s Service) Get(ctx context.Context, course int64, id string) (Exercise, error) {
-	var raw []byte
-	err := s.Pool.QueryRow(ctx, `SELECT row_to_json(x) FROM (SELECT `+summaryColumns+detailColumns+` FROM app.exercises e JOIN app.courses c ON c.id=e.course_id WHERE c.hidden=0 AND e.course_id=$1 AND e.exercise_id=$2) x`, course, identity.Encode(id)).
-		Scan(&raw)
+	row := s.Pool.QueryRow(ctx, `SELECT `+summaryColumns+detailColumns+` FROM app.exercises e JOIN app.courses c ON c.id=e.course_id WHERE c.hidden=0 AND e.course_id=$1 AND e.exercise_id=$2`, course, identity.Encode(id))
+	return scanDetail(row)
+}
+
+// scanDetail reads the full detail row in summaryColumns+detailColumns order.
+func scanDetail(row rdbms.Row) (Exercise, error) {
+	var item Exercise
+	var ignored int64
+	if err := row.Scan(
+		&item.ID, &item.CourseID, &item.CourseName, &item.ExerciseID,
+		&item.Title, &item.Link, &item.Deadline, &item.SubmissionStatus,
+		&item.Grade, &item.MaxGrade, &ignored, &item.FetchedAt,
+		&item.Description, &item.WorkType, &item.StartDate,
+		&item.AssignmentFileName, &item.AssignmentFileURL,
+		&item.GradeComments, &item.SubmissionDate,
+	); err != nil {
+		return Exercise{}, err
+	}
+	item.Ignored = ignored
+	raw, err := json.Marshal(item)
 	if err != nil {
 		return Exercise{}, err
 	}

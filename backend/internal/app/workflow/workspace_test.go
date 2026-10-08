@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/domain/workspace"
 )
 
-func workspaceChecks(t *testing.T, pool *pgxpool.Pool, base, document string) {
+func workspaceChecks(t *testing.T, pool rdbms.Pool, base, document string) {
 	t.Helper()
 	ctx := t.Context()
 	service := workspace.Service{Pool: pool}
@@ -50,7 +50,7 @@ func workspaceChecks(t *testing.T, pool *pgxpool.Pool, base, document string) {
 
 func workspaceProgressChecks(
 	t *testing.T,
-	pool *pgxpool.Pool,
+	pool rdbms.Pool,
 	base, document string,
 	service workspace.Service,
 	id int64,
@@ -127,7 +127,7 @@ func workspaceProgressChecks(
 	workspaceHiddenCourseChecks(t, pool, base)
 }
 
-func workspaceHiddenCourseChecks(t *testing.T, pool *pgxpool.Pool, base string) {
+func workspaceHiddenCourseChecks(t *testing.T, pool rdbms.Pool, base string) {
 	t.Helper()
 	ctx := t.Context()
 	if _, err := pool.Exec(ctx, `UPDATE app.courses SET hidden=1 WHERE id=101`); err != nil {
@@ -144,7 +144,7 @@ func workspaceHiddenCourseChecks(t *testing.T, pool *pgxpool.Pool, base string) 
 	}
 }
 
-func workspaceActionChecks(t *testing.T, pool *pgxpool.Pool, base, document string) {
+func workspaceActionChecks(t *testing.T, pool rdbms.Pool, base, document string) {
 	t.Helper()
 	ctx := t.Context()
 	// A synthetic published action exercises revision admission independently
@@ -203,7 +203,7 @@ func workspaceActionChecks(t *testing.T, pool *pgxpool.Pool, base, document stri
 	workspaceFinishFaultCheck(t, pool, base, start)
 }
 
-func workspaceFinishFaultCheck(t *testing.T, pool *pgxpool.Pool, base string, start map[string]any) {
+func workspaceFinishFaultCheck(t *testing.T, pool rdbms.Pool, base string, start map[string]any) {
 	t.Helper()
 	ctx := t.Context()
 	start["session_key"] = "synthetic-action-atomic"

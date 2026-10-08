@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"time"
-
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/settings"
 )
 
 func (s Service) prepare(ctx context.Context, lane string) error {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead})
 	if err != nil {
 		return err
 	}
@@ -26,7 +25,7 @@ func (s Service) prepare(ctx context.Context, lane string) error {
  WHERE p.enabled=1 AND p.exam_at IS NOT NULL AND p.exam_at<>'' AND p.commitment<>'skipped'
  AND (s.course_id IS NULL OR s.source_generation<>g.generation OR s.config_generation<>$2 OR s.next_at<=now())
  ORDER BY s.next_at NULLS FIRST,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED`, lane, a.AnalysisGeneration()).Scan(&course)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return nil
 	}
 	if err != nil {

@@ -5,8 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
-
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/settings"
@@ -21,7 +20,7 @@ func (s Service) publish(ctx context.Context, j job, result inference.Generated)
 	defer tx.Rollback(ctx)
 	var locked int64
 	err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 FOR UPDATE`, j.Course).Scan(&locked)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
@@ -56,7 +55,7 @@ func (s Service) publish(ctx context.Context, j job, result inference.Generated)
 	}
 	return tx.Commit(ctx)
 }
-func replaceReady(ctx context.Context, tx pgx.Tx, j job, result inference.Generated) error {
+func replaceReady(ctx context.Context, tx rdbms.Tx, j job, result inference.Generated) error {
 	now := stamp(time.Now())
 	scope := `course_id=$1`
 	args := []any{j.Course, now}
@@ -89,7 +88,7 @@ func replaceReady(ctx context.Context, tx pgx.Tx, j job, result inference.Genera
 	)
 	return err
 }
-func insertQuestions(ctx context.Context, tx pgx.Tx, j job, raw []byte) error {
+func insertQuestions(ctx context.Context, tx rdbms.Tx, j job, raw []byte) error {
 	var set blueprints.PracticeSet
 	if err := json.Unmarshal(raw, &set); err != nil {
 		return err
@@ -145,7 +144,7 @@ func (s Service) fail(ctx context.Context, j job, failure error) error {
 	}
 	return tx.Commit(ctx)
 }
-func finish(ctx context.Context, tx pgx.Tx, j job, status, message string, at time.Time, reset bool) error {
+func finish(ctx context.Context, tx rdbms.Tx, j job, status, message string, at time.Time, reset bool) error {
 	_, err := tx.Exec(
 		ctx,
 		`UPDATE `+table(

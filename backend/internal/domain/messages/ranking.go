@@ -50,14 +50,14 @@ var stopwords = func() map[string]bool {
 	return result
 }()
 
-func lexicalQuery(query string) string {
+func lexicalQuery(query string) []string {
 	terms := []string{}
 	for _, term := range strings.Fields(identity.Search(query)) {
 		if !stopwords[term] {
-			terms = append(terms, `"`+strings.ReplaceAll(term, `"`, `""`)+`"`)
+			terms = append(terms, term)
 		}
 	}
-	return strings.Join(terms, " OR ")
+	return terms
 }
 func academicYear(stamp string) *string {
 	if len(stamp) < 10 {

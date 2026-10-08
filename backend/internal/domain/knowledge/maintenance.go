@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Maintain runs on the same serial queue as extraction. Rebuilding replaces
@@ -24,7 +24,7 @@ func (s Reader) Maintain(ctx context.Context, action string) error {
 	if _, err = tx.Exec(ctx, `SELECT id FROM app.courses ORDER BY id FOR UPDATE`); err != nil {
 		return err
 	}
-	if err = queries.New(tx).QueueLock(ctx, "index"); err != nil {
+	if err = queries.ForTx(tx).QueueLock(ctx, "index"); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(ctx, maintenanceQuery, action); err != nil {
@@ -38,7 +38,7 @@ func (s Reader) Maintain(ctx context.Context, action string) error {
 	return tx.Commit(ctx)
 }
 
-const maintenanceQuery = `WITH candidates AS MATERIALIZED (
+const maintenanceQuery = `WITH candidates AS (
  SELECT d.id FROM knowledge.documents d JOIN app.courses c ON c.id=d.course_id
  WHERE d.is_current=1 AND d.status NOT IN('unsupported','external','skipped_limit')
  AND EXISTS(SELECT 1 FROM app.document_revisions r JOIN app.objects o ON o.id=r.object_id
@@ -60,7 +60,7 @@ const maintenanceQuery = `WITH candidates AS MATERIALIZED (
 )
  UPDATE knowledge.documents SET status='pending',error=NULL,diagnostic_reason=NULL WHERE id IN(SELECT id FROM candidates)`
 
-func retryAnalyses(ctx context.Context, tx pgx.Tx) error {
+func retryAnalyses(ctx context.Context, tx rdbms.Tx) error {
 	// This finite internal allowlist is the only source of SQL identifiers.
 	for _, table := range []string{"document_enrichments", "page_enrichments", "course_blueprints", "practice_question_sets"} {
 		if _, err := tx.Exec(ctx, `UPDATE knowledge.`+table+` SET status='pending',attempts=0,error=NULL,claimed_at=NULL,available_at=to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US') WHERE status='failed'`); err != nil {

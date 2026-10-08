@@ -8,6 +8,7 @@ import (
 	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
+	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/integrations/mirror"
 )
 
@@ -20,7 +21,7 @@ func (s Service) MirrorExternal(ctx context.Context, id int64) error {
 	if err != nil || root == "" {
 		return err
 	}
-	course, err := queries.New(s.Pool).Course(ctx, id)
+	course, err := courseByPool(ctx, s.Pool, id)
 	if err != nil {
 		return err
 	}
@@ -45,7 +46,7 @@ func (s Service) mirrorExternal(ctx context.Context, course queries.AppCourse) (
 }
 
 func (s Service) externalMirrorFiles(ctx context.Context, id int64) ([]mirror.File, error) {
-	rows, err := queries.New(s.Pool).ExternalMirrorFiles(ctx, id)
+	rows, err := queries.ForPool(s.Pool).ExternalMirrorFiles(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -58,4 +59,8 @@ func (s Service) externalMirrorFiles(ctx context.Context, id int64) ([]mirror.Fi
 		files = append(files, mirror.File{Path: identity.Decode(row.NormalizedPath), Object: &ref})
 	}
 	return files, nil
+}
+
+func courseByPool(ctx context.Context, pool rdbms.Pool, id int64) (queries.AppCourse, error) {
+	return queries.ForPool(pool).Course(ctx, id)
 }

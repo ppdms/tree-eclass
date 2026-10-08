@@ -8,17 +8,17 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/extract"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/objects"
 	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Indexer struct {
-	Pool    *pgxpool.Pool
+	Pool    rdbms.Pool
 	Objects objects.Store
 	Parser  extract.Extractor
 	Temp    string
@@ -33,43 +33,19 @@ type extraction struct {
 }
 
 func (i Indexer) Index(ctx context.Context, id string) (failure error) {
-	free, err := platform.Available(i.Temp)
+	document, err := i.admitDocument(ctx, id)
 	if err != nil {
 		return err
-	}
-	if free < 5*1024*1024*1024 {
-		return errors.New("indexing paused: less than 5 GiB free disk space")
-	}
-	q := queries.New(i.Pool)
-	document, err := q.IndexDocument(ctx, id)
-	if err != nil {
-		return err
-	}
-	var admitted bool
-	if err = i.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM knowledge.documents d WHERE d.id=$1 AND `+CurrentSourcePredicate+`)`, id).Scan(&admitted); err != nil {
-		return err
-	}
-	if !admitted {
-		return ErrUnavailable
-	}
-	changed, err := i.Pool.Exec(
-		ctx,
-		`UPDATE knowledge.documents SET status='running',error=NULL,diagnostic_reason=NULL WHERE id=$1 AND source_hash=$2 AND is_current=1`,
-		id,
-		document.SourceHash,
-	)
-	if err != nil {
-		return err
-	}
-	if changed.RowsAffected() != 1 {
-		return errors.New("document changed before extraction")
 	}
 	defer func() {
 		if failure != nil {
 			failure = errors.Join(failure, i.recordFailure(ctx, id, document.SourceHash, failure))
 		}
 	}()
-	row, err := q.DocumentObject(ctx, queries.DocumentObjectParams{DocumentID: id})
+	row, err := documentQueries(i.Pool).DocumentObject(
+		ctx,
+		queries.DocumentObjectParams{DocumentID: id},
+	)
 	if err != nil {
 		return err
 	}
@@ -91,6 +67,49 @@ func (i Indexer) Index(ctx context.Context, id string) (failure error) {
 		return err
 	}
 	return i.publish(ctx, document, result)
+}
+
+func documentQueries(pool rdbms.Pool) queries.Querier {
+	return queries.ForPool(pool)
+}
+
+func (i Indexer) admitDocument(
+	ctx context.Context,
+	id string,
+) (queries.KnowledgeDocument, error) {
+	var document queries.KnowledgeDocument
+	free, err := platform.Available(i.Temp)
+	if err != nil {
+		return document, err
+	}
+	if free < 5*1024*1024*1024 {
+		return document, errors.New("indexing paused: less than 5 GiB free disk space")
+	}
+	q := queries.ForPool(i.Pool)
+	document, err = q.IndexDocument(ctx, id)
+	if err != nil {
+		return document, err
+	}
+	var admitted bool
+	if err = i.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM knowledge.documents d WHERE d.id=$1 AND `+CurrentSourcePredicate+`)`, id).Scan(&admitted); err != nil {
+		return document, err
+	}
+	if !admitted {
+		return document, ErrUnavailable
+	}
+	changed, err := i.Pool.Exec(
+		ctx,
+		`UPDATE knowledge.documents SET status='running',error=NULL,diagnostic_reason=NULL WHERE id=$1 AND source_hash=$2 AND is_current=1`,
+		id,
+		document.SourceHash,
+	)
+	if err != nil {
+		return document, err
+	}
+	if changed.RowsAffected() != 1 {
+		return document, errors.New("document changed before extraction")
+	}
+	return document, nil
 }
 func (i Indexer) download(ctx context.Context, ref objects.Reference) (string, error) {
 	return i.Objects.Download(ctx, ref, i.Temp)
@@ -154,7 +173,7 @@ func (i Indexer) publish(ctx context.Context, document queries.KnowledgeDocument
 	if _, err = tx.Exec(ctx, "SELECT id FROM knowledge.documents WHERE id=$1 FOR UPDATE", document.ID); err != nil {
 		return err
 	}
-	q := queries.New(tx)
+	q := queries.ForTx(tx)
 	current, err := q.IndexDocument(ctx, document.ID)
 	if err != nil {
 		return err
@@ -185,7 +204,7 @@ func (i Indexer) publish(ctx context.Context, document queries.KnowledgeDocument
 
 func publishChunks(
 	ctx context.Context,
-	q *queries.Queries,
+	q queries.Querier,
 	document queries.KnowledgeDocument,
 	result extraction,
 ) error {
@@ -200,7 +219,7 @@ func publishChunks(
 	return nil
 }
 
-func markDocumentIndexed(ctx context.Context, q *queries.Queries, id string, result extraction) error {
+func markDocumentIndexed(ctx context.Context, q queries.Querier, id string, result extraction) error {
 	warnings, err := json.Marshal(result.Warnings)
 	if err != nil {
 		return err
@@ -223,7 +242,7 @@ func markDocumentIndexed(ctx context.Context, q *queries.Queries, id string, res
 	)
 	return err
 }
-func insertChunk(ctx context.Context, q *queries.Queries, doc queries.KnowledgeDocument, c Chunk) error {
+func insertChunk(ctx context.Context, q queries.Querier, doc queries.KnowledgeDocument, c Chunk) error {
 	metadata, err := json.Marshal(c.Metadata)
 	if err != nil {
 		return err

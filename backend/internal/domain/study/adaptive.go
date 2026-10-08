@@ -8,10 +8,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/scheduler"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type adaptiveCourse struct {
@@ -21,7 +21,7 @@ type adaptiveCourse struct {
 
 func (s Service) buildAdaptive(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	selected *int64,
 	today time.Time,
 ) (map[string]any, error) {
@@ -34,7 +34,7 @@ func (s Service) buildAdaptive(
 
 func (s Service) buildAdaptiveSet(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	included []int64,
 	today time.Time,
 ) (map[string]any, error) {
@@ -81,7 +81,7 @@ func (s Service) buildAdaptiveSet(
 
 func (s Service) adaptiveCourses(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	plans []settings.ExamPlan,
 	included []int64,
 	in *scheduler.Input,

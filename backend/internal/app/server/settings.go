@@ -37,6 +37,7 @@ func (s *Server) saveAI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "saved", "chat_provider_order": value.ChatOrder})
 }
 func (s *Server) settingsService() settings.Service { return settings.Service{Pool: s.db.Pool} }
+
 // jsonFields decodes a JSON object with form-shaped keys into url.Values,
 // preserving field presence so partial updates behave like form posts.
 func jsonFields(w http.ResponseWriter, r *http.Request) (url.Values, bool) {

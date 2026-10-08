@@ -8,9 +8,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/integrations/eclass"
@@ -25,7 +24,7 @@ type Objects interface {
 	Put(context.Context, io.Reader, string, string) (blob.Reference, error)
 }
 type Service struct {
-	Pool          *pgxpool.Pool
+	Pool          rdbms.Pool
 	Objects       Objects
 	Temp          string
 	MirrorRoot    string
@@ -56,7 +55,7 @@ func (s Service) oldTree(ctx context.Context, id int64) (Tree, error) {
 }
 
 type queryer interface {
-	Query(context.Context, string, ...any) (pgx.Rows, error)
+	Query(context.Context, string, ...any) (rdbms.Rows, error)
 }
 
 func (s Service) oldTreeFrom(ctx context.Context, db queryer, id int64) (Tree, error) {

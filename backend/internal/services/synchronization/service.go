@@ -5,35 +5,22 @@ import (
 	"errors"
 	"fmt"
 	"path"
-	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/jobs"
+	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/integrations/mirror"
 )
 
 var ErrBusy = errors.New("this course is already being synchronized")
 
 func (s Service) Sync(ctx context.Context, id int64, source Source, rootURL string) (Result, error) {
-	conn, err := s.Pool.Acquire(ctx)
-	if err != nil {
-		return Result{}, err
-	}
-	defer conn.Release()
-	key := fmt.Sprintf("eclass-sync:%d", id)
-	var locked bool
-	err = conn.QueryRow(ctx, `SELECT pg_try_advisory_lock(hashtextextended($1,0))`, key).Scan(&locked)
-	if err != nil {
-		return Result{}, err
-	}
-	if !locked {
-		return Result{}, ErrBusy
-	}
-	defer unlock(conn, key)
-	course, err := queries.New(s.Pool).Course(ctx, id)
+	// Crawl outside any write transaction: network I/O takes minutes and
+	// must never hold the single sqlite writer slot (or a postgres row
+	// lock) across the crawl. The short publish transaction below admits
+	// the course while holding the lock.
+	course, err := queries.ForPool(s.Pool).Course(ctx, id)
 	if err != nil {
 		return Result{}, err
 	}
@@ -51,7 +38,21 @@ func (s Service) Sync(ctx context.Context, id int64, source Source, rootURL stri
 		return Result{}, err
 	}
 	changes := Diff(old, next, root.Path)
-	if err = s.publish(ctx, course, next, changes); err != nil {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	defer tx.Rollback(ctx)
+	key := fmt.Sprintf("eclass-sync:%d", id)
+	var locked bool
+	err = tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))`, key).Scan(&locked)
+	if err != nil {
+		return Result{}, err
+	}
+	if !locked {
+		return Result{}, ErrBusy
+	}
+	if err = s.publishLocked(ctx, tx, course, next, changes); err != nil {
 		return Result{}, err
 	}
 	synced := result(changes)
@@ -60,7 +61,7 @@ func (s Service) Sync(ctx context.Context, id int64, source Source, rootURL stri
 			return synced, err
 		}
 	}
-	return synced, nil
+	return synced, tx.Commit(ctx)
 }
 
 func (s Service) mirrorTree(ctx context.Context, course queries.AppCourse, tree Tree) (mirror.Result, error) {
@@ -95,23 +96,16 @@ func (s Service) mirrorTree(ctx context.Context, course queries.AppCourse, tree 
 	return result, nil
 }
 
-func unlock(conn *pgxpool.Conn, key string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if _, err := conn.Exec(ctx, `SELECT pg_advisory_unlock(hashtextextended($1,0))`, key); err != nil {
-		_ = conn.Conn().Close(ctx)
-	}
-}
-
-func (s Service) publish(ctx context.Context, course queries.AppCourse, tree Tree, changes []Change) error {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
+func (s Service) publishLocked(
+	ctx context.Context,
+	tx rdbms.Tx,
+	course queries.AppCourse,
+	tree Tree,
+	changes []Change,
+) error {
 	var name, prefix string
 	var hidden int64
-	err = tx.QueryRow(ctx, `SELECT name,webdav_folder,hidden FROM app.courses WHERE id=$1 FOR UPDATE`, course.ID).
+	err := tx.QueryRow(ctx, `SELECT name,webdav_folder,hidden FROM app.courses WHERE id=$1 FOR UPDATE`, course.ID).
 		Scan(&name, &prefix, &hidden)
 	if err != nil {
 		return err
@@ -148,10 +142,10 @@ func (s Service) publish(ctx context.Context, course queries.AppCourse, tree Tre
 	if _, err = jobs.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
-func saveDirectories(ctx context.Context, tx pgx.Tx, courseID int64, dirs []Directory) (map[string]int64, error) {
+func saveDirectories(ctx context.Context, tx rdbms.Tx, courseID int64, dirs []Directory) (map[string]int64, error) {
 	nodes := map[string]int64{}
 	for _, d := range dirs {
 		var parent *int64
@@ -173,7 +167,7 @@ func saveDirectories(ctx context.Context, tx pgx.Tx, courseID int64, dirs []Dire
 	return nodes, nil
 }
 
-func saveFile(ctx context.Context, tx pgx.Tx, nodeID int64, f File) error {
+func saveFile(ctx context.Context, tx rdbms.Tx, nodeID int64, f File) error {
 	var object, revision *string
 	if f.Object != nil {
 		object = &f.Object.SHA256

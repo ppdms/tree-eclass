@@ -2,13 +2,13 @@ package knowledge
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Guide is bounded deterministic navigation, never an AI-generated policy source.
 func (s Reader) Guide(ctx context.Context, id int64) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,5 @@ func (s Reader) Guide(ctx context.Context, id int64) (map[string]any, error) {
 		"materials":                materials,
 		"headings":                 headings,
 		"untrusted_content_notice": UntrustedNotice,
-	}, tx.Commit(
-		ctx,
-	)
+	}, tx.Commit(ctx)
 }

@@ -147,6 +147,9 @@ func driveURL(raw string) (string, error) {
 
 // Drive uses a separate, cookie-free client; eClass authentication cannot cross
 // this boundary. HTML sign-in/confirmation pages are never stored as documents.
+// A file Google reports as gone or forbidden keeps its eClass link as a
+// redirect: the professor may still re-share it, and one dead file must not
+// fail the whole course. Transient failures keep failing so checks retry.
 func (c *Client) Drive(ctx context.Context, raw, fallback string) (Download, error) {
 	u, err := driveURL(raw)
 	if err != nil {
@@ -173,6 +176,11 @@ func (c *Client) Drive(ctx context.Context, raw, fallback string) (Download, err
 			return Download{}, ctx.Err()
 		}
 		return Download{}, errors.New("Google Drive download failed")
+	}
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound ||
+		resp.StatusCode == http.StatusGone {
+		_ = resp.Body.Close()
+		return Download{Redirect: raw, Name: fallback}, nil
 	}
 	if resp.StatusCode != http.StatusOK || strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
 		_ = resp.Body.Close()

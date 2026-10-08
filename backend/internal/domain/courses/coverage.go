@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Coverage struct {
@@ -44,6 +44,15 @@ type coveragePayload struct {
 	Levels       map[string]int64 `json:"study_levels"`
 }
 
+// shelfQuery loads one row per visible course with its cached coverage
+// payload, recent materials, staleness flag, and generation stamp.
+const shelfQuery = `SELECT c.id,c.name,c.webdav_folder,c.sort_order,c.hidden,c.short_name,p.payload_json,p.recent_json,p.generated_at,
+ coalesce(p.generation<>g.generation OR p.learner_generation<>coalesce(l.generation,0),true),coalesce(p.generation,0)
+ FROM app.courses c JOIN read_model.course_generation g ON g.course_id=c.id
+ LEFT JOIN read_model.learner_generation l ON l.course_id=c.id
+ LEFT JOIN read_model.course_coverage p ON p.course_id=c.id
+ WHERE c.hidden=0 ORDER BY c.sort_order,c.id`
+
 // Shelf never rebuilds source facts. A committed source or learner mutation
 // immediately marks just that course stale until the processor catches up.
 func (s Service) Shelf(ctx context.Context) (Shelf, error) {
@@ -53,45 +62,64 @@ func (s Service) Shelf(ctx context.Context) (Shelf, error) {
 		Recent:  []RecentMaterial{},
 		Status:  "ready",
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT to_jsonb(c),p.payload_json,p.recent_json,p.generated_at,
- coalesce(p.generation<>g.generation OR p.learner_generation<>coalesce(l.generation,0),true),coalesce(p.generation,0)
- FROM app.courses c JOIN read_model.course_generation g ON g.course_id=c.id
- LEFT JOIN read_model.learner_generation l ON l.course_id=c.id
- LEFT JOIN read_model.course_coverage p ON p.course_id=c.id
- WHERE c.hidden=0 ORDER BY c.sort_order,c.id`)
+	rows, err := s.Pool.Query(ctx, shelfQuery)
 	if err != nil {
 		return result, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var raw, recent []byte
-		var payload *string
-		var stamp *string
-		var generation int64
-		var stale bool
-		if err = rows.Scan(&raw, &payload, &recent, &stamp, &stale, &generation); err != nil {
+		if err = appendShelfRow(rows, &result); err != nil {
 			return result, err
 		}
-		item, levels, materials, err := decodeCoverage(raw, payload, recent)
-		if err != nil {
-			return result, err
-		}
-		item.Stale = stale
-		result.Courses = append(result.Courses, item)
-		result.Levels[strconv.FormatInt(item.ID, 10)] = levels
-		if !stale {
-			result.Recent = append(result.Recent, materials...)
-		}
-		result.Stale = result.Stale || stale
-		result.Generation = max(result.Generation, generation)
-		if stamp != nil && (result.Generated == nil || *stamp < *result.Generated) {
-			result.Generated = stamp
-		}
+	}
+	if err = rows.Err(); err != nil {
+		return result, err
 	}
 	if result.Stale {
 		result.Status = "pending"
 	}
-	slices.SortFunc(result.Recent, func(a, b RecentMaterial) int {
+	result.Recent = sortShelfRecent(result.Recent)
+	return result, nil
+}
+
+// appendShelfRow scans one shelf row and merges its course, levels, and
+// materials into the result, tracking staleness and the oldest stamp.
+func appendShelfRow(rows rdbms.Rows, result *Shelf) error {
+	var row queries.AppCourse
+	var recent []byte
+	var payload *string
+	var stamp *string
+	var generation int64
+	var stale bool
+	if err := rows.Scan(
+		&row.ID, &row.Name, &row.WebdavFolder, &row.SortOrder,
+		&row.Hidden, &row.ShortName,
+		&payload, &recent, &stamp, &stale, &generation,
+	); err != nil {
+		return err
+	}
+	item, levels, materials, err := decodeCoverage(row, payload, recent)
+	if err != nil {
+		return err
+	}
+	item.Stale = stale
+	result.Courses = append(result.Courses, item)
+	result.Levels[strconv.FormatInt(item.ID, 10)] = levels
+	if !stale {
+		result.Recent = append(result.Recent, materials...)
+	}
+	result.Stale = result.Stale || stale
+	result.Generation = max(result.Generation, generation)
+	if stamp != nil && (result.Generated == nil || *stamp < *result.Generated) {
+		result.Generated = stamp
+	}
+	return nil
+}
+
+// sortShelfRecent orders recent materials newest-first and caps the shelf at
+// the six latest entries.
+func sortShelfRecent(recent []RecentMaterial) []RecentMaterial {
+	slices.SortFunc(recent, func(a, b RecentMaterial) int {
 		left, right := "", ""
 		if a.Indexed != nil {
 			left = *a.Indexed
@@ -104,18 +132,17 @@ func (s Service) Shelf(ctx context.Context) (Shelf, error) {
 		}
 		return strings.Compare(b.ID, a.ID)
 	})
-	result.Recent = result.Recent[:min(6, len(result.Recent))]
-	return result, rows.Err()
+	return recent[:min(6, len(recent))]
 }
 
-func decodeCoverage(raw []byte, payload *string, recent []byte) (Coverage, map[string]int64, []RecentMaterial, error) {
-	var row queries.AppCourse
+func decodeCoverage(
+	row queries.AppCourse, payload *string, recent []byte,
+) (Coverage, map[string]int64, []RecentMaterial, error) {
 	item := Coverage{}
-	p := coveragePayload{Distribution: emptyDistribution(), Levels: map[string]int64{}}
-	materials := []RecentMaterial{}
-	if err := json.Unmarshal(raw, &row); err != nil {
-		return item, nil, nil, err
+	p := coveragePayload{
+		Distribution: emptyDistribution(), Levels: map[string]int64{},
 	}
+	materials := []RecentMaterial{}
 	item.Course = course(row)
 	if payload != nil {
 		if err := json.Unmarshal([]byte(*payload), &p); err != nil {
@@ -127,7 +154,8 @@ func decodeCoverage(raw []byte, payload *string, recent []byte) (Coverage, map[s
 			return item, nil, nil, err
 		}
 	}
-	item.Completion, item.Total, item.Indexed, item.Distribution = p.Completion, p.Total, p.Indexed, p.Distribution
+	item.Completion, item.Total, item.Indexed = p.Completion, p.Total, p.Indexed
+	item.Distribution = p.Distribution
 	return item, p.Levels, materials, nil
 }
 
@@ -135,7 +163,7 @@ func emptyDistribution() map[string]int64 {
 	return map[string]int64{"0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
 }
 
-func visibleCourse(ctx context.Context, tx pgx.Tx, id int64) error {
+func visibleCourse(ctx context.Context, tx rdbms.Tx, id int64) error {
 	var found int64
 	return tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0`, id).Scan(&found)
 }

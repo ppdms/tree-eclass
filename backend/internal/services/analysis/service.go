@@ -6,16 +6,15 @@ import (
 	"time"
 	"tree-eclass/internal/integrations/inference"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
+	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/integrations/parser"
 )
 
 type Service struct {
-	Pool      *pgxpool.Pool
+	Pool      rdbms.Pool
 	Objects   *blob.Store
 	Parser    *parser.Runner
 	Temp      string
@@ -61,7 +60,7 @@ func (s Service) Recover(ctx context.Context) error {
 }
 func (s Service) RunOne(ctx context.Context) (bool, error) {
 	selected, err := s.claim(ctx)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {

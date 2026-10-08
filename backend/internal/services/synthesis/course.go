@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
-
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/settings"
 )
 
-func prepareCourse(ctx context.Context, tx pgx.Tx, p settings.ExamPlan, a settings.AI) error {
+func prepareCourse(ctx context.Context, tx rdbms.Tx, p settings.ExamPlan, a settings.AI) error {
 	packet, err := buildCoursePacket(ctx, tx, p, a)
 	if err != nil || packet == nil {
 		return err
@@ -35,7 +34,7 @@ func prepareCourse(ctx context.Context, tx pgx.Tx, p settings.ExamPlan, a settin
 	var status string
 	err = tx.QueryRow(ctx, `SELECT status FROM knowledge.course_blueprints WHERE revision_hash=$1`, revisionHash).
 		Scan(&status)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
 		return err
 	}
 	if err == nil {
@@ -65,7 +64,7 @@ func prepareCourse(ctx context.Context, tx pgx.Tx, p settings.ExamPlan, a settin
 	)
 	return err
 }
-func buildCoursePacket(ctx context.Context, tx pgx.Tx, p settings.ExamPlan, a settings.AI) (map[string]any, error) {
+func buildCoursePacket(ctx context.Context, tx rdbms.Tx, p settings.ExamPlan, a settings.AI) (map[string]any, error) {
 	docs, total, ready, err := collectDocuments(ctx, tx, p.CourseID, a)
 	if err != nil || len(docs) == 0 {
 		return nil, err

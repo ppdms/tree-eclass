@@ -12,6 +12,7 @@ import (
 	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/checkpoint"
 	"tree-eclass/internal/infrastructure/process"
+	"tree-eclass/internal/infrastructure/storage"
 )
 
 const reserveBytes uint64 = 5 * 1024 * 1024 * 1024
@@ -33,6 +34,9 @@ type Config struct {
 	PDFDiffSHA      string `json:"pdf_diff_sha256"`
 	Password        string `json:"password"`
 	Ports           Ports  `json:"ports"`
+	// Database selects the storage backend: "" (postgres, current default)
+	// or "sqlite". Existing datasets omit the key and keep postgres.
+	Database string `json:"database,omitempty"`
 }
 type Ports struct{ Postgres, HTTP int }
 type Selection struct {
@@ -153,4 +157,18 @@ func databaseName(name string) string {
 		return "tree"
 	}
 	return name
+}
+
+// storageConfig resolves the active database backend. Empty Database keeps
+// postgres; "sqlite" stores a file database under active/sqlite.db.
+func (c *Controller) storageConfig() storage.Config {
+	if c.Config.Database == "sqlite" {
+		return storage.Config{SQLitePath: filepath.Join(c.active(), "sqlite.db")}
+	}
+	return storage.ConfigForURL(c.databaseURL())
+}
+
+// sqliteSelected reports whether the controller runs on the sqlite backend.
+func (c *Controller) sqliteSelected() bool {
+	return c.Config.Database == "sqlite"
 }

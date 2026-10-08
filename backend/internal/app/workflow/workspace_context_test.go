@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"net/url"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/annotations"
 	"tree-eclass/internal/domain/workspace"
 )
 
-func workspaceContextChecks(t *testing.T, pool *pgxpool.Pool, base, document, action string) {
+func workspaceContextChecks(t *testing.T, pool rdbms.Pool, base, document, action string) {
 	t.Helper()
 	ctx := t.Context()
 	service := annotations.Service{Pool: pool}
@@ -76,7 +76,13 @@ func workspaceContextChecks(t *testing.T, pool *pgxpool.Pool, base, document, ac
 		nil,
 	)
 	apiJSON(t, "GET", root+"&document_id=missing", nil, 404, nil)
-	// Context marks stale anchors without mutating their durable source hash.
+	if _, err = pool.Exec(ctx, `UPDATE knowledge.documents SET status='pending' WHERE id=$1`, document); err != nil {
+		t.Fatal(err)
+	}
+	apiJSON(t, "GET", root+"&document_id="+url.QueryEscape(document), nil, 409, nil)
+	if _, err = pool.Exec(ctx, `UPDATE knowledge.documents SET status='ready' WHERE id=$1`, document); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = pool.Exec(ctx, `UPDATE app.study_annotations SET source_hash='older-revision' WHERE id=$1`, live.ID); err != nil {
 		t.Fatal(err)
 	}

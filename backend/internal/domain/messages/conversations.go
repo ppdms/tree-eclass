@@ -3,19 +3,25 @@ package messages
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
-
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/knowledge"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 var gifOnly = regexp.MustCompile(`(?i)^https?://(?:www\.)?(?:tenor\.com|giphy\.com)/\S+$`)
+
+const conversationFTSInsert = `INSERT INTO messages.conversations_fts(` +
+	`conversation_id,text,normalized_text,channel_name) VALUES($1,$2,$3,$4)`
+
+const conversationEmbeddingInsert = `INSERT INTO messages.conversation_embeddings(` +
+	`conversation_id,model,vector,dimensions) VALUES($1,$2,$3,$4)`
 
 func informative(content string) bool {
 	content = strings.TrimSpace(identity.Decode(content))
@@ -24,7 +30,7 @@ func informative(content string) bool {
 	}
 	return strings.ContainsFunc(content, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) })
 }
-func buildConversations(ctx context.Context, tx pgx.Tx, source Archive, h exportHeader, path string) (int64, error) {
+func buildConversations(ctx context.Context, tx rdbms.Tx, source Archive, h exportHeader, path string) (int64, error) {
 	var count, last int64
 	group := []stagedMessage{}
 	chars := 0
@@ -67,7 +73,7 @@ func buildConversations(ctx context.Context, tx pgx.Tx, source Archive, h export
 	return count, err
 }
 
-func collectStageBatch(ctx context.Context, tx pgx.Tx, last int64) ([]stagedMessage, error) {
+func collectStageBatch(ctx context.Context, tx rdbms.Tx, last int64) ([]stagedMessage, error) {
 	rows, err := tx.Query(
 		ctx,
 		`SELECT message_id,timestamp,timestamp_epoch,author_key,author_name,content,reply_to_message_id,is_pinned,reaction_count FROM tree_discord_stage WHERE message_id>$1 ORDER BY message_id LIMIT 32`,
@@ -76,9 +82,11 @@ func collectStageBatch(ctx context.Context, tx pgx.Tx, last int64) ([]stagedMess
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (stagedMessage, error) {
+	defer rows.Close()
+	var out []stagedMessage
+	for rows.Next() {
 		var m stagedMessage
-		err := row.Scan(
+		if err := rows.Scan(
 			&m.ID,
 			&m.Timestamp,
 			&m.Epoch,
@@ -88,14 +96,20 @@ func collectStageBatch(ctx context.Context, tx pgx.Tx, last int64) ([]stagedMess
 			&m.Reply,
 			&m.Pinned,
 			&m.Reactions,
-		)
-		return m, err
-	})
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func conversationText(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	source Archive,
 	h exportHeader,
 	group []stagedMessage,
@@ -118,7 +132,7 @@ func conversationText(
  JOIN app.discord_course_channels mapping ON mapping.root_channel_id=a.root_id AND mapping.course_id=m.course_id
  JOIN messages.channels ch ON ch.channel_id=m.channel_id AND ch.course_id=m.course_id AND ch.guild_id=$3
  WHERE m.message_id=$1 AND m.course_id=$2) candidates ORDER BY priority,indexed_at DESC LIMIT 1`, *m.Reply, source.Course, int64(h.Guild.ID)).Scan(&content)
-				if err != nil && err != pgx.ErrNoRows {
+				if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
 					return "", err
 				}
 				if err == nil {
@@ -152,7 +166,7 @@ func conversationText(
 
 func publishConversation(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	s Archive,
 	h exportHeader,
 	path string,
@@ -200,7 +214,7 @@ func conversationMetadata(h exportHeader) ([]byte, error) {
 
 func insertConversation(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	s Archive,
 	h exportHeader,
 	path, id, text string,
@@ -240,34 +254,30 @@ func insertConversation(
 
 func queueConversationRows(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	id, path, text string,
 	h exportHeader,
 	group []stagedMessage,
 ) error {
-	batch := &pgx.Batch{}
+	var stmts []string
+	var args [][]any
 	for position, m := range group {
-		batch.Queue(
-			`INSERT INTO messages.conversation_messages(conversation_id,message_id,source_path,position) VALUES($1,$2,$3,$4)`,
-			id,
-			m.ID,
-			path,
-			position,
-		)
+		stmts = append(stmts, `INSERT INTO messages.conversation_messages(conversation_id,message_id,source_path,position) VALUES($1,$2,$3,$4)`)
+		args = append(args, []any{id, m.ID, path, position})
 	}
-	batch.Queue(
-		`INSERT INTO messages.conversations_fts(conversation_id,text,normalized_text,channel_name) VALUES($1,$2,$3,$4)`,
+	stmts = append(stmts, conversationFTSInsert)
+	args = append(args, []any{
 		id,
 		identity.Encode(text),
 		identity.Encode(identity.Search(text)),
 		identity.Encode(h.Channel.Name),
-	)
-	batch.Queue(
-		`INSERT INTO messages.conversation_embeddings(conversation_id,model,vector,dimensions) VALUES($1,$2,$3,$4)`,
+	})
+	stmts = append(stmts, conversationEmbeddingInsert)
+	args = append(args, []any{
 		id,
 		knowledge.LocalEmbeddingModel,
 		knowledge.Pack(knowledge.Embed(text)),
 		knowledge.EmbeddingDimensions,
-	)
-	return tx.SendBatch(ctx, batch).Close()
+	})
+	return rdbms.Batch(ctx, tx, stmts, args)
 }

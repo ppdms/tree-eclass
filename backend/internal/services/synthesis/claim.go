@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 	"time"
-
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/settings"
@@ -23,7 +22,7 @@ func (s Service) claim(ctx context.Context, lane string) (job, error) {
 		return j, err
 	}
 	if !enabled(j.AI, lane) {
-		return j, pgx.ErrNoRows
+		return j, rdbms.ErrNoRows
 	}
 	j.Requested = model(j.AI, lane)
 	err = tx.QueryRow(ctx, `SELECT id,course_id FROM `+table(lane)+` WHERE status='pending' AND requested_model=$1 AND analysis_version=$2 AND available_at::timestamptz<=clock_timestamp() ORDER BY priority DESC,available_at::timestamptz,id LIMIT 1`, j.Requested, version(lane)).
@@ -54,7 +53,7 @@ func (s Service) claim(ctx context.Context, lane string) (job, error) {
 	}
 	return j, tx.Commit(ctx)
 }
-func loadPacket(ctx context.Context, tx pgx.Tx, j *job) error {
+func loadPacket(ctx context.Context, tx rdbms.Tx, j *job) error {
 	var locked int64
 	if err := tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 FOR UPDATE`, j.Course).Scan(&locked); err != nil {
 		return err
@@ -73,21 +72,21 @@ func loadPacket(ctx context.Context, tx pgx.Tx, j *job) error {
 	}
 	return decode([]byte(*raw), &j.Packet)
 }
-func abandonStale(ctx context.Context, tx pgx.Tx, j job) error {
+func abandonStale(ctx context.Context, tx rdbms.Tx, j job) error {
 	if _, err := tx.Exec(ctx, `UPDATE `+table(j.Lane)+` SET status='stale',finished_at=$2 WHERE id=$1`, j.ID, stamp(time.Now())); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	return pgx.ErrNoRows
+	return rdbms.ErrNoRows
 }
-func validJob(ctx context.Context, tx pgx.Tx, j job, a settings.AI) (bool, error) {
+func validJob(ctx context.Context, tx rdbms.Tx, j job, a settings.AI) (bool, error) {
 	if !enabled(a, j.Lane) || model(a, j.Lane) != j.Requested || a.AnalysisGeneration() != j.AI.AnalysisGeneration() {
 		return false, nil
 	}
 	p, err := settings.ReadExamPlan(ctx, tx, j.Course)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {

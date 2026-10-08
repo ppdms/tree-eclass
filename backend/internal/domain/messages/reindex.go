@@ -4,17 +4,16 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jackc/pgx/v5"
-
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/objects"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // ReindexMapped repairs one archive after a channel is assigned to another
 // course. Unmapped archives remain durable but are unavailable to readers.
 func (s Importer) ReindexMapped(ctx context.Context) (bool, error) {
 	path, source, object, err := s.loadMappedSource(ctx)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {

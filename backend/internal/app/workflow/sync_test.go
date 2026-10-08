@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,7 +27,7 @@ type syncFixture struct {
 	ctx         context.Context
 	c           *Controller
 	conn        *pgx.Conn
-	pool        *pgxpool.Pool
+	pool        rdbms.Pool
 	objects     *blob.Store
 	generation  *atomic.Int32
 	downloads   *atomic.Int32
@@ -61,7 +62,8 @@ func newSyncFixture(t *testing.T) *syncFixture {
 	if _, err := conn.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(101,'Συνθετικό','/Courses/101')`); err != nil {
 		t.Fatal(err)
 	}
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +110,11 @@ func newSyncFixture(t *testing.T) *syncFixture {
 	).Scan(&document); err != nil {
 		t.Fatal(err)
 	}
-	firstObject, err := queries.New(pool).DocumentObject(ctx, queries.DocumentObjectParams{DocumentID: document})
+	native, ok := rdbms.UnwrapPostgres(pool)
+	if !ok {
+		t.Fatal("sqlc queries require postgres")
+	}
+	firstObject, err := queries.New(native).DocumentObject(ctx, queries.DocumentObjectParams{DocumentID: document})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +210,11 @@ func syncRevisionChecks(t *testing.T, fixture *syncFixture) {
 	if err != nil || changed.Modified != 1 {
 		t.Fatalf("modified: %#v %v", changed, err)
 	}
-	q := queries.New(fixture.pool)
+	nativeSync, ok := rdbms.UnwrapPostgres(fixture.pool)
+	if !ok {
+		t.Fatal("sqlc queries require postgres")
+	}
+	q := queries.New(nativeSync)
 	b, err := q.DocumentObject(ctx, queries.DocumentObjectParams{DocumentID: fixture.document})
 	if err != nil || b.Sha256 == fixture.firstObject.Sha256 {
 		t.Fatalf("new revision: %#v %v", b, err)

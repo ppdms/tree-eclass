@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // ImportInterval commits every partition and the exclusive cursor together.
@@ -18,7 +18,7 @@ func (s Importer) ImportInterval(
 	source Archive,
 	parts []string,
 	next time.Time,
-	validate func(pgx.Tx) error,
+	validate func(rdbms.Tx) error,
 ) error {
 	if source.Root <= 0 || source.Course <= 0 || source.Channel <= 0 || source.Before <= source.After ||
 		len(parts) > 64 {
@@ -57,11 +57,11 @@ func (s Importer) ImportInterval(
 	return tx.Commit(ctx)
 }
 
-func lockCursor(ctx context.Context, tx pgx.Tx, source Archive) error {
+func lockCursor(ctx context.Context, tx rdbms.Tx, source Archive) error {
 	var after int64
 	err := tx.QueryRow(ctx, `SELECT after_id FROM messages.export_cursors WHERE root_id=$1 AND channel_id=$2 FOR UPDATE`, source.Root, source.Channel).
 		Scan(&after)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
 		return err
 	}
 	if after != source.After {
@@ -70,7 +70,7 @@ func lockCursor(ctx context.Context, tx pgx.Tx, source Archive) error {
 	return nil
 }
 
-func (s Importer) importPartitions(ctx context.Context, tx pgx.Tx, source Archive, parts []string) error {
+func (s Importer) importPartitions(ctx context.Context, tx rdbms.Tx, source Archive, parts []string) error {
 	var total int64
 	published := []string{}
 	for _, path := range parts {
@@ -95,7 +95,7 @@ func (s Importer) importPartitions(ctx context.Context, tx pgx.Tx, source Archiv
 
 func (s Importer) importPartition(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	source Archive,
 	path string,
 	published []string,

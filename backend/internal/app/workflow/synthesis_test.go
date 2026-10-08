@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -25,13 +26,14 @@ func TestNativeSourceBoundSynthesis(t *testing.T) {
 	synthesisRunChecks(t, pool, service, doc, a, courseOutput, calls)
 }
 
-func newSynthesisFixture(t *testing.T) (*pgxpool.Pool, synthesis.Service, string, settings.AI, string, *int) {
+func newSynthesisFixture(t *testing.T) (rdbms.Pool, synthesis.Service, string, settings.AI, string, *int) {
 	t.Helper()
 	c := nativeSharedController(t)
 	ctx := t.Context()
 	conn, objects := startTestStorage(t, c)
 	t.Cleanup(func() { conn.Close(ctx) })
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +78,7 @@ func newSynthesisFixture(t *testing.T) (*pgxpool.Pool, synthesis.Service, string
 func seedSynthesisSource(
 	t *testing.T,
 	ctx context.Context,
-	pool *pgxpool.Pool,
+	pool rdbms.Pool,
 	objects *blob.Store,
 ) (settings.AI, string) {
 	t.Helper()
@@ -119,7 +121,7 @@ func seedSynthesisSource(
 
 func synthesisRunChecks(
 	t *testing.T,
-	pool *pgxpool.Pool,
+	pool rdbms.Pool,
 	service synthesis.Service,
 	doc string,
 	a settings.AI,
@@ -184,7 +186,7 @@ func synthesisFixture(t *testing.T, repo, kind string) string {
 	}
 	return strings.ReplaceAll(string(raw), "document:one", "E1")
 }
-func synthesisRecoveryChecks(t *testing.T, pool *pgxpool.Pool, service synthesis.Service, doc, output string) {
+func synthesisRecoveryChecks(t *testing.T, pool rdbms.Pool, service synthesis.Service, doc, output string) {
 	t.Helper()
 	ctx := t.Context()
 	if _, err := pool.Exec(ctx, `UPDATE app.course_exam_plans SET planning_notes='Changed goal' WHERE course_id=781`); err != nil {

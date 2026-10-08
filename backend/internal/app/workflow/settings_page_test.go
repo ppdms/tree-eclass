@@ -5,12 +5,12 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/settings"
 )
 
-func settingsPageChecks(t *testing.T, pool *pgxpool.Pool, base string) {
+func settingsPageChecks(t *testing.T, pool rdbms.Pool, base string) {
 	t.Helper()
 	ctx := t.Context()
 	service := settings.Service{Pool: pool}

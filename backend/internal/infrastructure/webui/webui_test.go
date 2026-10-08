@@ -58,6 +58,9 @@ func TestBrowserPagesAndAssetBoundaries(t *testing.T) {
 		if strings.HasPrefix(path, "/api") && strings.Contains(w.Body.String(), "<html") {
 			t.Fatal("API miss became HTML")
 		}
+		if got := w.Header().Get("Cache-Control"); got != "no-store" {
+			t.Fatal(path, "miss is cacheable:", got)
+		}
 	}
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("POST", "/courses", strings.NewReader("test")))

@@ -7,9 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"tree-eclass/internal/infrastructure/blob"
+	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/infrastructure/storage"
 )
 
@@ -17,7 +16,7 @@ type Runner interface {
 	Run(context.Context, string, string, string) (bool, error)
 }
 type Service struct {
-	Pool    *pgxpool.Pool
+	Pool    rdbms.Pool
 	Objects *blob.Store
 	Temp    string
 	Runner  Runner
@@ -127,7 +126,6 @@ func (s Service) publish(ctx context.Context, id string, object *blob.Reference)
 		if err = storage.RegisterObject(ctx, tx, *object); err != nil {
 			return err
 		}
-		status = "ready"
 		objectID = &object.SHA256
 		value := Alias(id)
 		alias = &value

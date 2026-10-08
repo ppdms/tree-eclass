@@ -6,10 +6,10 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type evidenceSnapshot struct {
@@ -76,7 +76,7 @@ const evidenceQuery = `SELECT d.id,d.source_hash,d.document_kind,d.display_name,
 
 func freshEvidence(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	course int64,
 	a settings.AI,
 	packet map[string]any,

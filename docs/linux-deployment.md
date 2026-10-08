@@ -11,12 +11,15 @@ to run it, but the notes below are what that deployment depends on.
 
 ## Images
 
-| Role                                                                   | Reference                          |
-| ---------------------------------------------------------------------- | ---------------------------------- |
-| Application (browser build, Go binary, parser, helpers, static assets) | built from `Dockerfile`, one image |
-| Database                                                               | `docker.io/library/postgres:18.6`  |
+| Role                                                                   | Reference                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------ |
+| Application (browser build, Go binary, parser, helpers, static assets) | built from `Dockerfile`, one image         |
+| Database                                                               | sqlite file at `sqlite_path`, no container |
 
-Base images in `Dockerfile` and `docker-compose.yml` are fully qualified
+The application image carries the source revision in the
+`org.opencontainers.image.revision` label (full 40-hex commit SHA), so the
+orchestrator can report which code a floating tag holds. Base images in
+`Dockerfile` and `docker-compose.yml` are fully qualified
 (`docker.io/...`) because Podman enforces short-name resolution on hosts without
 an interactive terminal. Pin the built application image by immutable id or
 digest; the deployment does.
@@ -50,22 +53,28 @@ only these keys matter:
 {
   "allowed_hosts": ["uni.apps.lan", "uni.ppdms.gr"],
   "allowed_origins": ["https://uni.apps.lan", "https://uni.ppdms.gr"],
-  "database_url": "postgresql://tree:PASSWORD@tree-postgres:5432/tree_app?sslmode=disable",
+  "sqlite_path": "/jobs/sqlite.db",
   "objects_root": "/data/objects",
   "address": "0.0.0.0:8001",
   "mode": "stable",
-  "release": "3d125a3",
+  "release": "da29b64fe4103abd9c030a45a75c183d1d475500",
   "session": "RANDOM_SESSION_TOKEN",
   "temp": "/jobs",
   "external_workers": true,
+  "storage_namespace": "tree-eclass:development:BRANCH:",
   "provider_keys": { "ZAI_API_KEY": "..." }
 }
 ```
 
-- `database_url`, `objects_root`, `mode` and `session` are mandatory; `address`
+- `sqlite_path` (or `database_url` for the legacy postgres backend),
+  `objects_root`, `mode` and `session` are mandatory; `address`
   defaults to port 80 if omitted.
-- `external_workers` **must be `true`**: with the zero value the sync, Discord,
-  notification and analysis workers park and their triggers answer 503.
+- `external_workers: false` parks the sync, Discord, notification and analysis
+  workers and their triggers answer 503. Native development mode sets it from
+  `Mode`; container deployments normally keep it `true`. A dev overlay reuses
+  `mode: stable` (the container gate requires it) with workers parked and a
+  `storage_namespace` (`tree-eclass:development:<branch>:`) so browser keys
+  cannot collide with production served under the same hostnames.
 - `allowed_hosts` / `allowed_origins` must contain every name a reverse proxy
   forwards, or every request is answered `403 Untrusted host`. Loopback values
   are always accepted.
@@ -74,11 +83,13 @@ only these keys matter:
 
 ## Storage
 
-- **Database** — PostgreSQL 18, user `tree`, one database owned by this
-  application. `admitDatabase` refuses a database that contains tables but no
-  `public.tree_go_migrations` ledger, so an existing pre-rewrite (Python-era)
-  database cannot be adopted: create a fresh one. There is no SQLite import
-  path; `eclass.db`, `knowledge.db` and `discord_knowledge.db` are legacy files.
+- **Database** — sqlite file at `sqlite_path` (WAL mode; `-wal`/`-shm` live
+  alongside it), opened with `MaxOpenConns(1)` and `busy_timeout`. The legacy
+  postgres backend (`database_url`) is unchanged. `admitSQLite` refuses a
+  database that contains tables but no `tree_go_migrations` ledger, so an
+  existing pre-rewrite (Python-era) database cannot be adopted: create a fresh
+  one. There is no SQLite import path; `eclass.db`, `knowledge.db` and
+  `discord_knowledge.db` are legacy files.
 - **Objects store** — a local content-addressed directory. Compose bind-mounts
   the host path from `TREE_OBJECTS_DIR` at `/data/objects`, and the runtime
   configuration points `objects_root` there; the host directory must already be

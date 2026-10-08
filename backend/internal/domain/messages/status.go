@@ -4,19 +4,29 @@ import (
 	"context"
 	"slices"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/knowledge"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-func visible(ctx context.Context, tx pgx.Tx, requested []int64) ([]int64, error) {
+func visible(ctx context.Context, tx rdbms.Tx, requested []int64) ([]int64, error) {
 	rows, err := tx.Query(ctx, `SELECT id FROM app.courses WHERE hidden=0 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
-	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
-	if err != nil {
+	ids := []int64{}
+	for rows.Next() {
+		var v int64
+		if err := rows.Scan(&v); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, v)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
 		return nil, err
 	}
+	rows.Close()
 	if len(requested) == 0 {
 		return ids, nil
 	}
@@ -51,7 +61,7 @@ type Status struct {
 }
 
 func (s Reader) Status(ctx context.Context, requested []int64) (Status, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return Status{}, err
 	}
@@ -67,14 +77,14 @@ func (s Reader) Status(ctx context.Context, requested []int64) (Status, error) {
 	return result, tx.Commit(ctx)
 }
 
-func statusTx(ctx context.Context, tx pgx.Tx, ids []int64) (Status, error) {
+func statusTx(ctx context.Context, tx rdbms.Tx, ids []int64) (Status, error) {
 	result := Status{
 		Courses: []CourseStatus{},
 		Totals:  map[string]int64{"messages": 0, "conversations": 0, "sources": 0, "failed_sources": 0},
 		Mapped:  []int64{},
 		Notice:  CommunityNotice,
 	}
-	rows, err := tx.Query(ctx, `WITH sources AS MATERIALIZED (
+	rows, err := tx.Query(ctx, `WITH sources AS (
  SELECT a.* FROM messages.archive_sources a JOIN app.discord_course_channels m ON m.root_channel_id=a.root_id AND m.course_id=a.course_id WHERE a.course_id=ANY($1::bigint[])
 ), message_counts AS (
  SELECT m.course_id,count(*) n,max(m.timestamp) latest FROM messages.messages m JOIN sources s ON s.path=m.source_path AND s.course_id=m.course_id AND s.status='ready' GROUP BY m.course_id

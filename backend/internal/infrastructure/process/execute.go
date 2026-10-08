@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"tree-eclass/internal/domain/platform"
@@ -55,9 +56,28 @@ func Execute(dir, token string) error {
 	}
 	env := spec.Env
 	if !spec.ReplaceEnv {
-		env = append(os.Environ(), spec.Env...)
+		env = append(dedupEnv(os.Environ(), spec.Env), spec.Env...)
 	}
 	return syscall.Exec(binary, spec.Command, env)
+}
+
+// dedupEnv drops base entries shadowed by overrides: with duplicate keys the
+// child runtime may honor either entry, so the override must be unambiguous.
+func dedupEnv(base, overrides []string) []string {
+	shadowed := make(map[string]bool, len(overrides))
+	for _, entry := range overrides {
+		if name, _, ok := strings.Cut(entry, "="); ok {
+			shadowed[name] = true
+		}
+	}
+	kept := base[:0]
+	for _, entry := range base {
+		if name, _, ok := strings.Cut(entry, "="); ok && shadowed[name] {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	return kept
 }
 
 func startCommitted(dir string, spec Spec, record *Record, output *rotatingLog) (*exec.Cmd, error) {

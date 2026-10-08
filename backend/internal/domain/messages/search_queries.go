@@ -3,11 +3,13 @@ package messages
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"math"
 	"sort"
+	"strings"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/knowledge"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 const searchSources = ` FROM messages.conversations c
@@ -16,34 +18,93 @@ const searchSources = ` FROM messages.conversations c
  JOIN messages.archive_sources a ON a.path=c.source_path AND a.course_id=c.course_id AND a.root_id=c.root_id::text AND a.status='ready'
  LEFT JOIN messages.channels ch ON ch.channel_id=c.channel_id AND ch.course_id=c.course_id `
 
-const hitFields = `c.conversation_id,c.course_id,co.name course_name,co.short_name course_short_name,c.channel_id::text channel_id,c.channel_name,c.channel_type,
- c.first_message_id::text first_message_id,c.last_message_id::text last_message_id,c.started_at,c.ended_at,c.ended_at_epoch,
- c.participant_count,c.reaction_count,c.is_pinned<>0 is_pinned,ch.guild_id`
+// hitColumns selects every field scanCandidateHit needs, in scan order, with an
+// excerpt slot appended by each caller. CAST keeps integer/boolean values
+// portable: database/sql Scan into *string fails on sqlite's INTEGER storage
+// class, and both drivers expose the same TEXT affinity.
+const hitColumns = `c.conversation_id,c.course_id,co.name course_name,co.short_name course_short_name,CAST(c.channel_id AS TEXT) channel_id,
+ c.channel_name,c.channel_type,CAST(c.first_message_id AS TEXT) first_message_id,CAST(c.last_message_id AS TEXT) last_message_id,
+ c.started_at,c.ended_at,c.ended_at_epoch,c.participant_count,c.reaction_count,CAST(c.is_pinned AS BIGINT) is_pinned,ch.guild_id`
 
-func lexicalSearch(ctx context.Context, tx pgx.Tx, ids []int64, query string, limit int) ([]candidateHit, error) {
-	match := lexicalQuery(query)
-	if match == "" {
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+func likePattern(term string) string {
+	return `%` + likeEscaper.Replace(term) + `%`
+}
+
+// scanCandidateHit scans one hitColumns row plus a trailing excerpt into c.
+// extra, when non-nil, receives further trailing columns (e.g. the packed
+// embedding vector in semanticSearch) via database/sql Scan.
+func scanCandidateHit(rows rdbms.Rows, c *candidateHit, extra ...any) error {
+	var shortName, guild any
+	var pinned int64
+	dest := []any{
+		&c.ID, &c.CourseID, &c.CourseName, &shortName, &c.Channel,
+		&c.Name, &c.Kind, &c.First, &c.Last,
+		&c.Started, &c.Ended, &c.Epoch, &c.Participants, &c.Reactions, &pinned, &guild,
+		&c.Excerpt,
+	}
+	dest = append(dest, extra...)
+	if err := rows.Scan(dest...); err != nil {
+		return err
+	}
+	if name, ok := shortName.(string); ok {
+		c.CourseShortName = &name
+	} else {
+		c.CourseShortName = nil
+	}
+	c.Pinned = pinned != 0
+	if id, ok := guild.(int64); ok {
+		c.Guild = &id
+	} else {
+		c.Guild = nil
+	}
+	var score float64
+	if c.Lexical != nil {
+		score = *c.Lexical
+	}
+	c.Score = score
+	return nil
+}
+
+// coursePlaceholders expands ids into ($base,...) placeholders, appending one
+// argument per id to args.
+func coursePlaceholders(ids []int64, args *[]any, base int) string {
+	placeholders := make([]string, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", base+i)
+		*args = append(*args, id)
+	}
+	return strings.Join(placeholders, ",")
+}
+
+func lexicalSearch(ctx context.Context, tx rdbms.Tx, ids []int64, query string, limit int) ([]candidateHit, error) {
+	terms := lexicalQuery(query)
+	if len(terms) == 0 || len(ids) == 0 {
 		return []candidateHit{}, nil
 	}
-	rows, err := tx.Query(ctx, `WITH q AS(SELECT public.tree_query($2) query)
- SELECT to_jsonb(v) FROM(SELECT `+hitFields+`,
- -ts_rank_cd(f.search_vector,q.query) lexical_score,
- left(ts_headline('public.tree_search',f.text,q.query,'StartSel=[, StopSel=], MaxWords=40, MinWords=15'),2000) excerpt
- `+searchSources+` JOIN messages.conversations_fts f ON f.conversation_id=c.conversation_id CROSS JOIN q
- WHERE c.course_id=ANY($1::bigint[]) AND f.search_vector @@ q.query
- ORDER BY lexical_score,c.ended_at_epoch DESC,c.conversation_id LIMIT $3) v`, ids, match, limit)
+	params := []any{}
+	courses := coursePlaceholders(ids, &params, 1)
+	clauses := make([]string, len(terms))
+	for i, term := range terms {
+		params = append(params, likePattern(term))
+		clauses[i] = fmt.Sprintf("CAST(f.search_vector AS TEXT) LIKE $%d ESCAPE '\\'", len(ids)+1+i)
+	}
+	params = append(params, limit)
+	rows, err := tx.Query(ctx, `SELECT `+hitColumns+`,substr(c.text,1,400) excerpt`+searchSources+`
+ JOIN messages.conversations_fts f ON f.conversation_id=c.conversation_id
+ WHERE c.course_id IN (`+courses+`) AND `+strings.Join(clauses, " AND ")+`
+ ORDER BY c.ended_at_epoch DESC,c.conversation_id LIMIT $`+fmt.Sprint(len(params)), params...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	result := []candidateHit{}
+	score := -float64(len(terms))
 	for rows.Next() {
-		var raw []byte
-		if err = rows.Scan(&raw); err != nil {
-			return nil, err
-		}
 		var c candidateHit
-		if err = decode(raw, &c); err != nil {
+		c.Lexical = &score
+		if err = scanCandidateHit(rows, &c); err != nil {
 			return nil, err
 		}
 		result = append(result, c)
@@ -53,36 +114,86 @@ func lexicalSearch(ctx context.Context, tx pgx.Tx, ids []int64, query string, li
 
 func semanticSearch(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	ids []int64,
 	query string,
 	limit int,
 	lexical []candidateHit,
 ) ([]candidateHit, error) {
-	lexicalIDs := []string{}
-	for _, c := range lexical {
-		lexicalIDs = append(lexicalIDs, c.ID)
+	if len(ids) == 0 {
+		return []candidateHit{}, nil
 	}
-	rows, err := tx.Query(ctx, `WITH recent AS MATERIALIZED(SELECT c.conversation_id `+searchSources+`
- WHERE c.course_id=ANY($1::bigint[]) ORDER BY c.ended_at_epoch DESC,c.conversation_id LIMIT 5000),
- candidates AS(SELECT conversation_id FROM recent UNION SELECT unnest($2::text[]))
- SELECT to_jsonb(v),e.vector FROM(SELECT `+hitFields+`,left(c.text,1200) excerpt
- `+searchSources+` JOIN candidates selected ON selected.conversation_id=c.conversation_id
- WHERE c.course_id=ANY($1::bigint[])) v
- JOIN messages.conversation_embeddings e ON e.conversation_id=v.conversation_id AND e.model=$3 AND e.dimensions=384 AND octet_length(e.vector)=1536`, ids, lexicalIDs, knowledge.LocalEmbeddingModel)
+	recentParams := []any{}
+	recent := coursePlaceholders(ids, &recentParams, 1)
+	recentParams = append(recentParams, 5000)
+	offset := len(recentParams)
+	selectedParams := []any{}
+	selected := coursePlaceholders(ids, &selectedParams, offset+1)
+	union, selectedParams := semanticCandidates(selectedParams, offset, lexical)
+	rows, err := querySemanticCandidates(ctx, tx, recent, recentParams, selected, selectedParams, offset, union)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	queryVector := knowledge.Embed(query)
+	return rankSemantic(rows, knowledge.Embed(query), limit)
+}
+
+// semanticCandidates builds the UNION of recent conversations and lexical
+// hits that semantic ranking scores, appending the candidate id arguments
+// and the embedding model to selectedParams.
+func semanticCandidates(selectedParams []any, offset int, lexical []candidateHit) (string, []any) {
+	seen := map[string]bool{}
+	lexicalIDs := []string{}
+	for _, c := range lexical {
+		if !seen[c.ID] {
+			seen[c.ID] = true
+			lexicalIDs = append(lexicalIDs, c.ID)
+		}
+	}
+	candidatePlaceholders := make([]string, len(lexicalIDs))
+	for i, id := range lexicalIDs {
+		candidatePlaceholders[i] = fmt.Sprintf("$%d", offset+len(selectedParams)+1+i)
+		selectedParams = append(selectedParams, id)
+	}
+	selectedParams = append(selectedParams, knowledge.LocalEmbeddingModel)
+	union := "SELECT conversation_id FROM recent"
+	if len(candidatePlaceholders) > 0 {
+		union += " UNION SELECT conversation_id FROM (SELECT " + strings.Join(candidatePlaceholders, " UNION ALL SELECT ") + ") candidates(conversation_id)"
+	}
+	return union, selectedParams
+}
+
+// semanticEmbeddingJoin restricts the candidate join to the current local
+// embedding rows: 384 float32 dimensions packed as 1536 bytes.
+const semanticEmbeddingJoin = ` JOIN messages.conversation_embeddings e ON e.conversation_id=c.conversation_id AND e.model=$`
+
+// querySemanticCandidates loads the candidate rows with their packed
+// embedding vectors for Go-side cosine ranking.
+func querySemanticCandidates(
+	ctx context.Context, tx rdbms.Tx, recent string, recentParams []any,
+	selected string, selectedParams []any, offset int, union string,
+) (rdbms.Rows, error) {
+	return tx.Query(ctx, `WITH recent AS (SELECT c.conversation_id `+searchSources+`
+ WHERE c.course_id IN (`+recent+`) ORDER BY c.ended_at_epoch DESC,c.conversation_id LIMIT $`+fmt.Sprint(offset)+`),
+ candidates AS (`+union+`)
+ SELECT `+hitColumns+`,substr(c.text,1,1200) excerpt,e.vector FROM candidates
+ JOIN messages.conversations c ON c.conversation_id=candidates.conversation_id
+ JOIN app.courses co ON co.id=c.course_id AND co.hidden=0
+ JOIN app.discord_course_channels mapping ON mapping.root_channel_id=CAST(c.root_id AS TEXT) AND mapping.course_id=c.course_id
+ JOIN messages.archive_sources a ON a.path=c.source_path AND a.course_id=c.course_id AND a.root_id=CAST(c.root_id AS TEXT) AND a.status='ready'
+	LEFT JOIN messages.channels ch ON ch.channel_id=c.channel_id AND ch.course_id=c.course_id`+
+		semanticEmbeddingJoin+fmt.Sprint(offset+len(selectedParams))+` AND e.dimensions=384 AND length(e.vector)=1536
+ WHERE c.course_id IN (`+selected+`)`, append(recentParams, selectedParams...)...)
+}
+
+// rankSemantic scores candidate rows by cosine similarity to the query
+// vector and keeps the best limit hits.
+func rankSemantic(rows rdbms.Rows, queryVector []float64, limit int) ([]candidateHit, error) {
 	best := &hitHeap{}
 	for rows.Next() {
-		var raw, vector []byte
-		if err = rows.Scan(&raw, &vector); err != nil {
-			return nil, err
-		}
 		var c candidateHit
-		if err = decode(raw, &c); err != nil {
+		var vector []byte
+		if err := scanCandidateHit(rows, &c, &vector); err != nil {
 			return nil, err
 		}
 		c.Score = knowledge.CosinePacked(queryVector, vector)
@@ -98,7 +209,7 @@ func semanticSearch(
 			heap.Fix(best, 0)
 		}
 	}
-	if err = rows.Err(); err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	result := []candidateHit(*best)

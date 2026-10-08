@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/exercises"
 )
 
@@ -67,7 +67,7 @@ func (s *Server) exerciseDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := (exercises.Service{Pool: s.db.Pool}).Get(r.Context(), id, r.PathValue("exercise_id"))
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Exercise not found")
 		return
 	}

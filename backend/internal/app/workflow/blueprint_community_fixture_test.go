@@ -2,13 +2,12 @@ package workflow
 
 import (
 	"testing"
-
-	"github.com/jackc/pgx/v5/pgxpool"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/messages"
 )
 
-func blueprintCommunityFixture(t *testing.T, pool *pgxpool.Pool) string {
+func blueprintCommunityFixture(t *testing.T, pool rdbms.Pool) string {
 	t.Helper()
 	ctx := t.Context()
 	_, err := pool.Exec(ctx, `INSERT INTO app.discord_course_channels(root_channel_id,course_id) VALUES('100001',101);

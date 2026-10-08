@@ -2,19 +2,17 @@ package workflow
 
 import (
 	"testing"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/messages"
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/settings"
 )
 
-func communityFreshnessChecks(t *testing.T, pool *pgxpool.Pool) {
+func communityFreshnessChecks(t *testing.T, pool rdbms.Pool) {
 	t.Helper()
 	ctx := t.Context()
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		t.Fatal(err)
 	}

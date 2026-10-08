@@ -3,13 +3,13 @@ package workflow
 import (
 	"sync"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/study"
 )
 
-func studyEventChecks(t *testing.T, pool *pgxpool.Pool, base, action string) {
+func studyEventChecks(t *testing.T, pool rdbms.Pool, base, action string) {
 	t.Helper()
 	ctx := t.Context()
 	minutes := int64(7)

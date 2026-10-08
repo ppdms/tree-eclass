@@ -6,13 +6,13 @@ import (
 	"path"
 	"strings"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/integrations/pdfdiff"
 )
 
-func saveChanges(ctx context.Context, tx pgx.Tx, courseID int64, changes []Change) error {
+func saveChanges(ctx context.Context, tx rdbms.Tx, courseID int64, changes []Change) error {
 	if len(changes) == 0 {
 		return nil
 	}
@@ -67,7 +67,7 @@ func saveChanges(ctx context.Context, tx pgx.Tx, courseID int64, changes []Chang
 
 func archiveVersion(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	courseID int64,
 	change Change,
 	difference, diffAlias *string,
@@ -96,7 +96,7 @@ func archiveVersion(
 	return err
 }
 
-func queueDifference(ctx context.Context, tx pgx.Tx, course int64, change Change) (*string, *string, error) {
+func queueDifference(ctx context.Context, tx rdbms.Tx, course int64, change Change) (*string, *string, error) {
 	old, next := change.Previous, change.Current
 	if change.Type != "modified_file" || old == nil || next == nil || old.Object == nil || next.Object == nil ||
 		!strings.EqualFold(path.Ext(old.Name), ".pdf") ||

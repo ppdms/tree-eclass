@@ -113,11 +113,8 @@ function usePageClamp(activeDocument: SessionDocument | null, setPageNumber: Dis
 }
 
 function useSessionWorkspaceCore({ courseId, actionId, documentId, initialPageNumber }: WorkspaceCoreArgs) {
-  const { context, error, setError, annotations, setAnnotations, practice, setPractice } = useSessionContext(
-    courseId,
-    actionId,
-    documentId,
-  );
+  const { context, error, setError, annotations, setAnnotations, practice, setPractice, pendingDocument } =
+    useSessionContext(courseId, actionId, documentId);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [documentIndex, setDocumentIndex] = useState(0);
   const [pageNumber, setPageNumber] = useState(
@@ -138,6 +135,7 @@ function useSessionWorkspaceCore({ courseId, actionId, documentId, initialPageNu
   return {
     context,
     error,
+    pendingDocument,
     session,
     documentIndex,
     setDocumentIndex,
@@ -160,10 +158,10 @@ function useSessionWorkspaceCore({ courseId, actionId, documentId, initialPageNu
     setError,
   };
 }
-
 export interface SessionState {
   context: SessionContext | null;
   error: string | null;
+  pendingDocument: boolean;
   setError: Dispatch<SetStateAction<string | null>>;
   session: SessionInfo | null;
   documentIndex: number;
@@ -210,6 +208,7 @@ export function useSessionState(
   return {
     context: core.context,
     error: core.error,
+    pendingDocument: core.pendingDocument,
     setError: core.setError,
     session: core.session,
     documentIndex: core.documentIndex,

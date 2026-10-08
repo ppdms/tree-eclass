@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type CoursePage struct {
@@ -19,7 +19,7 @@ func (s Reader) CoursePage(ctx context.Context, course, limit, offset int64) (Co
 	if limit < 1 || limit > 50 || offset < 0 || offset > 1<<31-1 {
 		return result, errors.New("invalid course update page")
 	}
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return result, err
 	}
@@ -31,7 +31,7 @@ func (s Reader) CoursePage(ctx context.Context, course, limit, offset int64) (Co
 	return result, tx.Commit(ctx)
 }
 
-func CoursePageTx(ctx context.Context, tx pgx.Tx, course, limit, offset int64) (CoursePage, error) {
+func CoursePageTx(ctx context.Context, tx rdbms.Tx, course, limit, offset int64) (CoursePage, error) {
 	result := CoursePage{Timeline: []Item{}, Offset: offset}
 	if limit < 1 || limit > 50 || offset < 0 || offset > 1<<31-1 {
 		return result, errors.New("invalid course update page")
@@ -44,7 +44,7 @@ func CoursePageTx(ctx context.Context, tx pgx.Tx, course, limit, offset int64) (
 	rows, err := tx.Query(ctx, `WITH events AS (
  SELECT id,timestamp stamp,'change' kind FROM app.change_records WHERE course_id=$1
  UNION ALL SELECT id,pub_date stamp,'announcement' kind FROM app.announcements WHERE course_id=$1
-), page AS MATERIALIZED (SELECT * FROM events ORDER BY stamp DESC NULLS LAST,kind,id DESC LIMIT $2 OFFSET $3)
+), page AS (SELECT * FROM events ORDER BY stamp DESC NULLS LAST,kind,id DESC LIMIT $2 OFFSET $3)
 SELECT CASE WHEN p.kind='change' THEN jsonb_build_object('type',p.kind,'id',p.id,'timestamp',p.stamp,'course_id',$1::bigint,'change_no',r.change_no,'message',r.message)
  ELSE jsonb_build_object('type',p.kind,'id',p.id,'timestamp',p.stamp,'course_id',$1::bigint,'title',a.title,'link',a.link,'description',a.description) END
  FROM page p LEFT JOIN app.change_records r ON p.kind='change' AND r.id=p.id

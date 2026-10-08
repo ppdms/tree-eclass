@@ -3,14 +3,14 @@ package workflow
 import (
 	"errors"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/jobs"
 	"tree-eclass/internal/services/synchronization"
 )
 
-func syncRetryChecks(t *testing.T, pool *pgxpool.Pool, service synchronization.Service) {
+func syncRetryChecks(t *testing.T, pool rdbms.Pool, service synchronization.Service) {
 	t.Helper()
 	ctx := t.Context()
 	var original string

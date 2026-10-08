@@ -4,14 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
+
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/courses"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Increment when the scheduler/intelligence serialization or rules change.
@@ -29,7 +31,7 @@ func studyDay(now time.Time) time.Time {
 // A fingerprint of transactionally updated per-course generations avoids a
 // global write lock. Readers compare it in the same snapshot as their payload;
 // an older publication can never masquerade as current after a committed write.
-func fingerprint(ctx context.Context, tx pgx.Tx, now time.Time) (string, settings.AI, error) {
+func fingerprint(ctx context.Context, tx rdbms.Tx, now time.Time) (string, settings.AI, error) {
 	a, err := settings.ReadAI(ctx, tx)
 	if err != nil {
 		return "", a, err
@@ -38,12 +40,7 @@ func fingerprint(ctx context.Context, tx pgx.Tx, now time.Time) (string, setting
 	if err != nil {
 		return "", a, err
 	}
-	var sources []byte
-	err = tx.QueryRow(ctx, `SELECT coalesce(jsonb_agg(jsonb_build_array(c.id,g.generation,coalesce(l.generation,0),n.source_generation,n.config_generation,n.content_id) ORDER BY c.id),'[]')
- FROM app.courses c JOIN read_model.course_generation g ON g.course_id=c.id
- LEFT JOIN read_model.learner_generation l ON l.course_id=c.id LEFT JOIN read_model.navigation n ON n.course_id=c.id
- WHERE c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=c.id AND p.enabled=1)`).
-		Scan(&sources)
+	sources, err := marshalSources(ctx, tx)
 	if err != nil {
 		return "", a, err
 	}
@@ -58,8 +55,61 @@ func fingerprint(ctx context.Context, tx pgx.Tx, now time.Time) (string, setting
 	return fmt.Sprintf("%x", sha256.Sum256(raw)), a, nil
 }
 
+// marshalSources assembles the per-course generation rows the fingerprint
+// hashes. Explicit columns replace the old
+// jsonb_agg(jsonb_build_array(...) ORDER BY c.id). Element order mirrors the
+// old build_array argument order, so fingerprints stay stable.
+const sourcesQuery = `SELECT c.id,g.generation,coalesce(l.generation,0),n.source_generation,n.config_generation,n.content_id
+ FROM app.courses c JOIN read_model.course_generation g ON g.course_id=c.id
+ LEFT JOIN read_model.learner_generation l ON l.course_id=c.id LEFT JOIN read_model.navigation n ON n.course_id=c.id
+ WHERE c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=c.id AND p.enabled=1) ORDER BY c.id`
+
+func marshalSources(ctx context.Context, tx rdbms.Tx) ([]byte, error) {
+	rows, err := tx.Query(ctx, sourcesQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sources := []json.RawMessage{}
+	for rows.Next() {
+		var id, generation, learner int64
+		var source *int64
+		var config, content *string
+		if err = rows.Scan(&id, &generation, &learner, &source, &config, &content); err != nil {
+			return nil, err
+		}
+		elem, err := json.Marshal([]any{
+			id, generation, learner, nullableInt(source), nullableText(config), nullableText(content),
+		})
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, elem)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return json.Marshal(sources)
+}
+
+// nullableInt renders a NULL generation as JSON null, else the number.
+func nullableInt(raw *int64) any {
+	if raw == nil {
+		return nil
+	}
+	return *raw
+}
+
+// nullableText renders a NULL text column as JSON null, else the string.
+func nullableText(raw *string) any {
+	if raw == nil {
+		return nil
+	}
+	return *raw
+}
+
 func (s Service) Intelligence(ctx context.Context, selected *int64, now time.Time) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +121,7 @@ func (s Service) Intelligence(ctx context.Context, selected *int64, now time.Tim
 	return view, tx.Commit(ctx)
 }
 
-func intelligenceTx(ctx context.Context, tx pgx.Tx, selected *int64, now time.Time) (map[string]any, error) {
+func intelligenceTx(ctx context.Context, tx rdbms.Tx, selected *int64, now time.Time) (map[string]any, error) {
 	var err error
 	if _, _, err = courses.SnapshotCourses(ctx, tx, selected); err != nil {
 		return nil, err
@@ -88,7 +138,7 @@ func intelligenceTx(ctx context.Context, tx pgx.Tx, selected *int64, now time.Ti
 	var generation int64
 	err = tx.QueryRow(ctx, `SELECT payload_json,source_fingerprint,status,generated_at,generation FROM read_model.study_metrics WHERE scope=$1 AND octet_length(payload_json)<=16777216`, scope).
 		Scan(&raw, &stored, &status, &generated, &generation)
-	if err == pgx.ErrNoRows || err == nil && stored != fingerprint {
+	if errors.Is(err, rdbms.ErrNoRows) || err == nil && stored != fingerprint {
 		return pendingIntelligence(), nil
 	}
 	if err != nil {
@@ -110,7 +160,7 @@ func intelligenceTx(ctx context.Context, tx pgx.Tx, selected *int64, now time.Ti
 // Full keeps the compatibility response's mutable snapshot and derived-state
 // freshness decision in one database snapshot.
 func (s Service) Full(ctx context.Context, selected *int64, now time.Time) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}

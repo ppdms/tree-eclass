@@ -3,7 +3,8 @@ package synchronization
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
+
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/materials"
 	"tree-eclass/internal/domain/queries"
@@ -11,8 +12,8 @@ import (
 	"tree-eclass/internal/infrastructure/storage"
 )
 
-func publishDocument(ctx context.Context, tx pgx.Tx, course queries.AppCourse, file File) (string, error) {
-	q := queries.New(tx)
+func publishDocument(ctx context.Context, tx rdbms.Tx, course queries.AppCourse, file File) (string, error) {
+	q := queries.ForTx(tx)
 	o := file.Object
 	document := identity.Document(course.ID, file.Path)
 	revision := identity.Stable("rev", document, o.SHA256)

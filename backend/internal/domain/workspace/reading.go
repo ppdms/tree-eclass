@@ -3,8 +3,8 @@ package workspace
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type PageReading struct {
@@ -23,7 +23,7 @@ type Reading struct {
 }
 
 func (s Service) Reading(ctx context.Context, course int64, action, document string) (Reading, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return Reading{}, err
 	}
@@ -39,7 +39,7 @@ func (s Service) Reading(ctx context.Context, course int64, action, document str
 	return result, tx.Commit(ctx)
 }
 
-func readingTotals(ctx context.Context, tx pgx.Tx, course int64, action, document string) (Reading, error) {
+func readingTotals(ctx context.Context, tx rdbms.Tx, course int64, action, document string) (Reading, error) {
 	result := Reading{Pages: []PageReading{}}
 	rows, err := tx.Query(ctx, `SELECT document_id,page_number,sum(active_seconds)::bigint,sum(visible_seconds)::bigint
  FROM app.study_reading_spans WHERE course_id=$1 AND ($2='' OR action_id=$2) AND ($3='' OR document_id=$3)

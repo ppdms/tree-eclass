@@ -10,13 +10,12 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/text/unicode/norm"
 	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/objects"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 var ErrDuplicate = errors.New("a file with this name already exists")
@@ -35,7 +34,7 @@ type ObjectWriter interface {
 	Put(context.Context, io.Reader, string, string) (objects.Reference, error)
 }
 type Service struct {
-	Pool    *pgxpool.Pool
+	Pool    rdbms.Pool
 	Objects ObjectWriter
 	Temp    string
 }
@@ -94,12 +93,12 @@ func (s Service) Upload(ctx context.Context, upload Upload) (Result, error) {
 			return result, errors.New("choose a valid document type")
 		}
 	}
-	course, err := queries.New(s.Pool).Course(ctx, upload.CourseID)
+	course, err := queries.ForPool(s.Pool).Course(ctx, upload.CourseID)
 	if err != nil {
 		return result, err
 	}
 	if course.Hidden != 0 {
-		return result, pgx.ErrNoRows
+		return result, rdbms.ErrNoRows
 	}
 	logical := identity.Path(path.Join(course.WebdavFolder, "external", folder, name))
 	document := identity.Document(upload.CourseID, logical)
@@ -136,13 +135,13 @@ func (s Service) publish(
 	if err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0 AND name=$2 AND webdav_folder=$3 FOR SHARE`, course.ID, course.Name, course.WebdavFolder).Scan(&current); err != nil {
 		return "", err
 	}
-	q := queries.New(tx)
+	q := queries.ForTx(tx)
 	if err = q.QueueLock(ctx, "document:"+result.DocumentID); err != nil {
 		return "", err
 	}
 	if _, err = q.IndexDocument(ctx, result.DocumentID); err == nil {
 		return "", ErrDuplicate
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+	} else if !rdbms.IsNoRows(err) {
 		return "", err
 	}
 	if err = result.stage(ctx, tx, q, course); err != nil {
@@ -165,7 +164,7 @@ func (s Service) publish(
 	return command, tx.Commit(ctx)
 }
 
-func (result Result) stage(ctx context.Context, tx pgx.Tx, q *queries.Queries, course queries.AppCourse) error {
+func (result Result) stage(ctx context.Context, tx rdbms.Tx, q queries.Querier, course queries.AppCourse) error {
 	if err := objects.RegisterObject(ctx, tx, result.Object); err != nil {
 		return err
 	}
@@ -183,7 +182,7 @@ func (result Result) stage(ctx context.Context, tx pgx.Tx, q *queries.Queries, c
 
 func observeUpload(
 	ctx context.Context,
-	q *queries.Queries,
+	q queries.Querier,
 	course queries.AppCourse,
 	upload Upload,
 	result Result,

@@ -2,13 +2,13 @@ package workflow
 
 import (
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/materials"
 	"tree-eclass/internal/domain/settings"
 )
 
-func materialPresentationChecks(t *testing.T, pool *pgxpool.Pool, base, document string) {
+func materialPresentationChecks(t *testing.T, pool rdbms.Pool, base, document string) {
 	t.Helper()
 	ctx := t.Context()
 	var list struct {

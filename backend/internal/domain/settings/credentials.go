@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Credentials struct {
@@ -18,7 +18,7 @@ func readCredentials(ctx context.Context, db queryer) (*Credentials, error) {
 	var result Credentials
 	err := db.QueryRow(ctx, `SELECT username,password FROM app.credentials WHERE id=1`).
 		Scan(&result.Username, &result.Password)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return nil, nil
 	}
 	result.Username, result.Password = identity.Decode(result.Username), identity.Decode(result.Password)
@@ -32,7 +32,7 @@ func (s Service) SaveCredentials(ctx context.Context, username, password string,
 	if username == "" {
 		return Invalid{"Username is required"}
 	}
-	return s.mutate(ctx, "credentials", func(tx pgx.Tx) error {
+	return s.mutate(ctx, "credentials", func(tx rdbms.Tx) error {
 		existing, err := readCredentials(ctx, tx)
 		if err != nil {
 			return err
@@ -68,7 +68,7 @@ func (s Service) SaveCredentials(ctx context.Context, username, password string,
 func (s Service) Webhook(ctx context.Context) (string, error) {
 	var value string
 	err := s.Pool.QueryRow(ctx, `SELECT webhook_url FROM app.webhook_config WHERE id=1`).Scan(&value)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		err = nil
 	}
 	return identity.Decode(value), err
@@ -79,7 +79,7 @@ func (s Service) SaveWebhook(ctx context.Context, value string, clear bool) erro
 			return Invalid{err.Error()}
 		}
 	}
-	return s.mutate(ctx, "webhook", func(tx pgx.Tx) error {
+	return s.mutate(ctx, "webhook", func(tx rdbms.Tx) error {
 		if !clear && strings.TrimSpace(value) == "" {
 			return nil
 		}

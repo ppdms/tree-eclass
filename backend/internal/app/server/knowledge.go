@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/knowledge"
 )
 
@@ -118,7 +118,7 @@ func (s *Server) documentPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := s.knowledgeReader().Pages(r.Context(), course, r.PathValue("document_id"), first, last)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Document is not indexed or available in this course")
 		return
 	}

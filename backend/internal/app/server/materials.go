@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"mime/multipart"
 	"net/http"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/materials"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
@@ -51,7 +51,7 @@ func (s *Server) uploadMaterial(w http.ResponseWriter, r *http.Request) {
 			writeFailure(w, http.StatusConflict, err.Error())
 			return
 		}
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, rdbms.ErrNoRows) {
 			writeFailure(w, http.StatusNotFound, "Course not found")
 			return
 		}

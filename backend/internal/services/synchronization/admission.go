@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/domain/settings"
 )
@@ -30,7 +30,7 @@ func (s Service) enqueue(ctx context.Context, id *int64, retry bool) (string, er
 		return "", err
 	}
 	defer tx.Rollback(ctx)
-	q := queries.New(tx)
+	q := queries.ForTx(tx)
 	if err = q.QueueLock(ctx, "eclass-check"); err != nil {
 		return "", err
 	}
@@ -40,7 +40,7 @@ func (s Service) enqueue(ctx context.Context, id *int64, retry bool) (string, er
 			return "", err
 		}
 		if hidden != 0 {
-			return "", pgx.ErrNoRows
+			return "", rdbms.ErrNoRows
 		}
 	}
 	command, err := admitCheck(ctx, tx, id, retry)

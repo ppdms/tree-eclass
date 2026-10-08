@@ -6,21 +6,20 @@ import (
 	"errors"
 	"slices"
 	"time"
-
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/settings"
 )
 
-func preparePractice(ctx context.Context, tx pgx.Tx, p settings.ExamPlan, a settings.AI) error {
+func preparePractice(ctx context.Context, tx rdbms.Tx, p settings.ExamPlan, a settings.AI) error {
 	var revision string
 	var payload, raw *string
 	err := tx.QueryRow(ctx, `SELECT revision_hash,CASE WHEN octet_length(payload_json)<=1048576 THEN payload_json END,CASE WHEN octet_length(evidence_packet_json)<=2097152 THEN evidence_packet_json END
  FROM knowledge.course_blueprints WHERE course_id=$1 AND status='ready' AND requested_model=$2 AND analysis_version=$3`, p.CourseID, a.CourseModel, settings.CourseAnalysisVersion).
 		Scan(&revision, &payload, &raw)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
@@ -109,7 +108,7 @@ func practicePacket(packet map[string]any, b blueprints.Blueprint, u blueprints.
 
 func queuePractice(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	course int64,
 	revision, unit string,
 	packet map[string]any,
@@ -135,14 +134,14 @@ func queuePractice(
 }
 func filePracticeRevision(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	course int64,
 	unit, revision, hash, evidenceHash, payload, now string,
 	a settings.AI,
 ) error {
 	var status string
 	err := tx.QueryRow(ctx, `SELECT status FROM knowledge.practice_question_sets WHERE set_hash=$1`, hash).Scan(&status)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
 		return err
 	}
 	if err == nil {

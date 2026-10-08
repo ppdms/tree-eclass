@@ -9,9 +9,9 @@ import (
 	"io"
 	"os"
 	"strings"
+	"tree-eclass/internal/infrastructure/rdbms"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
@@ -26,7 +26,7 @@ func (s Service) excerpt(ctx context.Context, j job) (string, error) {
 	}
 	defer tx.Rollback(ctx)
 	query := `WITH ranked AS(SELECT *,row_number() OVER(ORDER BY ordinal) n,count(*) OVER() total FROM knowledge.chunks WHERE document_id=$1)
- SELECT locator_type,coalesce(locator_start,''),left(text,2500) FROM ranked WHERE n IN(SELECT round(i*(total-1)::numeric/11)+1 FROM generate_series(0,11) i) ORDER BY ordinal`
+ SELECT locator_type,coalesce(locator_start,''),left(text,2500) FROM ranked WHERE n IN(SELECT round(column1*(total-1)::numeric/11)+1 FROM (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11))) ORDER BY ordinal`
 	args := []any{j.Document.ID}
 	maximum := 30000
 	if j.Page > 0 {
@@ -160,7 +160,7 @@ func (s Service) pageEvidence(ctx context.Context, j job) (string, error) {
 		return "", err
 	}
 	if count != j.Document.Pages {
-		return "", pgx.ErrNoRows
+		return "", rdbms.ErrNoRows
 	}
 	builder.WriteByte(']')
 	return builder.String(), nil

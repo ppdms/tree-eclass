@@ -21,7 +21,7 @@ func (s Service) UpdateType(ctx context.Context, id int64, document, kind string
 	if err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0 FOR SHARE`, id).Scan(&found); err != nil {
 		return err
 	}
-	q := queries.New(tx)
+	q := queries.ForTx(tx)
 	row, err := q.Material(ctx, queries.MaterialParams{CourseID: id, ID: document})
 	if err != nil {
 		return err

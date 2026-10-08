@@ -6,13 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/identity"
 )
 
-type Store struct{ Pool *pgxpool.Pool }
+type Store struct{ Pool rdbms.Pool }
 type Consultation struct {
 	Tool      string         `json:"tool"`
 	Arguments map[string]any `json:"arguments"`
@@ -96,7 +95,7 @@ func (s Store) List(ctx context.Context, limit int) ([]Summary, error) {
 }
 func (s Store) Get(ctx context.Context, id int64) (Conversation, error) {
 	result := Conversation{Messages: []Message{}}
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return result, err
 	}
@@ -149,7 +148,7 @@ func (s Store) Get(ctx context.Context, id int64) (Conversation, error) {
 func (s Store) Delete(ctx context.Context, id int64) error {
 	tag, err := s.Pool.Exec(ctx, `DELETE FROM app.chat_conversations WHERE id=$1`, id)
 	if err == nil && tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+		return rdbms.ErrNoRows
 	}
 	return err
 }
@@ -165,7 +164,7 @@ func (s Store) Rename(ctx context.Context, id int64, value string) error {
 		identity.Encode(string(clean[:min(len(clean), 120)])),
 	)
 	if err == nil && tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+		return rdbms.ErrNoRows
 	}
 	return err
 }

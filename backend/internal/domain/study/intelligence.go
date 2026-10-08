@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func buildIntelligence(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	selected *int64,
 	a settings.AI,
 	today time.Time,
@@ -24,7 +24,7 @@ func buildIntelligence(
 
 func buildIntelligenceSet(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	selected *int64,
 	included []int64,
 	a settings.AI,
@@ -59,7 +59,7 @@ func buildIntelligenceSet(
 	return accumulator.result(), nil
 }
 
-func collectPriorities(rows pgx.Rows, accumulator *priorities) error {
+func collectPriorities(rows rdbms.Rows, accumulator *priorities) error {
 	for rows.Next() {
 		m := &PriorityMaterial{AI: map[string]any{}}
 		var raw *string

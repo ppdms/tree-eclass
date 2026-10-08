@@ -2,15 +2,23 @@ package workspace
 
 import (
 	"context"
+	"errors"
+
 	"fmt"
 	"net/url"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-func workspaceDocument(ctx context.Context, tx pgx.Tx, course int64, id string, a settings.AI) (map[string]any, error) {
+func workspaceDocument(
+	ctx context.Context,
+	tx rdbms.Tx,
+	course int64,
+	id string,
+	a settings.AI,
+) (map[string]any, error) {
 	var name, path, origin, hash, kind string
 	var mime, language *string
 	var pages int64
@@ -19,6 +27,9 @@ func workspaceDocument(ctx context.Context, tx pgx.Tx, course int64, id string, 
  FROM knowledge.documents d WHERE id=$1 AND course_id=$2 AND is_current=1 AND status='ready'
  AND EXISTS(SELECT 1 FROM app.document_revisions r JOIN app.objects o ON o.id=r.object_id WHERE r.document_id=d.id AND r.course_id=d.course_id AND r.deleted_at IS NULL AND o.sha256=d.source_hash)`, id, course).
 		Scan(&name, &path, &origin, &hash, &kind, &mime, &pages, &minutes, &language)
+	if errors.Is(err, rdbms.ErrNoRows) && documentPending(ctx, tx, id, course) {
+		return nil, ErrDocumentPending
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -57,9 +68,18 @@ func workspaceDocument(ctx context.Context, tx pgx.Tx, course int64, id string, 
 	}, nil
 }
 
+// documentPending reports a registered current document whose content has not
+// finished indexing yet, so the reader can wait instead of reporting it gone.
+func documentPending(ctx context.Context, tx rdbms.Tx, id string, course int64) bool {
+	var pending bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM knowledge.documents
+ WHERE id=$1 AND course_id=$2 AND is_current=1 AND status IN('pending','running'))`, id, course).Scan(&pending)
+	return err == nil && pending
+}
+
 func actionDocuments(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	course int64,
 	action map[string]any,
 	a settings.AI,
@@ -78,7 +98,7 @@ func actionDocuments(
 		}
 		seen[id] = true
 		document, err := workspaceDocument(ctx, tx, course, id, a)
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, rdbms.ErrNoRows) || errors.Is(err, ErrDocumentPending) {
 			continue
 		}
 		if err != nil {

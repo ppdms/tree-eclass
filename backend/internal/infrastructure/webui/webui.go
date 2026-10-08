@@ -62,6 +62,7 @@ var page = regexp.MustCompile(
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" && r.Method != "HEAD" {
 		w.Header().Set("Allow", "GET, HEAD")
+		w.Header().Set("Cache-Control", "no-store")
 		http.Error(w, "Method not allowed", 405)
 		return
 	}
@@ -84,10 +85,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/api") || strings.HasPrefix(r.URL.Path, "/files") ||
 		strings.HasPrefix(r.URL.Path, "/mcp") ||
 		strings.HasPrefix(r.URL.Path, "/_app") {
-		http.NotFound(w, r)
+		miss(w, r)
 		return
 	}
 	h.document(w, r, http.StatusNotFound)
+}
+
+// miss answers 404 without a cacheable body: a stale hashed asset must never
+// poison an edge cache with a wrong-MIME miss.
+func miss(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	http.NotFound(w, r)
 }
 
 func (h *Handler) document(w http.ResponseWriter, r *http.Request, status int) {
@@ -118,13 +126,13 @@ func (h *Handler) asset(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/")
 	for _, part := range strings.Split(name, "/") {
 		if strings.HasPrefix(part, ".") || part == "" {
-			http.NotFound(w, r)
+			miss(w, r)
 			return
 		}
 	}
 	info, err := h.root.Stat(name)
 	if err != nil || !info.Mode().IsRegular() {
-		http.NotFound(w, r)
+		miss(w, r)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache")

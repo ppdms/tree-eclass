@@ -5,14 +5,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Service struct {
-	Pool   *pgxpool.Pool
+	Pool   rdbms.Pool
 	Sender Sender
 }
 type delivery struct {
@@ -29,6 +27,16 @@ func (s Service) Recover(ctx context.Context) error {
 }
 func (s Service) claim(ctx context.Context) (delivery, error) {
 	var d delivery
+	// Fast path: no webhook configured means no claimable work. Skip the
+	// serializing write transaction entirely so an idle notifier never
+	// contends with crawls and projections on a small sqlite pool.
+	var target string
+	if err := s.Pool.QueryRow(ctx, `SELECT coalesce((SELECT webhook_url FROM app.webhook_config WHERE id=1),'')`).Scan(&target); err != nil {
+		return d, err
+	}
+	if target == "" {
+		return d, nil
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return d, err
@@ -57,7 +65,7 @@ func (s Service) claim(ctx context.Context) (delivery, error) {
 	err = tx.QueryRow(ctx, `WITH next AS(SELECT id FROM app.notification_messages WHERE status='pending' AND target_hash=$1 AND available_at<=clock_timestamp() ORDER BY created_at,event_key,position FOR UPDATE SKIP LOCKED LIMIT 1)
  UPDATE app.notification_messages m SET status='running',attempts=attempts+1 FROM next WHERE m.id=next.id RETURNING m.id,m.content,m.attempts`, targetHash(cfg.Target)).
 		Scan(&d.ID, &d.Content, &d.Attempts)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
 		return d, err
 	}
 	d.Target, d.Content = cfg.Target, identity.Decode(d.Content)

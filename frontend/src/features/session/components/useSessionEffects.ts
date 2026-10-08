@@ -35,6 +35,7 @@ export interface UseSessionContextResult {
   setAnnotations: Dispatch<SetStateAction<Annotation[]>>;
   practice: PracticeView | null;
   setPractice: Dispatch<SetStateAction<PracticeView | null>>;
+  pendingDocument: boolean;
 }
 
 /** Loads the sitting: the blueprint action, documents, marks, recall queue. */
@@ -47,32 +48,45 @@ export function useSessionContext(
   const [error, setError] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [practice, setPractice] = useState<PracticeView | null>(null);
-
+  const [pendingDocument, setPendingDocument] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     setContext(null);
     setError(null);
-    api
-      .context(courseId, actionId, documentId, controller.signal)
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setContext(result);
-        setAnnotations(result.annotations || []);
-        setPractice(null);
-      })
-      .catch((loadError) => {
-        if (!controller.signal.aborted) {
+    setPendingDocument(false);
+    const load = () => {
+      api
+        .context(courseId, actionId, documentId, controller.signal)
+        .then((result) => {
+          if (controller.signal.aborted) return;
+          setContext(result);
+          setAnnotations(result.annotations || []);
+          setPractice(null);
+          setPendingDocument(false);
+        })
+        .catch((loadError) => {
+          if (controller.signal.aborted) return;
           const parsed = errorLikeSchema.safeParse(loadError);
           const errorLike = parsed.success ? parsed.data : { message: String(loadError) };
+          // A 409 from the context endpoint means the document is registered
+          // but still indexing: keep waiting instead of failing the sitting.
+          if (errorLike.status === 409 && documentId) {
+            setPendingDocument(true);
+            timer = setTimeout(load, 5000);
+            return;
+          }
           setError(errorMessage(errorLike, 'Could not load the session.'));
-        }
-      });
+        });
+    };
+    load();
     return () => {
       controller.abort();
+      clearTimeout(timer);
     };
   }, [courseId, actionId, documentId]);
 
-  return { context, error, setError, annotations, setAnnotations, practice, setPractice };
+  return { context, error, setError, annotations, setAnnotations, practice, setPractice, pendingDocument };
 }
 
 // Opening the workspace is what starts the clock. There is no separate

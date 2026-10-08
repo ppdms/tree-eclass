@@ -3,12 +3,12 @@ package workspace
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/annotations"
 	"tree-eclass/internal/domain/courses"
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/practice"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type ContextRequest struct {
@@ -38,7 +38,7 @@ func (s Service) Context(ctx context.Context, in ContextRequest) (ContextView, e
 		Annotations: []annotations.Annotation{},
 		Actions:     []map[string]any{},
 	}
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return view, err
 	}
@@ -65,7 +65,7 @@ func (s Service) Context(ctx context.Context, in ContextRequest) (ContextView, e
 
 func (s Service) documentContext(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	in ContextRequest,
 	a settings.AI,
 	view *ContextView,
@@ -88,7 +88,7 @@ func (s Service) documentContext(
 
 func (s Service) actionContext(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	in ContextRequest,
 	a settings.AI,
 	view *ContextView,

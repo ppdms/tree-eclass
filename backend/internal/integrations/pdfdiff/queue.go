@@ -6,16 +6,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
-
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/infrastructure/jobs"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 const ToolVersion = "diff-pdf-0.5.3"
 
-func Enqueue(ctx context.Context, tx pgx.Tx, course int64, old, next blob.Reference) (string, *string, error) {
+func Enqueue(ctx context.Context, tx rdbms.Tx, course int64, old, next blob.Reference) (string, *string, error) {
 	id := identity.Stable("diff", fmt.Sprint(course), old.SHA256, next.SHA256, ToolVersion)
 	result, err := tx.Exec(
 		ctx,
@@ -50,7 +49,7 @@ func (s Service) Content(ctx context.Context, path string) (blob.Reference, erro
 	var object blob.Reference
 	id := strings.TrimSuffix(strings.TrimPrefix(path, "/_diffs/"), ".pdf")
 	if len(id) != 37 || Alias(id) != path {
-		return object, pgx.ErrNoRows
+		return object, rdbms.ErrNoRows
 	}
 	err := s.Pool.QueryRow(ctx, `SELECT o.bucket,o.key,o.version_id,o.sha256,o.bytes,o.media_type FROM app.pdf_differences d JOIN app.objects o ON o.id=d.object_id JOIN app.courses c ON c.id=d.course_id AND c.hidden=0 WHERE d.id=$1 AND d.status='ready'`, id).
 		Scan(&object.Bucket, &object.Key, &object.VersionID, &object.SHA256, &object.Bytes, &object.MediaType)

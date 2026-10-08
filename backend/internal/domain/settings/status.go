@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type CheckStatus struct {
@@ -40,7 +40,7 @@ func (s Service) Check(ctx context.Context) (CheckStatus, error) {
 			&status.FilesAdded,
 			&status.FilesChanged,
 		)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		err = nil
 	}
 	for _, text := range []*string{status.CourseName, status.LastError} {

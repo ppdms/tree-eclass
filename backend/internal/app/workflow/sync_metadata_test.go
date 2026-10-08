@@ -5,14 +5,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/integrations/eclass"
 	"tree-eclass/internal/services/synchronization"
 )
 
-func syncMetadataChecks(t *testing.T, pool *pgxpool.Pool, service synchronization.Service) {
+func syncMetadataChecks(t *testing.T, pool rdbms.Pool, service synchronization.Service) {
 	t.Helper()
 	ctx := t.Context()
 	ex := eclass.Exercise{ID: "42", Title: "Εργασία", SubmissionStatus: "pending", Grade: "7"}
@@ -66,7 +66,7 @@ func syncMetadataChecks(t *testing.T, pool *pgxpool.Pool, service synchronizatio
 	syncAdmissionChecks(t, pool, service)
 }
 
-func syncAdmissionChecks(t *testing.T, pool *pgxpool.Pool, service synchronization.Service) {
+func syncAdmissionChecks(t *testing.T, pool rdbms.Pool, service synchronization.Service) {
 	t.Helper()
 	ctx := t.Context()
 	var admitted atomic.Int32

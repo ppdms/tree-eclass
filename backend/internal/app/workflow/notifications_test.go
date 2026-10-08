@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -37,7 +38,8 @@ func TestNativeNotificationPublicationAndDelivery(t *testing.T) {
 	conn, _ := startTestStorage(t, c)
 	defer conn.Close(t.Context())
 	ctx := t.Context()
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +93,7 @@ func TestNativeNotificationPublicationAndDelivery(t *testing.T) {
 	notificationDeliveryChecks(t, pool)
 }
 
-func notificationDeliveryChecks(t *testing.T, pool *pgxpool.Pool) {
+func notificationDeliveryChecks(t *testing.T, pool rdbms.Pool) {
 	t.Helper()
 	ctx := t.Context()
 	var err error
@@ -139,7 +141,7 @@ func notificationDeliveryChecks(t *testing.T, pool *pgxpool.Pool) {
 
 func notificationRetryChecks(
 	t *testing.T,
-	pool *pgxpool.Pool,
+	pool rdbms.Pool,
 	service notifications.Service,
 	sender *fakeNotifications,
 ) {

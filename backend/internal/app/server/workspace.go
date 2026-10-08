@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/workspace"
 )
 
@@ -52,9 +52,11 @@ func (s *Server) workspaceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, workspace.ErrInvalid):
 		writeFailure(w, http.StatusUnprocessableEntity, "Invalid study session fields")
+	case errors.Is(err, workspace.ErrDocumentPending):
+		writeFailure(w, http.StatusConflict, "This document is still being prepared for study. It opens automatically once indexing finishes.")
 	case errors.Is(err, workspace.ErrConflict):
 		writeFailure(w, http.StatusConflict, "This study request conflicts with the saved session or current roadmap")
-	case errors.Is(err, pgx.ErrNoRows):
+	case errors.Is(err, rdbms.ErrNoRows):
 		writeFailure(w, http.StatusNotFound, "Study session, document or course not found")
 	default:
 		s.internal(w, err)

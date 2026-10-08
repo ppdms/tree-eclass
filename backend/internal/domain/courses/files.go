@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Files struct {
@@ -26,7 +26,7 @@ func (s Service) Files(ctx context.Context, id int64) (Files, error) {
 		Expanded:  []string{},
 		Study:     map[string]int64{},
 	}
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return result, err
 	}
@@ -43,7 +43,7 @@ func (s Service) Files(ctx context.Context, id int64) (Files, error) {
 	return result, tx.Commit(ctx)
 }
 
-func (f *Files) history(ctx context.Context, tx pgx.Tx, id int64) error {
+func (f *Files) history(ctx context.Context, tx rdbms.Tx, id int64) error {
 	rows, err := tx.Query(
 		ctx,
 		`SELECT DISTINCT file_path,change_type FROM app.file_versions WHERE course_id=$1 AND change_type IN('modified','deleted') ORDER BY file_path`,
@@ -77,7 +77,7 @@ func (f *Files) history(ctx context.Context, tx pgx.Tx, id int64) error {
 	return rows.Err()
 }
 
-func (f *Files) preferences(ctx context.Context, tx pgx.Tx, id int64) error {
+func (f *Files) preferences(ctx context.Context, tx rdbms.Tx, id int64) error {
 	rows, err := tx.Query(
 		ctx,
 		`SELECT folder_key,collapsed FROM app.collapsed_course_folders WHERE course_id=$1 ORDER BY folder_key`,

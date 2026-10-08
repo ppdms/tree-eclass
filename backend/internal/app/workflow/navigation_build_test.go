@@ -5,15 +5,15 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/settings"
 )
 
-func navigationBuildChecks(t *testing.T, pool *pgxpool.Pool, base, document string) {
+func navigationBuildChecks(t *testing.T, pool rdbms.Pool, base, document string) {
 	t.Helper()
 	ctx := t.Context()
 	a := settings.DefaultAI()
@@ -58,7 +58,7 @@ func navigationBuildChecks(t *testing.T, pool *pgxpool.Pool, base, document stri
 	navigationBuildReaderChecks(t, pool, base, document, refresh)
 }
 
-func navigationBuildPacket(t *testing.T, pool *pgxpool.Pool, document string, a settings.AI) (string, map[string]any) {
+func navigationBuildPacket(t *testing.T, pool rdbms.Pool, document string, a settings.AI) (string, map[string]any) {
 	t.Helper()
 	ctx := t.Context()
 	raw, err := os.ReadFile("../../domain/blueprints/testdata/validation.json")
@@ -101,7 +101,7 @@ func navigationBuildPacket(t *testing.T, pool *pgxpool.Pool, document string, a 
 	return payload, packet
 }
 
-func navigationBuildReaderChecks(t *testing.T, pool *pgxpool.Pool, base, document string, refresh func()) {
+func navigationBuildReaderChecks(t *testing.T, pool rdbms.Pool, base, document string, refresh func()) {
 	t.Helper()
 	ctx := t.Context()
 	var err error
@@ -149,7 +149,7 @@ func navigationBuildReaderChecks(t *testing.T, pool *pgxpool.Pool, base, documen
 	}
 }
 
-func refreshNavigation(t *testing.T, pool *pgxpool.Pool) {
+func refreshNavigation(t *testing.T, pool rdbms.Pool) {
 	t.Helper()
 	for range 100 {
 		changed, err := (navigation.Service{Pool: pool}).Refresh(t.Context())
@@ -163,7 +163,7 @@ func refreshNavigation(t *testing.T, pool *pgxpool.Pool) {
 	t.Fatal("navigation did not settle")
 }
 
-func navigationSourceMutationChecks(t *testing.T, pool *pgxpool.Pool, base, document string, refresh func()) {
+func navigationSourceMutationChecks(t *testing.T, pool rdbms.Pool, base, document string, refresh func()) {
 	t.Helper()
 	ctx := t.Context()
 	name := "Δένδρα\x00\ue0000"

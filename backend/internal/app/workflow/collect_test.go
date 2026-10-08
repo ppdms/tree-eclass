@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"tree-eclass/internal/infrastructure/blob"
+	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/infrastructure/storage"
 )
 
@@ -76,7 +77,7 @@ func historicalObjects(t *testing.T, ctx context.Context, conn *pgx.Conn, store 
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err = storage.RegisterObject(ctx, conn, refs[i]); err != nil {
+		if err = storage.RegisterObject(ctx, rdbms.WrapConn(conn), refs[i]); err != nil {
 			t.Fatal(err)
 		}
 	}

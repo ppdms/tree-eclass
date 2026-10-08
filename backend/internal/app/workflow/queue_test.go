@@ -3,12 +3,12 @@ package workflow
 import (
 	"sync"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/infrastructure/jobs"
 )
 
-func queueInvalidationChecks(t *testing.T, pool *pgxpool.Pool) {
+func queueInvalidationChecks(t *testing.T, pool rdbms.Pool) {
 	t.Helper()
 	ctx := t.Context()
 	queue := jobs.Queue{Pool: pool}

@@ -1,4 +1,4 @@
-package storage
+package rdbms
 
 import (
 	"context"
@@ -15,18 +15,23 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-//go:embed migrations/*.sql
-var migrationFS embed.FS
+//go:embed postgres_migrations/*.sql
+var postgresFS embed.FS
+
+//go:embed sqlite_migrations/*.sql
+var sqliteFS embed.FS
 
 const migrationLock int64 = 87422101
+
+const runtimeLock int64 = 87422102
 
 type migration struct {
 	Version         int64
 	Name, SQL, Hash string
 }
 
-func migrations() ([]migration, error) {
-	entries, err := fs.ReadDir(migrationFS, "migrations")
+func readMigrations(fsys embed.FS, dir string) ([]migration, error) {
+	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +42,7 @@ func migrations() ([]migration, error) {
 		if err != nil {
 			return nil, err
 		}
-		b, err := migrationFS.ReadFile("migrations/" + name)
+		b, err := fsys.ReadFile(dir + "/" + name)
 		if err != nil {
 			return nil, err
 		}
@@ -46,8 +51,9 @@ func migrations() ([]migration, error) {
 	return result, nil
 }
 
-func Manifest() (map[string]string, error) {
-	ms, err := migrations()
+// postgresManifest returns the name->sha256 ledger for the postgres chain.
+func postgresManifest() (map[string]string, error) {
+	ms, err := readMigrations(postgresFS, "postgres_migrations")
 	if err != nil {
 		return nil, err
 	}
@@ -58,9 +64,23 @@ func Manifest() (map[string]string, error) {
 	return result, nil
 }
 
-// Migrate uses Goose for ordering and records each source checksum in the same
-// transaction as the SQL and Goose version. A crash cannot bless modified SQL.
-func Migrate(ctx context.Context, url string) error {
+// sqliteManifest returns the name->sha256 ledger for the sqlite chain.
+func sqliteManifest() (map[string]string, error) {
+	ms, err := readMigrations(sqliteFS, "sqlite_migrations")
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]string{}
+	for _, m := range ms {
+		result[m.Name] = m.Hash
+	}
+	return result, nil
+}
+
+// migratePostgres uses Goose for ordering and records each source checksum in
+// the same transaction as the SQL and Goose version. A crash cannot bless
+// modified SQL. Unchanged from the pre-abstraction storage.Migrate.
+func migratePostgres(ctx context.Context, url string) error {
 	db, err := sql.Open("pgx", url)
 	if err != nil {
 		return err
@@ -84,19 +104,19 @@ func Migrate(ctx context.Context, url string) error {
 		return errors.New("another application owns this database; stop all writers before migration")
 	}
 	defer conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", runtimeLock)
-	if err = admitDatabase(ctx, conn); err != nil {
+	if err = admitPostgres(ctx, conn); err != nil {
 		return err
 	}
-	ms, err := migrations()
+	ms, err := readMigrations(postgresFS, "postgres_migrations")
 	if err != nil {
 		return err
 	}
-	if err = validateLedger(ctx, conn, ms, false); err != nil {
+	if err = validatePostgresLedger(ctx, conn, ms, false); err != nil {
 		return err
 	}
 	goMigrations := make([]*goose.Migration, 0, len(ms))
 	for _, m := range ms {
-		goMigrations = append(goMigrations, goMigration(m))
+		goMigrations = append(goMigrations, goPostgresMigration(m))
 	}
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, nil, goose.WithGoMigrations(goMigrations...))
 	if err != nil {
@@ -105,10 +125,10 @@ func Migrate(ctx context.Context, url string) error {
 	if _, err = provider.Up(ctx); err != nil {
 		return err
 	}
-	return validateLedger(ctx, conn, ms, true)
+	return validatePostgresLedger(ctx, conn, ms, true)
 }
 
-func goMigration(m migration) *goose.Migration {
+func goPostgresMigration(m migration) *goose.Migration {
 	up := &goose.GoFunc{RunTx: func(ctx context.Context, tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, m.SQL+"\nSET search_path TO public;"); err != nil {
 			return err
@@ -128,7 +148,7 @@ func goMigration(m migration) *goose.Migration {
 	return goose.NewGoMigration(m.Version, up, down)
 }
 
-func admitDatabase(ctx context.Context, conn *sql.Conn) error {
+func admitPostgres(ctx context.Context, conn *sql.Conn) error {
 	var ledger bool
 	if err := conn.QueryRowContext(ctx, "SELECT to_regclass('public.tree_go_migrations') IS NOT NULL").Scan(&ledger); err != nil {
 		return err
@@ -150,7 +170,7 @@ func admitDatabase(ctx context.Context, conn *sql.Conn) error {
 	return err
 }
 
-func validateLedger(ctx context.Context, conn *sql.Conn, ms []migration, exact bool) error {
+func validatePostgresLedger(ctx context.Context, conn *sql.Conn, ms []migration, exact bool) error {
 	expected := map[int64]migration{}
 	for _, m := range ms {
 		expected[m.Version] = m
@@ -185,7 +205,7 @@ func validateLedger(ctx context.Context, conn *sql.Conn, ms []migration, exact b
 	return nil
 }
 
-func Require(ctx context.Context, url string) error {
+func requirePostgres(ctx context.Context, url string) error {
 	db, err := sql.Open("pgx", url)
 	if err != nil {
 		return err
@@ -196,9 +216,9 @@ func Require(ctx context.Context, url string) error {
 		return err
 	}
 	defer conn.Close()
-	ms, err := migrations()
+	ms, err := readMigrations(postgresFS, "postgres_migrations")
 	if err != nil {
 		return err
 	}
-	return validateLedger(ctx, conn, ms, true)
+	return validatePostgresLedger(ctx, conn, ms, true)
 }

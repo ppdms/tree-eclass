@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/jackc/pgx/v5"
-
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-func lockArchive(ctx context.Context, tx pgx.Tx, s Archive, path string) error {
+func lockArchive(ctx context.Context, tx rdbms.Tx, s Archive, path string) error {
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('settings:discord-map',0))`); err != nil {
 		return err
 	}
@@ -26,7 +25,7 @@ func lockArchive(ctx context.Context, tx pgx.Tx, s Archive, path string) error {
 	courses := []int64{s.Course}
 	var previous int64
 	err := tx.QueryRow(ctx, `SELECT course_id FROM messages.archive_sources WHERE path=$1`, path).Scan(&previous)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
 		return err
 	}
 	if err == nil && previous != s.Course {
@@ -34,13 +33,13 @@ func lockArchive(ctx context.Context, tx pgx.Tx, s Archive, path string) error {
 	}
 	slices.Sort(courses)
 	for _, id := range courses {
-		if err = queries.New(tx).QueueLock(ctx, fmt.Sprintf("course:%d", id)); err != nil {
+		if err = queries.ForTx(tx).QueueLock(ctx, fmt.Sprintf("course:%d", id)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
-func publishArchive(ctx context.Context, tx pgx.Tx, s Archive, h exportHeader, result ImportResult) error {
+func publishArchive(ctx context.Context, tx rdbms.Tx, s Archive, h exportHeader, result ImportResult) error {
 	// Cascades discard only this artifact's derived rows, in the same transaction.
 	if _, err := tx.Exec(ctx, `DELETE FROM messages.archive_sources WHERE path=$1`, result.Path); err != nil {
 		return err

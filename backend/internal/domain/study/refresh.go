@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func (s Service) Refresh(ctx context.Context, now time.Time) (bool, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return false, err
 	}
@@ -23,7 +23,7 @@ func (s Service) Refresh(ctx context.Context, now time.Time) (bool, error) {
 		return false, err
 	}
 	scope, generation, err := nextScope(ctx, tx, fingerprint)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -43,14 +43,33 @@ func (s Service) Refresh(ctx context.Context, now time.Time) (bool, error) {
 	if err = tx.Rollback(ctx); err != nil {
 		return false, err
 	}
-	result, err := s.Pool.Exec(
+	published, err := publishMetric(ctx, s.Pool, scope, string(raw), now, fingerprint, status, generation)
+	if err != nil {
+		return false, err
+	}
+	return published, buildErr
+}
+
+// publishMetric writes one projection row. Postgres uses a single
+// conditional upsert; sqlite has no ON CONFLICT WHERE, so both drivers share
+// this portable update-then-insert: the UPDATE carries the generation guard,
+// the INSERT fills the absent row. Single-writer sqlite and the caller's
+// advisory posture make the two statements atomic enough in practice.
+func publishMetric(
+	ctx context.Context,
+	db rdbms.DBTX,
+	scope, payload string,
+	now time.Time,
+	fingerprint, status string,
+	generation int64,
+) (bool, error) {
+	result, err := db.Exec(
 		ctx,
-		`INSERT INTO read_model.study_metrics(scope,payload_json,generated_at,generation,source_fingerprint,status,retry_after)
- VALUES($1,$2,$3,1,$4,$5,CASE WHEN $5='failed' THEN now()+interval '30 seconds' END)
- ON CONFLICT(scope) DO UPDATE SET payload_json=excluded.payload_json,generated_at=excluded.generated_at,generation=study_metrics.generation+1,source_fingerprint=excluded.source_fingerprint,status=excluded.status,retry_after=excluded.retry_after
- WHERE study_metrics.generation=$6`,
+		`UPDATE read_model.study_metrics SET payload_json=$2,generated_at=$3,generation=generation+1,
+ source_fingerprint=$4,status=$5,retry_after=CASE WHEN $5='failed' THEN now()+interval '30 seconds' END
+ WHERE scope=$1 AND generation=$6`,
 		scope,
-		string(raw),
+		payload,
 		now.UTC().Format(time.RFC3339Nano),
 		fingerprint,
 		status,
@@ -59,10 +78,27 @@ func (s Service) Refresh(ctx context.Context, now time.Time) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return result.RowsAffected() == 1, buildErr
+	if result.RowsAffected() == 1 {
+		return true, nil
+	}
+	result, err = db.Exec(
+		ctx,
+		`INSERT INTO read_model.study_metrics(scope,payload_json,generated_at,generation,source_fingerprint,status,retry_after)
+ VALUES($1,$2,$3,1,$4,$5,CASE WHEN $5='failed' THEN now()+interval '30 seconds' END)
+ ON CONFLICT(scope) DO NOTHING`,
+		scope,
+		payload,
+		now.UTC().Format(time.RFC3339Nano),
+		fingerprint,
+		status,
+	)
+	if err != nil {
+		return false, err
+	}
+	return result.RowsAffected() == 1, nil
 }
 
-func nextScope(ctx context.Context, tx pgx.Tx, fingerprint string) (string, int64, error) {
+func nextScope(ctx context.Context, tx rdbms.Tx, fingerprint string) (string, int64, error) {
 	var scope string
 	var generation int64
 	err := tx.QueryRow(ctx, `WITH scopes AS (
@@ -105,7 +141,7 @@ func projectionPayload(view map[string]any, buildErr error) ([]byte, string, err
 
 func (s Service) buildProjection(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	selected *int64,
 	a settings.AI,
 	today time.Time,

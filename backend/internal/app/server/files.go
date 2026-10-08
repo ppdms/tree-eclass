@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/blob"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func (s *Server) fileRoutes() {
@@ -40,7 +40,7 @@ func (s *Server) documentContent(w http.ResponseWriter, r *http.Request) {
 	s.blobs.Serve(w, r, content.Object, content.Name)
 }
 func (s *Server) fileContent(w http.ResponseWriter, r *http.Request) {
-	row, err := queries.New(s.db.Pool).FileObject(r.Context(), r.PathValue("file_id"))
+	row, err := queries.ForPool(s.db.Pool).FileObject(r.Context(), r.PathValue("file_id"))
 	if err != nil {
 		s.fileError(w, err)
 		return
@@ -78,7 +78,7 @@ func (s *Server) logicalContent(w http.ResponseWriter, r *http.Request) {
 	s.blobs.Serve(w, r, content.Object, content.Name)
 }
 func (s *Server) fileError(w http.ResponseWriter, err error) {
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Document not found")
 		return
 	}

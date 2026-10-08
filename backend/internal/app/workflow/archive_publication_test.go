@@ -9,13 +9,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/materials"
 	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/blob"
+	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/infrastructure/storage"
 	"tree-eclass/internal/integrations/parser"
 )
@@ -51,7 +51,7 @@ func TestNativeArchiveMemberPublication(t *testing.T) {
 type archivePublicationFixture struct {
 	ctx          context.Context
 	temp         string
-	pool         *pgxpool.Pool
+	pool         rdbms.Pool
 	objects      *blob.Store
 	indexer      knowledge.Indexer
 	reader       knowledge.Reader
@@ -79,7 +79,8 @@ func newArchivePublicationFixture(t *testing.T, format string) archivePublicatio
 	ctx := t.Context()
 	conn, objects := startTestStorage(t, c)
 	t.Cleanup(func() { conn.Close(ctx) })
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,20 +144,37 @@ func archiveChildren(t *testing.T, fixture archivePublicationFixture) ([]string,
 	if err != nil {
 		t.Fatal(err)
 	}
-	children, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil || len(children) != 2 {
-		t.Fatal("admitted children", children, err)
+	var children []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		children = append(children, id)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	rows.Close()
+	if len(children) != 2 {
+		t.Fatal("admitted children", children)
+	}
+	unchanged, removed := archiveLeafIdentities(t, fixture, children)
+	return children, unchanged, removed
+}
+
+func archiveLeafIdentities(t *testing.T, fixture archivePublicationFixture, children []string) (string, string) {
+	t.Helper()
 	var unchanged, removed string
 	for _, id := range children {
-		if err = fixture.indexer.Index(ctx, id); err != nil {
+		if err := fixture.indexer.Index(fixture.ctx, id); err != nil {
 			t.Fatal("child indexing", err)
 		}
-		content, err := fixture.reader.Content(ctx, 791, id, "")
+		content, err := fixture.reader.Content(fixture.ctx, 791, id, "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		source, err := fixture.objects.Open(ctx, content.Object)
+		source, err := fixture.objects.Open(fixture.ctx, content.Object)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -176,7 +194,7 @@ func archiveChildren(t *testing.T, fixture archivePublicationFixture) ([]string,
 	if unchanged == "" || removed == "" {
 		t.Fatal("missing leaf identity")
 	}
-	return children, unchanged, removed
+	return unchanged, removed
 }
 
 func archiveReplacementChecks(t *testing.T, fixture archivePublicationFixture, unchanged, removed string) {
@@ -223,7 +241,7 @@ func archiveUnsafeChecks(t *testing.T, fixture archivePublicationFixture, unchan
 
 func replaceArchiveFixture(
 	t *testing.T,
-	pool *pgxpool.Pool,
+	pool rdbms.Pool,
 	objects *blob.Store,
 	temp, document string,
 	data []byte,
@@ -240,7 +258,11 @@ func replaceArchiveFixture(
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	q := queries.New(tx)
+	native, ok := rdbms.UnwrapPostgresTx(tx)
+	if !ok {
+		t.Fatal("sqlc queries require postgres")
+	}
+	q := queries.New(native)
 	d, err := q.IndexDocument(ctx, document)
 	if err != nil {
 		t.Fatal(err)

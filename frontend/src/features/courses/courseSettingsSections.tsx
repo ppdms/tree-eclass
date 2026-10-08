@@ -153,10 +153,7 @@ export function CourseRenameForm({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form
-      {...stylex.props(styles.courseSettingsCard, styles.courseSettingsProfile)}
-      onSubmit={onSubmit}
-    >
+    <form {...stylex.props(styles.courseSettingsCard, styles.courseSettingsProfile)} onSubmit={onSubmit}>
       <header {...stylex.props(styles.courseSettingsCardHeader)}>
         <div {...stylex.props(styles.courseSettingsCardHeading)}>
           <strong {...stylex.props(styles.courseSettingsCardTitle)}>Course name</strong>

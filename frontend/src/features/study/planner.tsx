@@ -122,11 +122,7 @@ export function PlannerForm({
   errors: string[];
 }) {
   return (
-    <form
-      onSubmit={onSubmit}
-      {...stylex.props(styles.studyPlannerForm)}
-      aria-describedby="planner-errors"
-    >
+    <form onSubmit={onSubmit} {...stylex.props(styles.studyPlannerForm)} aria-describedby="planner-errors">
       <PlannerFormBody rows={rows} settings={settings} saveState={saveState} errors={errors} />
       <footer {...stylex.props(styles.studyPlanSheetFooter)}>
         <Button type="submit" disabled={saving} icon={<Save aria-hidden="true" />}>

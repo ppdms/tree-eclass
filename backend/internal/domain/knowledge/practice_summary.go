@@ -3,13 +3,13 @@ package knowledge
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func PracticeSummary(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	course int64,
 	revision string,
 	units []string,

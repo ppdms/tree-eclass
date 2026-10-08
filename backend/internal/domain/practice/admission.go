@@ -3,16 +3,17 @@ package practice
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type currentQuestion struct{ Unit, Key, Set, Revision string }
 
-func admitQuestion(ctx context.Context, tx pgx.Tx, course int64, id string) (currentQuestion, error) {
+func admitQuestion(ctx context.Context, tx rdbms.Tx, course int64, id string) (currentQuestion, error) {
 	result := currentQuestion{}
 	var locked, generation int64
 	if err := tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND (hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=app.courses.id AND p.enabled=1)) FOR SHARE`, course).Scan(&locked); err != nil {
@@ -28,13 +29,12 @@ func admitQuestion(ctx context.Context, tx pgx.Tx, course int64, id string) (cur
 	var payload *string
 	var evidence []byte
 	err = tx.QueryRow(ctx, `SELECT q.unit_key,q.question_key,s.set_hash,s.blueprint_revision_hash,
- CASE WHEN octet_length(q.payload_json)<=65536 THEN q.payload_json END,c.payload->'evidence_links'
+ CASE WHEN octet_length(q.payload_json)<=65536 THEN q.payload_json END,c.payload
  FROM read_model.navigation n JOIN read_model.roadmap_content c ON c.content_id=n.content_id
  JOIN knowledge.practice_question_sets s ON s.course_id=n.course_id AND s.blueprint_revision_hash=n.revision_id
  JOIN knowledge.practice_questions q ON q.set_id=s.id AND q.course_id=s.course_id AND q.unit_key=s.unit_key
  WHERE n.course_id=$1 AND n.source_generation=$2 AND n.config_generation=$3 AND n.overview->>'usable'='true'
  AND s.status='ready' AND s.analysis_version=$4 AND s.requested_model=$5 AND q.question_id=$6
- AND EXISTS(SELECT 1 FROM jsonb_array_elements(c.payload#>'{blueprint,units}') u WHERE u->>'key'=s.unit_key)
  FOR SHARE OF n,s,q`,
 		course,
 		generation,
@@ -50,7 +50,7 @@ func admitQuestion(ctx context.Context, tx pgx.Tx, course int64, id string) (cur
 		&payload,
 		&evidence,
 	)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return result, ErrConflict
 	}
 	if err != nil {
@@ -67,11 +67,31 @@ func validateAdmission(course int64, id string, result currentQuestion, payload 
 	if err := json.Unmarshal([]byte(*payload), &q); err != nil {
 		return ErrConflict
 	}
-	var links map[string]any
-	if err := json.Unmarshal(evidence, &links); err != nil {
+	var packet struct {
+		EvidenceLinks map[string]any `json:"evidence_links"`
+		Blueprint     struct {
+			Units []struct {
+				Key string `json:"key"`
+			} `json:"units"`
+		} `json:"blueprint"`
+	}
+	if err := json.Unmarshal(evidence, &packet); err != nil {
 		return ErrConflict
 	}
-	links = identity.DecodeJSON(links).(map[string]any)
+	// The legacy EXISTS(jsonb_array_elements(payload#>'{blueprint,units}'))
+	// membership test has no portable SQL form (#> and jsonb_array_elements
+	// fail on sqlite), so the unit membership check happens here in Go.
+	member := false
+	for _, unit := range packet.Blueprint.Units {
+		if unit.Key == result.Unit {
+			member = true
+			break
+		}
+	}
+	if !member {
+		return ErrConflict
+	}
+	links := identity.DecodeJSON(packet.EvidenceLinks).(map[string]any)
 	known := map[string]bool{}
 	for ref := range links {
 		known[ref] = true

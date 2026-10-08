@@ -3,13 +3,13 @@ package workflow
 import (
 	"fmt"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/activity"
 	"tree-eclass/internal/domain/identity"
 )
 
-func activityChecks(t *testing.T, pool *pgxpool.Pool, base string) {
+func activityChecks(t *testing.T, pool rdbms.Pool, base string) {
 	t.Helper()
 	_, err := pool.Exec(t.Context(), `INSERT INTO app.announcements(course_id,announcement_id,title,link,pub_date)
 SELECT 101,'synthetic-'||i,'Announcement '||i,'https://example.invalid/'||i,'2026-09-12T09:00:00Z' FROM generate_series(1,12) i;

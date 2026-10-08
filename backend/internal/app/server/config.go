@@ -32,6 +32,7 @@ type Config struct {
 	AllowedHosts     []string          `json:"allowed_hosts"`
 	AllowedOrigins   []string          `json:"allowed_origins"`
 	DatabaseURL      string            `json:"database_url"`
+	SQLitePath       string            `json:"sqlite_path,omitempty"`
 	ObjectsRoot      string            `json:"objects_root"`
 	Address          string            `json:"address"`
 	Mode             string            `json:"mode"`
@@ -58,13 +59,24 @@ func Load(path string) (Config, error) {
 	return cfg, err
 }
 
+// StorageConfig resolves the database driver from Config: SQLitePath selects
+// the sqlite backend, otherwise the postgres DatabaseURL is used.
+func (c Config) StorageConfig() storage.Config {
+	if c.SQLitePath != "" {
+		return storage.Config{SQLitePath: c.SQLitePath}
+	}
+	return storage.ConfigForURL(c.DatabaseURL)
+}
+
 type Server struct {
 	config         Config
 	db             *storage.Database
 	blobs          *blob.Store
 	mux            *http.ServeMux
-	exportMu       sync.Mutex
+	eclassBaseURL  string
+	availableMu    sync.Mutex
 	askMu          sync.Mutex
+	exportMu       sync.Mutex
 	inference      chat.Streamer
 	inferenceClose func()
 	expensiveMu    sync.Mutex
@@ -80,11 +92,13 @@ func New(ctx context.Context, cfg Config, options ...Option) (*Server, error) {
 	if cfg.Mode != "test" && cfg.Session == "" {
 		return nil, errors.New("runtime session is required")
 	}
-	db, err := storage.Open(ctx, cfg.DatabaseURL)
+	db, err := storage.OpenConfig(ctx, cfg.StorageConfig())
 	if err != nil {
 		return nil, err
 	}
 	if cfg.Code != "" {
+		// Scalar to_jsonb($1) is covered by the sqlite shim (text→JSON
+		// string); row/table forms need rewrites, this one does not.
 		_, err = db.Pool.Exec(
 			ctx,
 			`INSERT INTO app.native_settings(key,value) VALUES('_runtime_code',to_jsonb($1::text))
@@ -246,7 +260,7 @@ func Run(ctx context.Context, args []string) error {
 		return containerRuntime(ctx, cfg, args[0] == "container-migrate")
 	}
 	if len(args) == 1 && args[0] == "migrate" {
-		return storage.Migrate(ctx, cfg.DatabaseURL)
+		return storage.MigrateConfig(ctx, cfg.StorageConfig())
 	}
 	if len(args) == 1 && args[0] == "collect" {
 		return collect(ctx, cfg)

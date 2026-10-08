@@ -3,16 +3,26 @@ package analysis
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 const eligible = knowledge.CurrentSourcePredicate + ` AND d.status='ready' AND d.content_hash_verified=1 AND d.document_kind<>'archive'
  AND (c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans plan WHERE plan.course_id=c.id AND plan.enabled=1))`
 
+// documentContext hashes the document identity tuple. It stays in SQL on
+// purpose: the input text is produced by jsonb_build_array, whose TEXT args
+// (ids, hashes, names, paths) all encode as JSON strings and whose BIGINT
+// course_id encodes as a JSON number on both backends. Postgres composes it
+// as ["id", course_id, "hash", ...] with ", " separators; the sqlite shim
+// renders the identical text (same jsonbEncode rules, same separators), so
+// the sha256 hex stays byte-identical across backends and stored
+// context_hash values compare equal without recomputation.
 const documentContext = `encode(sha256(convert_to(jsonb_build_array(d.id,d.course_id,d.source_hash,d.document_kind,d.display_name,c.name,d.normalized_path,d.source_origin)::text,'UTF8')),'hex')`
 
 const visualDue = `(d.document_kind NOT IN('pdf','image') OR NOT EXISTS(SELECT 1 FROM knowledge.page_enrichments p WHERE p.document_id=d.id)
@@ -28,7 +38,7 @@ func (s Service) claim(ctx context.Context) (job, error) {
 		return j, err
 	}
 	if !a.EnrichmentEnabled {
-		return j, pgx.ErrNoRows
+		return j, rdbms.ErrNoRows
 	}
 	// Inspect candidates without holding a lock across I/O. Recheck under the
 	// course/document locks, then commit the claim before calling a provider.
@@ -76,7 +86,7 @@ func (s Service) findCandidate(ctx context.Context, model string) (string, int64
 }
 func (s Service) recheckEligibility(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	course int64,
 	id string,
 ) (document, settings.AI, error) {
@@ -89,12 +99,12 @@ func (s Service) recheckEligibility(
 		return d, a, err
 	}
 	if !a.EnrichmentEnabled {
-		return d, a, pgx.ErrNoRows
+		return d, a, rdbms.ErrNoRows
 	}
 	d, err = currentDocument(ctx, tx, id, true)
 	return d, a, err
 }
-func (s Service) claimVisual(ctx context.Context, tx pgx.Tx, j *job, d document) (bool, error) {
+func (s Service) claimVisual(ctx context.Context, tx rdbms.Tx, j *job, d document) (bool, error) {
 	if d.Kind != "pdf" && d.Kind != "image" {
 		return false, nil
 	}
@@ -105,10 +115,10 @@ func (s Service) claimVisual(ctx context.Context, tx pgx.Tx, j *job, d document)
 		if err := tx.Commit(ctx); err != nil {
 			return true, err
 		}
-		return true, pgx.ErrNoRows
+		return true, rdbms.ErrNoRows
 	}
 	page, attempts, err := claimPage(ctx, tx, *j)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		if commitErr := tx.Commit(ctx); commitErr != nil {
 			return true, commitErr
 		}
@@ -124,7 +134,7 @@ func (s Service) claimVisual(ctx context.Context, tx pgx.Tx, j *job, d document)
 	}
 	return false, nil
 }
-func currentDocument(ctx context.Context, tx pgx.Tx, id string, lock bool) (document, error) {
+func currentDocument(ctx context.Context, tx rdbms.Tx, id string, lock bool) (document, error) {
 	var d document
 	query := `SELECT d.id,d.course_id,d.source_hash,d.document_kind,d.display_name,c.name,d.normalized_path,d.source_origin,coalesce(d.page_count,0),` + documentContext + ` FROM knowledge.documents d JOIN app.courses c ON c.id=d.course_id WHERE d.id=$1 AND ` + eligible
 	if lock {
@@ -134,12 +144,17 @@ func currentDocument(ctx context.Context, tx pgx.Tx, id string, lock bool) (docu
 		Scan(&d.ID, &d.Course, &d.Hash, &d.Kind, &d.Name, &d.CourseName, &d.Path, &d.Origin, &d.Pages, &d.Context)
 	return d, err
 }
-func queueDocument(ctx context.Context, tx pgx.Tx, j job) error {
+
+// queueDocumentSQL inserts the pending document row; conflicts refresh stale
+// inputs only, keyed by input hashes and the requested model.
+const queueDocumentSQL = `INSERT INTO knowledge.document_enrichments(document_id,source_hash,context_hash,analysis_version,status,model,requested_model,available_at) VALUES($1,$2,$3,$4,'pending',$5,$5,$6)
+ ON CONFLICT(document_id) DO UPDATE SET source_hash=excluded.source_hash,context_hash=excluded.context_hash,analysis_version=excluded.analysis_version,model=excluded.model,requested_model=excluded.requested_model,status='pending',payload_json=NULL,attempts=0,available_at=excluded.available_at,claimed_at=NULL,error=NULL
+ WHERE document_enrichments.source_hash<>excluded.source_hash OR document_enrichments.context_hash<>excluded.context_hash OR document_enrichments.analysis_version<>excluded.analysis_version OR coalesce(document_enrichments.requested_model,document_enrichments.model)<>excluded.requested_model`
+
+func queueDocument(ctx context.Context, tx rdbms.Tx, j job) error {
 	_, err := tx.Exec(
 		ctx,
-		`INSERT INTO knowledge.document_enrichments(document_id,source_hash,context_hash,analysis_version,status,model,requested_model,available_at) VALUES($1,$2,$3,$4,'pending',$5,$5,$6)
- ON CONFLICT(document_id) DO UPDATE SET source_hash=excluded.source_hash,context_hash=excluded.context_hash,analysis_version=excluded.analysis_version,model=excluded.model,requested_model=excluded.requested_model,status='pending',payload_json=NULL,attempts=0,available_at=excluded.available_at,claimed_at=NULL,error=NULL
- WHERE document_enrichments.source_hash<>excluded.source_hash OR document_enrichments.context_hash<>excluded.context_hash OR document_enrichments.analysis_version<>excluded.analysis_version OR coalesce(document_enrichments.requested_model,document_enrichments.model)<>excluded.requested_model`,
+		queueDocumentSQL,
 		j.Document.ID,
 		j.Document.Hash,
 		j.Document.Context,
@@ -149,30 +164,47 @@ func queueDocument(ctx context.Context, tx pgx.Tx, j job) error {
 	)
 	return err
 }
-func claimPage(ctx context.Context, tx pgx.Tx, j job) (int64, int64, error) {
-	_, err := tx.Exec(
-		ctx,
-		`INSERT INTO knowledge.page_enrichments(document_id,page_number,source_hash,analysis_version,status,model,requested_model,available_at)
- SELECT $1,page,$2,$3,'pending',$4,$4,$5 FROM generate_series(1,$6::bigint) page
+
+// pageRowSQL renders one UNION ALL row selecting the page enrichment values
+// for the numbered placeholders starting at base: document, page, hash,
+// version, pending status, model twice, and availability.
+func pageRowSQL(base int) string {
+	return `(SELECT $` + strconv.Itoa(base) + `,$` + strconv.Itoa(base+1) + `,$` + strconv.Itoa(base+2) +
+		`,$` + strconv.Itoa(base+3) + `,'pending',$` + strconv.Itoa(base+4) +
+		`,$` + strconv.Itoa(base+4) + `,$` + strconv.Itoa(base+5) + `)`
+}
+
+func claimPage(ctx context.Context, tx rdbms.Tx, j job) (int64, int64, error) {
+	// The legacy SELECT ... FROM generate_series(1,$6) page fan-out has no
+	// sqlite form (no generate_series), so page rows insert from a Go-built
+	// batch with the same upsert semantics: one row per page, conflicts
+	// refresh stale rows only.
+	pages := make([]string, 0, j.Document.Pages)
+	args := make([]any, 0, j.Document.Pages*6)
+	for page := range j.Document.Pages {
+		pages = append(pages, pageRowSQL(len(args)+1))
+		args = append(args, j.Document.ID, page+1, j.Document.Hash, settings.PageAnalysisVersion, j.Requested, j.Claim)
+	}
+	if len(pages) > 0 {
+		_, err := tx.Exec(
+			ctx,
+			`INSERT INTO knowledge.page_enrichments(document_id,page_number,source_hash,analysis_version,status,model,requested_model,available_at)
+ SELECT * FROM (`+strings.Join(pages, " UNION ALL ")+`) AS pages(document_id,page_number,source_hash,analysis_version,status,model,requested_model,available_at)
  ON CONFLICT(document_id,page_number) DO UPDATE SET source_hash=excluded.source_hash,analysis_version=excluded.analysis_version,status='pending',model=excluded.model,requested_model=excluded.requested_model,available_at=excluded.available_at,attempts=0,claimed_at=NULL,payload_json=NULL,error=NULL
  WHERE page_enrichments.source_hash<>excluded.source_hash OR page_enrichments.analysis_version<>excluded.analysis_version OR page_enrichments.requested_model<>excluded.requested_model`,
-		j.Document.ID,
-		j.Document.Hash,
-		settings.PageAnalysisVersion,
-		j.Requested,
-		j.Claim,
-		j.Document.Pages,
-	)
-	if err != nil {
-		return 0, 0, err
+			args...,
+		)
+		if err != nil {
+			return 0, 0, err
+		}
 	}
 	var page, attempts int64
-	err = tx.QueryRow(ctx, `UPDATE knowledge.page_enrichments SET status='running',claimed_at=$2,attempts=attempts+1 WHERE document_id=$1 AND page_number=(SELECT page_number FROM knowledge.page_enrichments WHERE document_id=$1 AND status='pending' AND available_at::timestamptz<=clock_timestamp() ORDER BY priority DESC,page_number LIMIT 1) RETURNING page_number,attempts`, j.Document.ID, j.Claim).
+	err := tx.QueryRow(ctx, `UPDATE knowledge.page_enrichments SET status='running',claimed_at=$2,attempts=attempts+1 WHERE document_id=$1 AND page_number=(SELECT page_number FROM knowledge.page_enrichments WHERE document_id=$1 AND status='pending' AND available_at::timestamptz<=clock_timestamp() ORDER BY priority DESC,page_number LIMIT 1) RETURNING page_number,attempts`, j.Document.ID, j.Claim).
 		Scan(&page, &attempts)
 	if err == nil {
 		return page, attempts, nil
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	if !errors.Is(err, rdbms.ErrNoRows) {
 		return 0, 0, err
 	}
 	var ready int64
@@ -182,7 +214,7 @@ func claimPage(ctx context.Context, tx pgx.Tx, j job) (int64, int64, error) {
 		return 0, 0, err
 	}
 	if ready != j.Document.Pages {
-		return 0, 0, pgx.ErrNoRows
+		return 0, 0, rdbms.ErrNoRows
 	}
 	return 0, 0, nil
 }

@@ -16,11 +16,11 @@ func TestFiniteCompletionAndFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	for _, success := range []bool{true, false, true} {
-		command := "/usr/bin/true"
+		status := "0"
 		if !success {
-			command = "/usr/bin/false"
+			status = "1"
 		}
-		spec := Spec{Name: "migration", Token: time.Now().String(), Command: []string{command}}
+		spec := Spec{Name: "migration", Token: time.Now().String(), Command: fixtureCommand(t, "exit", status)}
 		err := m.Run(ctx, spec)
 		if (err == nil) != success {
 			t.Fatalf("completion success=%v: %v", success, err)
@@ -44,7 +44,7 @@ func TestFiniteCancellationDrainsWriter(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- m.Run(ctx, Spec{Name: "migration", Token: "cancel-fixture", Command: []string{"/bin/sleep", "120"}})
+		done <- m.Run(ctx, Spec{Name: "migration", Token: "cancel-fixture", Command: fixtureCommand(t, "sleep")})
 	}()
 	record := waitFiniteChild(t, m)
 	cancel()
@@ -62,7 +62,7 @@ func TestFiniteSupervisorLossDoesNotClaimSuccess(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- m.Run(ctx, Spec{Name: "migration", Token: "crash-fixture", Command: []string{"/bin/sleep", "120"}})
+		done <- m.Run(ctx, Spec{Name: "migration", Token: "crash-fixture", Command: fixtureCommand(t, "sleep")})
 	}()
 	record := waitFiniteChild(t, m)
 	t.Cleanup(func() {

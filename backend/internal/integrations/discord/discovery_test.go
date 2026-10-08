@@ -40,7 +40,7 @@ func TestListingAndBoundaries(t *testing.T) {
 func TestNativeRunnerSanitizesFailureAndCancels(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "helper")
-	body := "#!/bin/sh\nif [ \"$1\" = fail ]; then echo \"$DISCORD_TOKEN\"; exit 1; fi\nif [ \"$1\" = env ]; then /usr/bin/env; exit 0; fi\nexec /bin/sleep 30\n"
+	body := "#!/bin/sh\nif [ \"$1\" = fail ]; then echo \"$DISCORD_TOKEN\"; exit 1; fi\nif [ \"$1\" = env ]; then env; exit 0; fi\nexec sleep 30\n"
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
 		t.Fatal(err)
 	}

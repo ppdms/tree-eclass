@@ -3,15 +3,14 @@ package practice
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 var ErrInvalid = errors.New("invalid practice attempt")
@@ -85,48 +84,82 @@ func (s Service) Record(ctx context.Context, in Attempt) (Attempt, error) {
 		return Attempt{}, err
 	}
 	in.Unit = q.Unit
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('practice-attempt:'||$1,0))`, in.Key); err != nil {
+	found, err := loadExistingAttempt(ctx, tx, &in, q)
+	if err != nil {
 		return Attempt{}, err
 	}
-	var raw []byte
-	err = tx.QueryRow(ctx, `SELECT to_jsonb(a) FROM app.practice_attempts a WHERE idempotency_key=$1`, in.Key).
-		Scan(&raw)
-	if err == nil {
-		var existing struct {
-			Attempt
-			Set      string `json:"set_hash"`
-			Revision string `json:"blueprint_revision_hash"`
-		}
-		if err = json.Unmarshal(raw, &existing); err != nil {
-			return Attempt{}, err
-		}
-		if existing.CourseID != in.CourseID || existing.Question != in.Question || existing.Outcome != in.Outcome ||
-			existing.Unit != in.Unit ||
-			existing.Set != q.Set ||
-			existing.Revision != q.Revision ||
-			!same(existing.Answer, in.Answer) ||
-			!same(existing.Note, in.Note) ||
-			!same(existing.Confidence, in.Confidence) ||
-			!same(existing.Seconds, in.Seconds) {
-			return Attempt{}, ErrConflict
-		}
-		in.ID, in.EventID = existing.ID, existing.EventID
-	} else if err == pgx.ErrNoRows {
+	if !found {
 		if err = insertAttempt(ctx, tx, &in, q); err != nil {
 			return Attempt{}, err
 		}
-	} else {
-		return Attempt{}, err
 	}
+	decodeAttemptText(&in)
+	return in, tx.Commit(ctx)
+}
+
+// existingAttempt carries the stored idempotent row with the question
+// fingerprints that detect a conflicting retry.
+type existingAttempt struct {
+	Attempt
+	Set      string `json:"set_hash"`
+	Revision string `json:"blueprint_revision_hash"`
+}
+
+// attemptColumns selects the idempotent row for conflict comparison.
+// Explicit columns replace the old to_jsonb(row), which has no sqlite form
+// and fails at prepare time.
+const attemptColumns = `SELECT id,course_id,unit_key,question_id,outcome,idempotency_key,confidence,seconds,answer,note,study_event_id,question_key,set_hash,blueprint_revision_hash FROM app.practice_attempts a WHERE idempotency_key=$1`
+
+// loadExistingAttempt fills in.ID/in.EventID from the stored idempotent row
+// and reports whether one exists. A stored row whose fields disagree with the
+// request is a conflicting retry.
+func loadExistingAttempt(ctx context.Context, tx rdbms.Tx, in *Attempt, q currentQuestion) (bool, error) {
+	var existing existingAttempt
+	var questionKey string
+	err := tx.QueryRow(ctx, attemptColumns, in.Key).
+		Scan(
+			&existing.ID, &existing.CourseID, &existing.Unit, &existing.Question,
+			&existing.Outcome, &existing.Key, &existing.Confidence, &existing.Seconds,
+			&existing.Answer, &existing.Note, &existing.EventID,
+			&questionKey, &existing.Set, &existing.Revision,
+		)
+	if errors.Is(err, rdbms.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	decodeAttemptText(&existing.Attempt)
+	if attemptConflict(existing, *in, q) {
+		return false, ErrConflict
+	}
+	in.ID, in.EventID = existing.ID, existing.EventID
+	return true, nil
+}
+
+// attemptConflict reports whether the stored idempotent row disagrees with
+// the incoming request on identity, outcome, fingerprints, or payload.
+func attemptConflict(existing existingAttempt, in Attempt, q currentQuestion) bool {
+	return existing.CourseID != in.CourseID || existing.Question != in.Question || existing.Outcome != in.Outcome ||
+		existing.Unit != in.Unit ||
+		existing.Set != q.Set ||
+		existing.Revision != q.Revision ||
+		!same(existing.Answer, in.Answer) ||
+		!same(existing.Note, in.Note) ||
+		!same(existing.Confidence, in.Confidence) ||
+		!same(existing.Seconds, in.Seconds)
+}
+
+// decodeAttemptText decodes stored identity-encoded text fields in place.
+func decodeAttemptText(in *Attempt) {
 	for _, value := range []*string{in.Answer, in.Note} {
 		if value != nil {
 			*value = identity.Decode(*value)
 		}
 	}
-	return in, tx.Commit(ctx)
 }
 
-func insertAttempt(ctx context.Context, tx pgx.Tx, in *Attempt, q currentQuestion) error {
+func insertAttempt(ctx context.Context, tx rdbms.Tx, in *Attempt, q currentQuestion) error {
 	// Hashing the complete key avoids the legacy truncation collision for keys
 	// sharing their first 119 characters.
 	digest := sha256.Sum256([]byte(in.Key))

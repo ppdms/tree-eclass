@@ -2,18 +2,18 @@ package navigation
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5"
+	"errors"
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/courses"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Refresh publishes at most one dirty course per tick. Model calls and document
 // extraction are separate jobs; this processor only reads local, saved evidence.
 func (s Service) Refresh(ctx context.Context) (bool, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return false, err
 	}
@@ -28,7 +28,7 @@ func (s Service) Refresh(ctx context.Context) (bool, error) {
  WHERE (c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=c.id AND p.enabled=1))
  AND (n.course_id IS NULL OR n.source_generation<>g.generation OR n.config_generation<>$1) ORDER BY n.generated_at NULLS FIRST,c.id LIMIT 1`, a.AnalysisGeneration()).
 		Scan(&course, &generation)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -54,7 +54,7 @@ type revision struct {
 	Generated                    *string
 }
 
-func history(ctx context.Context, tx pgx.Tx, course int64, a settings.AI) ([]revision, error) {
+func history(ctx context.Context, tx rdbms.Tx, course int64, a settings.AI) ([]revision, error) {
 	rows, err := tx.Query(
 		ctx,
 		`SELECT id,revision,revision_hash,status,model,attempts,created_at,generated_at FROM knowledge.course_blueprints
@@ -87,7 +87,7 @@ func history(ctx context.Context, tx pgx.Tx, course int64, a settings.AI) ([]rev
 	return result, rows.Err()
 }
 
-func buildView(ctx context.Context, tx pgx.Tx, c courses.Course, a settings.AI) (map[string]any, error) {
+func buildView(ctx context.Context, tx rdbms.Tx, c courses.Course, a settings.AI) (map[string]any, error) {
 	rows, err := history(ctx, tx, c.ID, a)
 	if err != nil {
 		return nil, err
@@ -172,7 +172,7 @@ func buildView(ctx context.Context, tx pgx.Tx, c courses.Course, a settings.AI) 
 
 func readyBlueprint(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	c courses.Course,
 	a settings.AI,
 	ready *revision,

@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/objects"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-func publishArchive(ctx context.Context, tx pgx.Tx, parent queries.KnowledgeDocument, members []archiveMember) error {
+func publishArchive(ctx context.Context, tx rdbms.Tx, parent queries.KnowledgeDocument, members []archiveMember) error {
 	current := make([]string, 0, len(members))
 	for _, member := range members {
 		if err := publishMember(ctx, tx, parent, member); err != nil {
@@ -27,8 +27,8 @@ func publishArchive(ctx context.Context, tx pgx.Tx, parent queries.KnowledgeDocu
 	)
 	return err
 }
-func publishMember(ctx context.Context, tx pgx.Tx, parent queries.KnowledgeDocument, m archiveMember) error {
-	q := queries.New(tx)
+func publishMember(ctx context.Context, tx rdbms.Tx, parent queries.KnowledgeDocument, m archiveMember) error {
+	q := queries.ForTx(tx)
 	o := m.Object
 	if err := q.QueueLock(ctx, "document:"+m.ID); err != nil {
 		return err
@@ -63,7 +63,7 @@ func publishMember(ctx context.Context, tx pgx.Tx, parent queries.KnowledgeDocum
 
 func upsertArchiveDocument(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	parent queries.KnowledgeDocument,
 	m archiveMember,
 ) (string, error) {
@@ -99,7 +99,7 @@ func upsertArchiveDocument(
 	return status, nil
 }
 
-func upsertArchiveMemberRow(ctx context.Context, tx pgx.Tx, parent queries.KnowledgeDocument, m archiveMember) error {
+func upsertArchiveMemberRow(ctx context.Context, tx rdbms.Tx, parent queries.KnowledgeDocument, m archiveMember) error {
 	r, o := m.Record, m.Object
 	chain, err := json.Marshal(r.MemberChain)
 	if err != nil {

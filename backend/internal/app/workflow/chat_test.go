@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/services/chat"
 )
 
-func chatChecks(t *testing.T, pool *pgxpool.Pool, base string) {
+func chatChecks(t *testing.T, pool rdbms.Pool, base string) {
 	t.Helper()
 	ctx := context.Background()
 	store := chat.Store{Pool: pool}

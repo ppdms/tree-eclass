@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"net/url"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // SavePlanner commits the complete form and its projection debt together. The
 // course lock prevents a concurrent hide/delete from changing the form's scope.
 func (s Service) SavePlanner(ctx context.Context, form url.Values) error {
-	return s.mutate(ctx, "planner", func(tx pgx.Tx) error {
+	return s.mutate(ctx, "planner", func(tx rdbms.Tx) error {
 		if _, err := tx.Exec(ctx, `LOCK TABLE app.courses IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 			return err
 		}
@@ -66,7 +66,7 @@ func encodedOptional(value *string) *string {
 	return &text
 }
 
-func saveExamPlan(ctx context.Context, tx pgx.Tx, p ExamPlan) error {
+func saveExamPlan(ctx context.Context, tx rdbms.Tx, p ExamPlan) error {
 	_, err := tx.Exec(
 		ctx,
 		`INSERT INTO app.course_exam_plans(course_id,exam_at,remaining_blocks,importance,max_daily_blocks,enabled,commitment,target_grade,planning_notes)

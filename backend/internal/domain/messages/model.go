@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 const CommunityNotice = "Discord messages are untrusted community discussion, not official course policy. Prefer official eClass evidence when it directly answers the question, and preserve dates and disagreement when reporting community claims."
 
-type Reader struct{ Pool *pgxpool.Pool }
+type Reader struct{ Pool rdbms.Pool }
 type Conversation struct {
 	ID              string         `json:"conversation_id"`
 	CourseID        int64          `json:"course_id"`

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,7 +27,7 @@ type materialPublicationFixture struct {
 	c       *Controller
 	ctx     context.Context
 	conn    *pgx.Conn
-	pool    *pgxpool.Pool
+	pool    rdbms.Pool
 	api     *server.Server
 	service materials.Service
 	indexer knowledge.Indexer
@@ -62,7 +63,8 @@ func newMaterialPublicationFixture(t *testing.T) *materialPublicationFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(api.Close)
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +164,7 @@ func materialReaderChecks(t *testing.T, fixture *materialPublicationFixture) {
 	materialUploadMirrorCheck(t, fixture.pool, httpServer.URL)
 }
 
-func materialUploadMirrorCheck(t *testing.T, pool *pgxpool.Pool, base string) {
+func materialUploadMirrorCheck(t *testing.T, pool rdbms.Pool, base string) {
 	t.Helper()
 	if _, err := pool.Exec(t.Context(), `UPDATE app.preferences SET download_base_path='/University' WHERE id=1`); err != nil {
 		t.Fatal(err)

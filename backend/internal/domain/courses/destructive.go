@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/commands"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 var ErrReplay = errors.New("this mutation request was already processed")
@@ -63,7 +63,7 @@ func (s Service) Destructive(ctx context.Context, id int64, action, key string) 
 	return tx.Commit(ctx)
 }
 
-func resetCourse(ctx context.Context, tx pgx.Tx, id int64) error {
+func resetCourse(ctx context.Context, tx rdbms.Tx, id int64) error {
 	for _, table := range []string{"nodes", "change_history", "change_records", "announcements", "file_versions"} {
 		if _, err := tx.Exec(ctx, "DELETE FROM app."+table+" WHERE course_id=$1", id); err != nil {
 			return err
@@ -79,7 +79,7 @@ func resetCourse(ctx context.Context, tx pgx.Tx, id int64) error {
 	return err
 }
 
-func deleteCourse(ctx context.Context, tx pgx.Tx, id int64) error {
+func deleteCourse(ctx context.Context, tx rdbms.Tx, id int64) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM app.control_commands WHERE payload->>'document_id' IN (SELECT id FROM knowledge.documents WHERE course_id=$1)`, id); err != nil {
 		return err
 	}

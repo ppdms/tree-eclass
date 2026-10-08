@@ -4,14 +4,14 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/activity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Detail retains the legacy bounded course response. Its blueprint is still
 // read from the generation-checked projection, never synthesized on demand.
 func (s Service) Detail(ctx context.Context, course int64) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}

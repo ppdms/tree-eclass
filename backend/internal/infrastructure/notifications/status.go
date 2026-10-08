@@ -2,8 +2,9 @@ package notifications
 
 import (
 	"context"
+	"errors"
 
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Status struct {
@@ -33,7 +34,7 @@ func (s Service) Status(ctx context.Context) (Status, error) {
 	}
 	err = s.Pool.QueryRow(ctx, `SELECT error FROM app.notification_messages WHERE status='failed' ORDER BY created_at DESC LIMIT 1`).
 		Scan(&status.LastError)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		err = nil
 	}
 	return status, err

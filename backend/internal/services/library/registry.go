@@ -9,16 +9,16 @@ import (
 	"fmt"
 	"sort"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/integrations/inference"
 )
 
 var ErrArguments = errors.New("invalid tool arguments")
 
 type Registry struct {
-	Pool  *pgxpool.Pool
+	Pool  rdbms.Pool
 	tools map[string]registered
 }
 type registered struct {
@@ -27,7 +27,7 @@ type registered struct {
 	Handler    func(context.Context, json.RawMessage) (any, error)
 }
 
-func New(pool *pgxpool.Pool) (*Registry, error) {
+func New(pool rdbms.Pool) (*Registry, error) {
 	r := &Registry{Pool: pool, tools: map[string]registered{}}
 	for _, spec := range specifications() {
 		raw, err := json.Marshal(spec.Schema)

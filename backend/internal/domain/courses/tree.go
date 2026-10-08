@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Node struct {
@@ -28,7 +28,7 @@ type File struct {
 }
 
 func (s Service) Tree(ctx context.Context, id int64) (*Node, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -40,12 +40,12 @@ func (s Service) Tree(ctx context.Context, id int64) (*Node, error) {
 	return root, tx.Commit(ctx)
 }
 
-func treeSnapshot(ctx context.Context, tx pgx.Tx, id int64) (*Node, error) {
+func treeSnapshot(ctx context.Context, tx rdbms.Tx, id int64) (*Node, error) {
 	var found int64
 	if err := tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0`, id).Scan(&found); err != nil {
 		return nil, err
 	}
-	q := queries.New(tx)
+	q := queries.ForTx(tx)
 	nodes, err := q.TreeNodes(ctx, id)
 	if err != nil {
 		return nil, err

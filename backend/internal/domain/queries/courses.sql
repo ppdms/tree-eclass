@@ -6,7 +6,7 @@ WHERE hidden=0 OR sqlc.arg(include_hidden)::boolean ORDER BY sort_order,id;
 SELECT id,name,webdav_folder,sort_order,hidden,short_name FROM app.courses WHERE id=$1;
 
 -- name: AddCourse :exec
-INSERT INTO app.courses(id,name,webdav_folder) VALUES($1,$2,$3);
+INSERT INTO app.courses(id,name,webdav_folder,short_name) VALUES($1,$2,$3,$4);
 
 -- name: RenameCourse :execrows
 UPDATE app.courses SET name=$2 WHERE id=$1;

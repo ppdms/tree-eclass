@@ -7,14 +7,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool *pgxpool.Pool }
+type Service struct{ Pool rdbms.Pool }
 type Course struct {
 	ID            int64   `json:"id"`
 	Name          string  `json:"name"`
@@ -39,7 +38,7 @@ func course(row queries.AppCourse) Course {
 	}
 }
 func (s Service) List(ctx context.Context, hidden bool) ([]Course, error) {
-	rows, err := queries.New(s.Pool).ListCourses(ctx, hidden)
+	rows, err := queries.ForPool(s.Pool).ListCourses(ctx, hidden)
 	if err != nil {
 		return nil, err
 	}
@@ -50,19 +49,27 @@ func (s Service) List(ctx context.Context, hidden bool) ([]Course, error) {
 	return result, nil
 }
 func (s Service) Get(ctx context.Context, id int64) (Course, error) {
-	row, err := queries.New(s.Pool).Course(ctx, id)
+	row, err := queries.ForPool(s.Pool).Course(ctx, id)
 	return course(row), err
 }
 
-func (s Service) Add(ctx context.Context, id int64, name string) error {
+func (s Service) Add(ctx context.Context, id int64, name string, short ...string) error {
 	name = strings.TrimSpace(name)
 	if id < 1 || name == "" {
 		return errors.New("course ID and name are required")
 	}
-	return s.mutate(ctx, func(q *queries.Queries) error {
+	var shortName *string
+	if len(short) > 0 && strings.TrimSpace(short[0]) != "" {
+		text := identity.Encode(strings.TrimSpace(short[0]))
+		shortName = &text
+	}
+	return s.mutate(ctx, func(q queries.Querier) error {
 		return q.AddCourse(
 			ctx,
-			queries.AddCourseParams{ID: id, Name: identity.Encode(name), WebdavFolder: fmt.Sprintf("/Courses/%d", id)},
+			queries.AddCourseParams{
+				ID: id, Name: identity.Encode(name), WebdavFolder: fmt.Sprintf("/Courses/%d", id),
+				ShortName: shortName,
+			},
 		)
 	})
 }
@@ -71,10 +78,10 @@ func (s Service) Rename(ctx context.Context, id int64, name string) error {
 	if name == "" {
 		return errors.New("course name is required")
 	}
-	return s.mutate(ctx, func(q *queries.Queries) error {
+	return s.mutate(ctx, func(q queries.Querier) error {
 		n, err := q.RenameCourse(ctx, queries.RenameCourseParams{ID: id, Name: identity.Encode(name)})
 		if err == nil && n == 0 {
-			return pgx.ErrNoRows
+			return rdbms.ErrNoRows
 		}
 		return err
 	})
@@ -84,21 +91,21 @@ func (s Service) Hide(ctx context.Context, id int64, hidden bool) error {
 	if hidden {
 		flag = 1
 	}
-	return s.mutate(ctx, func(q *queries.Queries) error {
+	return s.mutate(ctx, func(q queries.Querier) error {
 		n, err := q.HideCourse(ctx, queries.HideCourseParams{ID: id, Hidden: flag})
 		if err == nil && n == 0 {
-			return pgx.ErrNoRows
+			return rdbms.ErrNoRows
 		}
 		return err
 	})
 }
-func (s Service) mutate(ctx context.Context, fn func(*queries.Queries) error) error {
+func (s Service) mutate(ctx context.Context, fn func(queries.Querier) error) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err = fn(queries.New(tx)); err != nil {
+	if err = fn(queries.ForTx(tx)); err != nil {
 		return err
 	}
 	if _, err = commands.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
@@ -116,7 +123,7 @@ func (s Service) Reorder(ctx context.Context, ids []int64) error {
 	if _, err = tx.Exec(ctx, "LOCK TABLE app.courses IN SHARE ROW EXCLUSIVE MODE"); err != nil {
 		return err
 	}
-	q := queries.New(tx)
+	q := queries.ForTx(tx)
 	visible, err := q.ListCourses(ctx, false)
 	if err != nil {
 		return err

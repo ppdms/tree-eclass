@@ -10,17 +10,23 @@ import (
 )
 
 const addCourse = `-- name: AddCourse :exec
-INSERT INTO app.courses(id,name,webdav_folder) VALUES($1,$2,$3)
+INSERT INTO app.courses(id,name,webdav_folder,short_name) VALUES($1,$2,$3,$4)
 `
 
 type AddCourseParams struct {
-	ID           int64  `json:"id"`
-	Name         string `json:"name"`
-	WebdavFolder string `json:"webdav_folder"`
+	ID           int64   `json:"id"`
+	Name         string  `json:"name"`
+	WebdavFolder string  `json:"webdav_folder"`
+	ShortName    *string `json:"short_name"`
 }
 
 func (q *Queries) AddCourse(ctx context.Context, arg AddCourseParams) error {
-	_, err := q.db.Exec(ctx, addCourse, arg.ID, arg.Name, arg.WebdavFolder)
+	_, err := q.db.Exec(ctx, addCourse,
+		arg.ID,
+		arg.Name,
+		arg.WebdavFolder,
+		arg.ShortName,
+	)
 	return err
 }
 

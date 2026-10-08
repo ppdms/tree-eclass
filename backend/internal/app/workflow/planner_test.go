@@ -4,12 +4,12 @@ import (
 	"errors"
 	"net/url"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/settings"
 )
 
-func plannerChecks(t *testing.T, pool *pgxpool.Pool, base string) {
+func plannerChecks(t *testing.T, pool rdbms.Pool, base string) {
 	t.Helper()
 	ctx := t.Context()
 	_, err := pool.Exec(

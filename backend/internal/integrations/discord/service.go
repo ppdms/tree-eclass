@@ -6,23 +6,21 @@ import (
 	"os"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/messages"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Service struct {
-	Pool    *pgxpool.Pool
+	Pool    rdbms.Pool
 	Objects *blob.Store
 	Runner  Runner
 	Temp    string
 }
 
-func checkSettings(ctx context.Context, tx pgx.Tx, cfg settings.Discord) error {
+func checkSettings(ctx context.Context, tx rdbms.Tx, cfg settings.Discord) error {
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('settings:discord-export',0))`); err != nil {
 		return err
 	}
@@ -74,7 +72,7 @@ func (s Service) Tick(ctx context.Context, now time.Time, forceDiscovery bool) e
 		}
 	}
 	source, err := s.next(ctx, now)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return nil
 	}
 	if err != nil {

@@ -2,14 +2,14 @@ package workflow
 
 import (
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/courses"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/settings"
 )
 
-func fileViewChecks(t *testing.T, pool *pgxpool.Pool, base, document string) {
+func fileViewChecks(t *testing.T, pool rdbms.Pool, base, document string) {
 	t.Helper()
 	ctx := t.Context()
 	a := settings.DefaultAI()
@@ -73,7 +73,7 @@ func fileViewChecks(t *testing.T, pool *pgxpool.Pool, base, document string) {
 	analysisGenerationChecks(t, pool, base, document, guideURL, pagesURL)
 }
 
-func analysisGenerationChecks(t *testing.T, pool *pgxpool.Pool, base, document, guideURL, pagesURL string) {
+func analysisGenerationChecks(t *testing.T, pool rdbms.Pool, base, document, guideURL, pagesURL string) {
 	t.Helper()
 	ctx := t.Context()
 	s := settings.Service{Pool: pool}
@@ -115,7 +115,7 @@ func analysisGenerationChecks(t *testing.T, pool *pgxpool.Pool, base, document, 
 	}
 }
 
-func coverageChecks(t *testing.T, pool *pgxpool.Pool, base, path string) {
+func coverageChecks(t *testing.T, pool rdbms.Pool, base, path string) {
 	t.Helper()
 	ctx := t.Context()
 	s := courses.Service{Pool: pool}
@@ -181,7 +181,7 @@ func coverageChecks(t *testing.T, pool *pgxpool.Pool, base, path string) {
 	}
 }
 
-func coverageScopeChecks(t *testing.T, pool *pgxpool.Pool) {
+func coverageScopeChecks(t *testing.T, pool rdbms.Pool) {
 	t.Helper()
 	ctx := t.Context()
 	_, err := pool.Exec(

@@ -3,9 +3,9 @@ package knowledge
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type FileMetadata struct {
@@ -55,7 +55,7 @@ func (s Reader) FileMetadata(
 	course int64,
 	keys map[string]string,
 ) (map[string]FileMetadata, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func metadataAIEnabled(a settings.AI, keys map[string]string) bool {
 	return enabled
 }
 
-func scanFileMetadata(rows pgx.Rows, course int64, enabled bool) (map[string]FileMetadata, error) {
+func scanFileMetadata(rows rdbms.Rows, course int64, enabled bool) (map[string]FileMetadata, error) {
 	result := map[string]FileMetadata{}
 	for rows.Next() {
 		item := FileMetadata{CourseID: course, AIEnabled: enabled, PagesEnabled: true}

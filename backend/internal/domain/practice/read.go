@@ -8,14 +8,13 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool *pgxpool.Pool }
+type Service struct{ Pool rdbms.Pool }
 type View struct {
 	CourseID   int64            `json:"course_id"`
 	CourseName string           `json:"course_name"`
@@ -58,7 +57,7 @@ type Question struct {
 }
 
 func (s Service) Read(ctx context.Context, course int64, unit string) (View, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return View{}, err
 	}
@@ -70,7 +69,7 @@ func (s Service) Read(ctx context.Context, course int64, unit string) (View, err
 	return view, tx.Commit(ctx)
 }
 
-func (s Service) ReadTx(ctx context.Context, tx pgx.Tx, course int64, unit string) (View, error) {
+func (s Service) ReadTx(ctx context.Context, tx rdbms.Tx, course int64, unit string) (View, error) {
 	empty := ""
 	nav, err := (navigation.Service{Pool: s.Pool}).ReadTx(
 		ctx,
@@ -115,7 +114,7 @@ func (s Service) ReadTx(ctx context.Context, tx pgx.Tx, course int64, unit strin
 
 func readSets(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	course int64,
 	selected string,
 	a settings.AI,
@@ -166,7 +165,7 @@ func readSets(
 	return result, rows.Err()
 }
 
-func readQuestions(ctx context.Context, tx pgx.Tx, expectedCourse int64, units []*Unit, links map[string]any) error {
+func readQuestions(ctx context.Context, tx rdbms.Tx, expectedCourse int64, units []*Unit, links map[string]any) error {
 	ids := []int64{}
 	byID := map[int64]*Unit{}
 	for _, unit := range units {

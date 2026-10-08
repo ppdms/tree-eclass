@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/infrastructure/checkpoint"
+	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/infrastructure/storage"
 )
 
@@ -71,15 +72,15 @@ func seedColdBaseline(
 	if err != nil || same.VersionID != ref.VersionID || same.MediaType != ref.MediaType {
 		t.Fatalf("immutable retry: %#v %v", same, err)
 	}
-	if err = storage.RegisterObject(ctx, conn, ref); err != nil {
+	if err = storage.RegisterObject(ctx, rdbms.WrapConn(conn), ref); err != nil {
 		t.Fatal(err)
 	}
-	if err = storage.RegisterObject(ctx, conn, same); err != nil {
+	if err = storage.RegisterObject(ctx, rdbms.WrapConn(conn), same); err != nil {
 		t.Fatal("idempotent catalog registration", err)
 	}
 	changed := ref
 	changed.VersionID = "must-not-relabel-a-revision"
-	if err = storage.RegisterObject(ctx, conn, changed); err == nil {
+	if err = storage.RegisterObject(ctx, rdbms.WrapConn(conn), changed); err == nil {
 		t.Fatal("object ID silently relabeled to a different object version")
 	}
 	if err = storage.Migrate(ctx, c.databaseURL()); err != nil {

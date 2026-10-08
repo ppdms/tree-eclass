@@ -11,7 +11,7 @@ import (
 )
 
 func collect(ctx context.Context, cfg Config) error {
-	db, err := storage.Open(ctx, cfg.DatabaseURL)
+	db, err := storage.OpenConfig(ctx, cfg.StorageConfig())
 	if err != nil {
 		return err
 	}

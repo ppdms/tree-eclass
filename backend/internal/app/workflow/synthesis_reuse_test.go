@@ -2,13 +2,12 @@ package workflow
 
 import (
 	"testing"
-
-	"github.com/jackc/pgx/v5/pgxpool"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/services/synthesis"
 )
 
-func synthesisReuseChecks(t *testing.T, pool *pgxpool.Pool, s synthesis.Service) {
+func synthesisReuseChecks(t *testing.T, pool rdbms.Pool, s synthesis.Service) {
 	t.Helper()
 	ctx := t.Context()
 	var first, question string

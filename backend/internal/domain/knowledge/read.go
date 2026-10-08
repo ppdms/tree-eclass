@@ -6,9 +6,9 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Locator struct {
@@ -49,13 +49,13 @@ func (s Reader) Read(ctx context.Context, request ReadRequest) (ReadResponse, er
 		PageAnalyses:           []map[string]any{},
 		UntrustedContentNotice: UntrustedNotice,
 	}
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return result, err
 	}
 	defer tx.Rollback(ctx)
 	document, err := resourceDocument(ctx, tx, request.DocumentID)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return result, ErrUnavailable
 	}
 	if err != nil {
@@ -83,7 +83,7 @@ func readLimit(maxCharacters int) int {
 	return maximum
 }
 
-func readChunkUnits(ctx context.Context, tx pgx.Tx, request ReadRequest, maximum int, result *ReadResponse) error {
+func readChunkUnits(ctx context.Context, tx rdbms.Tx, request ReadRequest, maximum int, result *ReadResponse) error {
 	ordinals, err := readOrdinals(ctx, tx, request)
 	if err != nil {
 		return err
@@ -123,7 +123,7 @@ func readChunkUnits(ctx context.Context, tx pgx.Tx, request ReadRequest, maximum
 	return err
 }
 
-func nextReadUnit(rows pgx.Rows) (ReadUnit, error) {
+func nextReadUnit(rows rdbms.Rows) (ReadUnit, error) {
 	var unit ReadUnit
 	var metadata string
 	if err := rows.Scan(
@@ -149,7 +149,12 @@ func nextReadUnit(rows pgx.Rows) (ReadUnit, error) {
 	return unit, nil
 }
 
-func readPageAnalyses(ctx context.Context, tx pgx.Tx, document queries.KnowledgeDocument, result *ReadResponse) error {
+func readPageAnalyses(
+	ctx context.Context,
+	tx rdbms.Tx,
+	document queries.KnowledgeDocument,
+	result *ReadResponse,
+) error {
 	seen := map[string]bool{}
 	for _, unit := range result.Units {
 		if unit.LocatorType != "page" || unit.LocatorStart == nil || seen[*unit.LocatorStart] {
@@ -219,7 +224,7 @@ func documentEvidence(d queries.KnowledgeDocument) map[string]any {
 		"evidence_class":     evidence,
 	}
 }
-func readOrdinals(ctx context.Context, tx pgx.Tx, request ReadRequest) ([]int64, error) {
+func readOrdinals(ctx context.Context, tx rdbms.Tx, request ReadRequest) ([]int64, error) {
 	result := []int64{}
 	if len(request.Locators) == 0 {
 		return result, nil

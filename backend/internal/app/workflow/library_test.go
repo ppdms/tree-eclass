@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"tree-eclass/internal/services/library"
 )
 
-func libraryChecks(t *testing.T, pool *pgxpool.Pool, base, document string) {
+func libraryChecks(t *testing.T, pool rdbms.Pool, base, document string) {
 	t.Helper()
 	ctx := t.Context()
 	r, err := library.New(pool)

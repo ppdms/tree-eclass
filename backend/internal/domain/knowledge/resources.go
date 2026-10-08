@@ -6,24 +6,24 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-func resourceDocument(ctx context.Context, tx pgx.Tx, id string) (queries.KnowledgeDocument, error) {
+func resourceDocument(ctx context.Context, tx rdbms.Tx, id string) (queries.KnowledgeDocument, error) {
 	var found string
 	err := tx.QueryRow(ctx, `SELECT d.id FROM knowledge.documents d JOIN app.courses c ON c.id=d.course_id AND c.hidden=0 WHERE d.id=$1 AND `+CurrentSourcePredicate, id).
 		Scan(&found)
 	if err != nil {
 		return queries.KnowledgeDocument{}, err
 	}
-	return queries.New(tx).IndexDocument(ctx, id)
+	return queries.ForTx(tx).IndexDocument(ctx, id)
 }
 
 func (s Reader) Document(ctx context.Context, id string) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func documentMetrics(doc queries.KnowledgeDocument) map[string]any {
 }
 
 func (s Reader) MaterialInsight(ctx context.Context, id string) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -109,13 +109,11 @@ func (s Reader) MaterialInsight(ctx context.Context, id string) (map[string]any,
 		"source_resource_uri":      "eclass://documents/" + id,
 		"derived_insight_notice":   DerivedNotice,
 		"untrusted_content_notice": UntrustedNotice,
-	}, tx.Commit(
-		ctx,
-	)
+	}, tx.Commit(ctx)
 }
 
 func (s Reader) PageInsight(ctx context.Context, id string, page int64) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +141,7 @@ func (s Reader) PageInsight(ctx context.Context, id string, page int64) (map[str
 	var raw, generated *string
 	err = tx.QueryRow(ctx, `SELECT status,model,CASE WHEN octet_length(payload_json)<=4194304 THEN payload_json END,generated_at FROM knowledge.page_enrichments WHERE document_id=$1 AND page_number=$2 AND source_hash=$3 AND analysis_version=$4 AND requested_model=$5`, id, page, doc.SourceHash, settings.PageAnalysisVersion, a.Model).
 		Scan(&status, &model, &raw, &generated)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
 		return nil, err
 	}
 	if err == nil {
@@ -161,14 +159,12 @@ func (s Reader) PageInsight(ctx context.Context, id string, page int64) (map[str
 		"source_resource_uri":      "eclass://documents/" + id + "/units/page:" + strconv.FormatInt(page, 10),
 		"derived_insight_notice":   PageNotice,
 		"untrusted_content_notice": UntrustedNotice,
-	}, tx.Commit(
-		ctx,
-	)
+	}, tx.Commit(ctx)
 }
 
 func visualCoverage(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	doc queries.KnowledgeDocument,
 	a settings.AI,
 ) (map[string]any, error) {

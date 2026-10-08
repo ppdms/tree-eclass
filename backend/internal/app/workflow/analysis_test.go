@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/knowledge"
@@ -20,7 +21,7 @@ import (
 type sourceBoundAnalysisFixture struct {
 	c        *Controller
 	ctx      context.Context
-	pool     *pgxpool.Pool
+	pool     rdbms.Pool
 	material materials.Service
 	indexer  knowledge.Indexer
 	service  analysis.Service
@@ -45,7 +46,8 @@ func newSourceBoundAnalysisFixture(t *testing.T) *sourceBoundAnalysisFixture {
 	ctx := t.Context()
 	conn, objects := startTestStorage(t, c)
 	t.Cleanup(func() { conn.Close(ctx) })
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +169,7 @@ func visualAnalysisChecks(t *testing.T, fixture *sourceBoundAnalysisFixture) {
 		t.Fatal("visual document guide", insight, err)
 	}
 }
-func analysisRecoveryChecks(t *testing.T, pool *pgxpool.Pool, service analysis.Service, document string) {
+func analysisRecoveryChecks(t *testing.T, pool rdbms.Pool, service analysis.Service, document string) {
 	t.Helper()
 	ctx := t.Context()
 	if _, err := pool.Exec(ctx, `UPDATE knowledge.document_enrichments SET status='pending',available_at='now',attempts=0 WHERE document_id=$1`, document); err != nil {

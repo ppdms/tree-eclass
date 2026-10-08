@@ -7,9 +7,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"tree-eclass/internal/domain/courses"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func pathID(w http.ResponseWriter, r *http.Request, key string) (int64, bool) {
@@ -40,7 +39,7 @@ func bodyJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 }
 func (s *Server) courseRoutes() {
 	s.mux.HandleFunc("GET /api/v1/courses", s.listCourses)
-	s.mux.HandleFunc("GET /api/v1/courses/{$}", s.listCourses)
+	s.mux.HandleFunc("GET /api/v1/courses/available", s.availableCourses)
 	s.mux.HandleFunc("GET /api/v1/navigation/courses", s.navigationCourses)
 	s.mux.HandleFunc("GET /api/v1/courses/{course_id}/tree", s.courseTree)
 	s.mux.HandleFunc("POST /api/v1/courses", s.addCourse)
@@ -80,15 +79,15 @@ func (s *Server) navigationCourses(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) addCourse(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		CourseID int64  `json:"course_id"`
-		Name     string `json:"name"`
+		CourseID  int64  `json:"course_id"`
+		Name      string `json:"name"`
+		ShortName string `json:"short_name"`
 	}
 	if !bodyJSON(w, r, &body) {
 		return
 	}
-	if err := s.courseService().Add(r.Context(), body.CourseID, body.Name); err != nil {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) && pg.Code == "23505" {
+	if err := s.courseService().Add(r.Context(), body.CourseID, body.Name, body.ShortName); err != nil {
+		if rdbms.IsUniqueViolation(err) {
 			writeFailure(w, http.StatusBadRequest, "Course already exists")
 			return
 		}
@@ -138,7 +137,7 @@ func (s *Server) reorderCourses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "course_ids": ids})
 }
 func (s *Server) courseError(w http.ResponseWriter, err error) {
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Course not found")
 		return
 	}

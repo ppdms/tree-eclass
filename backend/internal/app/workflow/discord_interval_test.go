@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -63,7 +64,7 @@ func (f *syntheticDiscord) Run(ctx context.Context, dir, token string, args ...s
 type discordIntervalFixture struct {
 	c       *Controller
 	ctx     context.Context
-	pool    *pgxpool.Pool
+	pool    rdbms.Pool
 	objects *blob.Store
 	runner  *syntheticDiscord
 	service discord.Service
@@ -86,7 +87,8 @@ func newDiscordIntervalFixture(t *testing.T) *discordIntervalFixture {
 	conn, objects := startTestStorage(t, c)
 	ctx := t.Context()
 	t.Cleanup(func() { conn.Close(ctx) })
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}

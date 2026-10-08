@@ -3,9 +3,9 @@ package knowledge
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type FileGuide struct {
@@ -17,7 +17,7 @@ type FileGuide struct {
 
 func (s Reader) FileGuide(ctx context.Context, course int64, document string) (FileGuide, error) {
 	result := FileGuide{DocumentID: document, Status: "not_queued"}
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return result, err
 	}
@@ -54,7 +54,7 @@ func (s Reader) FileGuide(ctx context.Context, course int64, document string) (F
 	return result, tx.Commit(ctx)
 }
 
-func relatedMaterials(ctx context.Context, tx pgx.Tx, course int64, paths []string) ([]map[string]string, error) {
+func relatedMaterials(ctx context.Context, tx rdbms.Tx, course int64, paths []string) ([]map[string]string, error) {
 	result := []map[string]string{}
 	rows, err := tx.Query(
 		ctx,

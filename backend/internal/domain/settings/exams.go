@@ -3,8 +3,8 @@ package settings
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type ExamPlan struct {
@@ -22,7 +22,7 @@ type ExamPlan struct {
 }
 
 type rowsQueryer interface {
-	Query(context.Context, string, ...any) (pgx.Rows, error)
+	Query(context.Context, string, ...any) (rdbms.Rows, error)
 }
 
 func ReadExamPlans(ctx context.Context, db rowsQueryer) ([]ExamPlan, error) {
@@ -36,7 +36,7 @@ func ReadExamPlan(ctx context.Context, db rowsQueryer, course int64) (ExamPlan, 
 		return ExamPlan{}, err
 	}
 	if len(rows) == 0 {
-		return ExamPlan{}, pgx.ErrNoRows
+		return ExamPlan{}, rdbms.ErrNoRows
 	}
 	return rows[0], nil
 }
@@ -46,20 +46,37 @@ func readExamPlans(ctx context.Context, db rowsQueryer, query string, args ...an
 	if err != nil {
 		return nil, err
 	}
-	plans, err := pgx.CollectRows(rows, pgx.RowToStructByPos[ExamPlan])
-	for i := range plans {
-		p := &plans[i]
+	defer rows.Close()
+	plans := []ExamPlan{}
+	for rows.Next() {
+		var p ExamPlan
+		if err := rows.Scan(
+			&p.CourseID,
+			&p.CourseName,
+			&p.ExamAt,
+			&p.Remaining,
+			&p.Importance,
+			&p.MaxBlocks,
+			&p.Enabled,
+			&p.ShortName,
+			&p.Commitment,
+			&p.TargetGrade,
+			&p.Notes,
+		); err != nil {
+			return nil, err
+		}
 		p.CourseName = identity.Decode(p.CourseName)
 		for _, value := range []*string{p.ShortName, p.Notes} {
 			if value != nil {
 				*value = identity.Decode(*value)
 			}
 		}
+		plans = append(plans, p)
 	}
-	if plans == nil {
-		plans = []ExamPlan{}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
-	return plans, err
+	return plans, nil
 }
 
 func (s Service) ExamPlans(ctx context.Context) ([]ExamPlan, error) {

@@ -7,15 +7,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // RefreshCoverage processes at most one course per tick. PostgreSQL snapshots
 // keep all aggregate inputs consistent; publishing their generation rather than
 // the current wall clock prevents a concurrent source edit being called fresh.
 func (s Service) RefreshCoverage(ctx context.Context) (bool, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead})
 	if err != nil {
 		return false, err
 	}
@@ -26,7 +26,7 @@ func (s Service) RefreshCoverage(ctx context.Context) (bool, error) {
  LEFT JOIN read_model.learner_generation l ON l.course_id=c.id LEFT JOIN read_model.course_coverage p ON p.course_id=c.id
  WHERE (c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans e WHERE e.course_id=c.id AND e.enabled=1))
  AND (p.course_id IS NULL OR p.generation<>g.generation OR p.learner_generation<>coalesce(l.generation,0)) ORDER BY c.id LIMIT 1`).Scan(&id, &generation, &learner)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
@@ -65,7 +65,7 @@ func (s Service) RefreshCoverage(ctx context.Context) (bool, error) {
 	return true, tx.Commit(ctx)
 }
 
-func buildCoverage(ctx context.Context, tx pgx.Tx, id int64) (coveragePayload, error) {
+func buildCoverage(ctx context.Context, tx rdbms.Tx, id int64) (coveragePayload, error) {
 	result := coveragePayload{Distribution: emptyDistribution(), Levels: map[string]int64{}}
 	rows, err := tx.Query(ctx, `SELECT file_path,level FROM app.file_study WHERE course_id=$1`, id)
 	if err != nil {
@@ -121,7 +121,7 @@ func buildCoverage(ctx context.Context, tx pgx.Tx, id int64) (coveragePayload, e
 	return result, err
 }
 
-func buildRecent(ctx context.Context, tx pgx.Tx, id int64) ([]RecentMaterial, error) {
+func buildRecent(ctx context.Context, tx rdbms.Tx, id int64) ([]RecentMaterial, error) {
 	result := []RecentMaterial{}
 	rows, err := tx.Query(
 		ctx,

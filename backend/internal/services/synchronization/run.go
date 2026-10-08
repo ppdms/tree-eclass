@@ -21,7 +21,7 @@ func (s Service) Run(ctx context.Context, request Request, base string) (Result,
 		return Result{}, err
 	}
 	defer source.Close()
-	courses, err := queries.New(s.Pool).ListCourses(ctx, true)
+	courses, err := queries.ForPool(s.Pool).ListCourses(ctx, true)
 	if err != nil {
 		return Result{}, err
 	}

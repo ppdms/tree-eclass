@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/infrastructure/markdown"
 	"tree-eclass/internal/services/chat"
 )
@@ -65,7 +65,7 @@ func (s *Server) askBootstrap(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) chatStore() chat.Store { return chat.Store{Pool: s.db.Pool} }
 func (s *Server) conversationError(w http.ResponseWriter, err error) {
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Conversation not found")
 		return
 	}

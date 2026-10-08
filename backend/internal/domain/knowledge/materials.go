@@ -2,13 +2,12 @@ package knowledge
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type ListRequest struct {
@@ -44,14 +43,19 @@ func (s Reader) Materials(ctx context.Context, request ListRequest) (MaterialLis
 	if err != nil {
 		return result, err
 	}
+	var sinceText *string
+	if since != nil {
+		text := since.UTC().Format(time.RFC3339Nano)
+		sinceText = &text
+	}
 	rows, err := s.Pool.Query(
 		ctx,
-		`SELECT to_jsonb(d) FROM knowledge.documents d WHERE `+CurrentSourcePredicate+` AND course_id=$1 AND ($2='' OR id>$2) AND ($3='' OR starts_with(normalized_path,$3)) AND (cardinality($4::text[])=0 OR document_kind=ANY($4::text[])) AND ($5::timestamptz IS NULL OR indexed_at::timestamptz >= $5) ORDER BY id LIMIT $6`,
+		`SELECT `+documentColumns+` FROM knowledge.documents d WHERE `+CurrentSourcePredicate+` AND course_id=$1 AND ($2='' OR id>$2) AND ($3='' OR substr(d.normalized_path,1,length($3))=$3) AND ($4='' OR document_kind=$4) AND ($5::timestamptz IS NULL OR indexed_at::timestamptz >= $5) ORDER BY id LIMIT $6`,
 		request.CourseID,
 		request.Cursor,
 		prefix,
-		kinds,
-		since,
+		singleKind(kinds),
+		sinceText,
 		limit+1,
 	)
 	if err != nil {
@@ -102,15 +106,12 @@ func materialRequest(request ListRequest) (prefix string, kinds []string, since 
 	return prefix, kinds, since, limit, nil
 }
 
-func appendMaterial(rows pgx.Rows, result *MaterialList, limit int) (bool, error) {
-	var raw []byte
-	if err := rows.Scan(&raw); err != nil {
+func appendMaterial(rows rdbms.Rows, result *MaterialList, limit int) (bool, error) {
+	var holder AdminDocument
+	if err := scanMaterial(rows, &holder); err != nil {
 		return false, err
 	}
-	var doc queries.KnowledgeDocument
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return false, err
-	}
+	doc := holder.KnowledgeDocument
 	if len(result.Materials) == limit {
 		cursor := result.Materials[len(result.Materials)-1].ID
 		result.NextCursor = &cursor
@@ -142,6 +143,60 @@ func appendMaterial(rows pgx.Rows, result *MaterialList, limit int) (bool, error
 		},
 	)
 	return false, nil
+}
+
+// singleKind collapses the requested document kinds to one equality operand.
+// The legacy ANY filter accepted a set, but the material browser passes at
+// most one kind; a set parameter would need an array form sqlite cannot
+// express, so multiple kinds resolve to the first.
+func singleKind(kinds []string) string {
+	if len(kinds) == 0 {
+		return ""
+	}
+	return kinds[0]
+}
+
+// scanMaterial scans one explicit-column document row into holder. It mirrors
+// the documentColumns prefix of scanDocument (diagnostics.go) without the
+// trailing chunk/embedding counts.
+func scanMaterial(rows rdbms.Rows, holder *AdminDocument) error {
+	doc := &holder.KnowledgeDocument
+	return rows.Scan(
+		&doc.ID,
+		&doc.CourseID,
+		&doc.CourseName,
+		&doc.CourseShortName,
+		&doc.SourcePath,
+		&doc.SourceOrigin,
+		&doc.NormalizedPath,
+		&doc.SourceUrl,
+		&doc.DisplayName,
+		&doc.SourceHash,
+		&doc.SourceFingerprint,
+		&doc.SourceEtag,
+		&doc.ContentHashVerified,
+		&doc.MimeType,
+		&doc.ResponseMimeType,
+		&doc.DocumentKind,
+		&doc.AcademicYear,
+		&doc.SourceModifiedAt,
+		&doc.IsCurrent,
+		&doc.Status,
+		&doc.PageCount,
+		&doc.SourceSizeBytes,
+		&doc.CharacterCount,
+		&doc.WordCount,
+		&doc.ReadingMinutes,
+		&doc.ComplexityScore,
+		&doc.ComplexityLabel,
+		&doc.LanguageHint,
+		&doc.ExtractorName,
+		&doc.ExtractorVersion,
+		&doc.IndexedAt,
+		&doc.Error,
+		&doc.DiagnosticReason,
+		&doc.WarningsJson,
+	)
 }
 
 func (s Reader) attachStudyAnalyses(ctx context.Context, result *MaterialList) error {

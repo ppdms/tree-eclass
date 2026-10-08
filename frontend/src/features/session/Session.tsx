@@ -18,7 +18,7 @@
  */
 
 import { errorLikeSchema } from '@/lib/errors';
-import { LoadError, LoadingState } from './components/LoadStates';
+import { LoadError, LoadingState, PendingDocumentState } from './components/LoadStates';
 import Workspace from './SessionWorkspace';
 import { useSessionState } from './components/useSessionState';
 import { useSessionControls } from './components/useReaderControls';
@@ -33,13 +33,16 @@ export interface SessionProps {
 export default function Session({ courseId, actionId, documentId, initialPageNumber = 1 }: SessionProps) {
   const state = useSessionState(courseId || '', actionId, documentId, initialPageNumber);
   const controls = useSessionControls(state);
-  const { context, error } = state;
+  const { context, error, pendingDocument } = state;
 
   if (error && !context) {
     const parsed = errorLikeSchema.safeParse(error);
     return <LoadError error={parsed.success ? parsed.data : { message: String(error) }} />;
   }
-  if (!context) return <LoadingState />;
+  if (!context) {
+    if (pendingDocument) return <PendingDocumentState />;
+    return <LoadingState />;
+  }
 
   return <Workspace {...state} courseId={courseId} {...controls} />;
 }

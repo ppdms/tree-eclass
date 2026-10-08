@@ -14,12 +14,17 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	// Tests never depend on host tool locations (/bin, /usr/bin): every child
+	// is the test binary itself in fixture mode, so NixOS and containers agree.
 	if len(os.Args) == 3 && os.Args[1] == "_helper-parent" {
 		if err := helperParent(os.Args[2]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		os.Exit(0)
+	}
+	if len(os.Args) >= 3 && os.Args[1] == "_fixture" {
+		os.Exit(fixtureMain(os.Args[2:]))
 	}
 	if len(os.Args) == 4 {
 		var err error
@@ -40,19 +45,70 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// fixtureMain implements the tiny child behaviors tests need: sleep blocks,
+// exit reports a status, env prints one variable, touch creates a marker. All
+// output goes to stdout; the exit code is the only status channel.
+func fixtureMain(args []string) int {
+	if len(args) == 0 {
+		return 2
+	}
+	switch args[0] {
+	case "sleep":
+		time.Sleep(24 * time.Hour)
+		return 0
+	case "exit":
+		if len(args) == 2 && args[1] == "0" {
+			return 0
+		}
+		return 1
+	case "env":
+		if len(args) == 2 {
+			fmt.Println(os.Getenv(args[1]))
+			return 0
+		}
+	case "env-write":
+		if len(args) == 3 {
+			if err := os.WriteFile(args[2], []byte(os.Getenv(args[1])), 0600); err != nil {
+				return 1
+			}
+			return 0
+		}
+	case "touch":
+		if len(args) == 2 {
+			file, err := os.OpenFile(args[1], os.O_CREATE|os.O_WRONLY, 0600)
+			if err != nil {
+				return 1
+			}
+			_ = file.Close()
+			return 0
+		}
+	}
+	return 2
+}
+
 func manager(t *testing.T) Manager {
+	t.Helper()
+	return Manager{Root: t.TempDir(), Executable: fixtureBinary(t)}
+}
+
+func fixtureBinary(t *testing.T) string {
 	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Manager{Root: t.TempDir(), Executable: exe}
+	return exe
+}
+
+func fixtureCommand(t *testing.T, args ...string) []string {
+	t.Helper()
+	return append([]string{fixtureBinary(t), "_fixture"}, args...)
 }
 func TestSupervisorCrashRecoversVerifiedChild(t *testing.T) {
 	m := manager(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	spec := Spec{Name: "fixture", Token: "synthetic-token", Command: []string{"/bin/sleep", "120"}}
+	spec := Spec{Name: "fixture", Token: "synthetic-token", Command: fixtureCommand(t, "sleep")}
 	if err := m.Start(ctx, spec); err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +147,7 @@ func TestUncommittedChildCannotExecute(t *testing.T) {
 		t.Fatal(err)
 	}
 	marker := filepath.Join(dir, "should-not-exist")
-	spec := Spec{Name: "fixture", Token: "synthetic-token", Command: []string{"/usr/bin/touch", marker}}
+	spec := Spec{Name: "fixture", Token: "synthetic-token", Command: fixtureCommand(t, "touch", marker)}
 	if err := platform.WriteJSON(filepath.Join(dir, "intent.json"), spec); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +176,7 @@ func TestRecycledIdentityIsNeverSignaled(t *testing.T) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("/bin/sleep", "120")
+	cmd := exec.Command(fixtureBinary(t), "_fixture", "sleep")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)

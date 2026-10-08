@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type immutableAction struct {
@@ -71,10 +71,10 @@ func encodeContent(content map[string]any) (encoded, overview []byte, contentID 
 	return encoded, overview, contentID, nil
 }
 
-func publishGate(ctx context.Context, tx pgx.Tx, course, generation int64, a settings.AI) (bool, error) {
+func publishGate(ctx context.Context, tx rdbms.Tx, course, generation int64, a settings.AI) (bool, error) {
 	var current int64
 	err := tx.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=$1 FOR UPDATE`, course).Scan(&current)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return true, nil
 	}
 	if err != nil {
@@ -89,7 +89,7 @@ func publishGate(ctx context.Context, tx pgx.Tx, course, generation int64, a set
 
 func upsertNavigation(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	course, generation int64,
 	a settings.AI,
 	revision any,
@@ -101,7 +101,7 @@ func upsertNavigation(
 	}
 	var previous *string
 	if err := tx.QueryRow(ctx, `SELECT content_id FROM read_model.navigation WHERE course_id=$1`, course).Scan(&previous); err != nil &&
-		err != pgx.ErrNoRows {
+		!errors.Is(err, rdbms.ErrNoRows) {
 		return nil, err
 	}
 	if _, err := tx.Exec(
@@ -120,7 +120,7 @@ func upsertNavigation(
 	return previous, nil
 }
 
-func pruneReplacedContent(ctx context.Context, tx pgx.Tx, previous *string, contentID string) error {
+func pruneReplacedContent(ctx context.Context, tx rdbms.Tx, previous *string, contentID string) error {
 	if previous == nil || *previous == contentID {
 		return nil
 	}
@@ -128,7 +128,7 @@ func pruneReplacedContent(ctx context.Context, tx pgx.Tx, previous *string, cont
 	return err
 }
 
-func publishActions(ctx context.Context, tx pgx.Tx, course int64, actions []immutableAction) error {
+func publishActions(ctx context.Context, tx rdbms.Tx, course int64, actions []immutableAction) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM read_model.roadmap_actions WHERE course_id=$1`, course); err != nil {
 		return err
 	}

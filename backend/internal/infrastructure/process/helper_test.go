@@ -14,7 +14,7 @@ import (
 )
 
 func helperParent(registry string) error {
-	cmd := exec.Command("/bin/sleep", "120")
+	cmd := exec.Command(os.Args[0], "_fixture", "sleep")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	finish, err := StartHelper(cmd, registry)
 	if err != nil {
@@ -66,7 +66,7 @@ func TestHelperSurvivesParentCrashOnlyUntilRecovery(t *testing.T) {
 func TestHelperStreamingAndEnvironmentIsolation(t *testing.T) {
 	t.Setenv("SYNTHETIC_PARENT_SECRET", "must-not-reach-helper")
 	registry := filepath.Join(t.TempDir(), "helpers")
-	cmd := exec.Command("/usr/bin/env")
+	cmd := exec.Command(fixtureBinary(t), "_fixture", "env", "ONLY")
 	cmd.Env = []string{"ONLY=fixture"}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdout, err := cmd.StdoutPipe()
@@ -85,7 +85,7 @@ func TestHelperStreamingAndEnvironmentIsolation(t *testing.T) {
 	if err = cmd.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(data)) != "ONLY=fixture" {
+	if strings.TrimSpace(string(data)) != "fixture" {
 		t.Fatal("helper inherited parent environment", string(data))
 	}
 	if err = finish(); err != nil {

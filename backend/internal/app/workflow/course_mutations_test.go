@@ -7,18 +7,22 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/courses"
 )
 
-func destructiveChecks(t *testing.T, pool *pgxpool.Pool, base string) {
+func destructiveChecks(t *testing.T, pool rdbms.Pool, base string) {
 	t.Helper()
 	ctx := t.Context()
 	seedCourseMutation(t, pool)
 	mutationHTTP(t, base, "reset", "", "reset-1", 428)
 	mutationHTTP(t, base, "reset", "reset:201", "", 400)
-	lock, err := pool.Acquire(ctx)
+	native, ok := rdbms.UnwrapPostgres(pool)
+	if !ok {
+		t.Fatal("session lock probe requires postgres")
+	}
+	lock, err := native.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +110,7 @@ func mutationHTTP(t *testing.T, base, action, confirmation, key string, status i
 	}
 }
 
-func seedCourseMutation(t *testing.T, pool *pgxpool.Pool) {
+func seedCourseMutation(t *testing.T, pool rdbms.Pool) {
 	t.Helper()
 	_, err := pool.Exec(
 		t.Context(),

@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/integrations/inference"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/settings"
 )
 
 var errStale = errors.New("analysis source or settings changed")
 
-func (s Service) readSnapshot(ctx context.Context, j job) (pgx.Tx, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+func (s Service) readSnapshot(ctx context.Context, j job) (rdbms.Tx, error) {
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -36,14 +36,14 @@ func (s Service) publish(ctx context.Context, j job, result inference.Generated)
 	defer tx.Rollback(ctx)
 	var course int64
 	err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 FOR UPDATE`, j.Document.Course).Scan(&course)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 	d, err := currentDocument(ctx, tx, j.Document.ID, true)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
 		return err
 	}
 	a, settingsErr := settings.ReadAI(ctx, tx)
@@ -72,7 +72,7 @@ func (s Service) publish(ctx context.Context, j job, result inference.Generated)
 	}
 	return tx.Commit(ctx)
 }
-func publishPage(ctx context.Context, tx pgx.Tx, j job, model, payload, generatedAt string) error {
+func publishPage(ctx context.Context, tx rdbms.Tx, j job, model, payload, generatedAt string) error {
 	_, err := tx.Exec(
 		ctx,
 		`UPDATE knowledge.page_enrichments SET status='ready',model=$4,payload_json=$5,generated_at=$6,error=NULL,claimed_at=NULL WHERE document_id=$1 AND page_number=$2 AND claimed_at=$3 AND status='running' AND source_hash=$7 AND requested_model=$8 AND analysis_version=$9`,
@@ -88,7 +88,7 @@ func publishPage(ctx context.Context, tx pgx.Tx, j job, model, payload, generate
 	)
 	return err
 }
-func publishDocument(ctx context.Context, tx pgx.Tx, j job, model, payload, generatedAt string) error {
+func publishDocument(ctx context.Context, tx rdbms.Tx, j job, model, payload, generatedAt string) error {
 	_, err := tx.Exec(
 		ctx,
 		`UPDATE knowledge.document_enrichments SET status='ready',model=$3,requested_model=$4,payload_json=$5,generated_at=$6,error=NULL,claimed_at=NULL WHERE document_id=$1 AND claimed_at=$2 AND status='running' AND source_hash=$7 AND context_hash=$8 AND analysis_version=$9`,
@@ -127,7 +127,7 @@ func (s Service) fail(ctx context.Context, j job, failure error) error {
 	}
 	return tx.Commit(ctx)
 }
-func finishFailure(ctx context.Context, tx pgx.Tx, j job, status, message string, at time.Time, reset bool) error {
+func finishFailure(ctx context.Context, tx rdbms.Tx, j job, status, message string, at time.Time, reset bool) error {
 	if j.Page > 0 {
 		_, err := tx.Exec(
 			ctx,

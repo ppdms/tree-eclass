@@ -8,9 +8,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/navigation"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 var ErrInvalidEvent = errors.New("invalid study event")
@@ -100,7 +100,7 @@ func (s Service) Record(ctx context.Context, in Event) (Event, error) {
 	return in, tx.Commit(ctx)
 }
 
-func storeEvent(ctx context.Context, tx pgx.Tx, in Event) (int64, error) {
+func storeEvent(ctx context.Context, tx rdbms.Tx, in Event) (int64, error) {
 	var existing Event
 	err := tx.QueryRow(ctx, `SELECT id,course_id,action_id,plan_revision,unit_key,event_type,confidence,actual_minutes,note FROM app.study_unit_events WHERE idempotency_key=$1`, in.Key).
 		Scan(
@@ -125,7 +125,7 @@ func storeEvent(ctx context.Context, tx pgx.Tx, in Event) (int64, error) {
 			return 0, ErrEventConflict
 		}
 		return existing.ID, nil
-	} else if err == pgx.ErrNoRows {
+	} else if errors.Is(err, rdbms.ErrNoRows) {
 		err = tx.QueryRow(
 			ctx,
 			`INSERT INTO app.study_unit_events(course_id,action_id,plan_revision,unit_key,event_type,idempotency_key,confidence,actual_minutes,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,

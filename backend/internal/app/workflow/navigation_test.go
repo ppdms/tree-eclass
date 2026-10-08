@@ -2,13 +2,13 @@ package workflow
 
 import (
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/settings"
 )
 
-func navigationChecks(t *testing.T, pool *pgxpool.Pool) {
+func navigationChecks(t *testing.T, pool rdbms.Pool) {
 	t.Helper()
 	ctx := t.Context()
 	if _, err := pool.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(711,'Synthetic roadmap','/Courses/711')`); err != nil {
@@ -58,7 +58,7 @@ func navigationChecks(t *testing.T, pool *pgxpool.Pool) {
 
 func navigationProgressChecks(
 	t *testing.T,
-	pool *pgxpool.Pool,
+	pool rdbms.Pool,
 	service navigation.Service,
 	a settings.AI,
 	payload map[string]any,
@@ -115,7 +115,7 @@ func navigationProgressChecks(
 
 func navigationDeferredChecks(
 	t *testing.T,
-	pool *pgxpool.Pool,
+	pool rdbms.Pool,
 	service navigation.Service,
 	a settings.AI,
 	payload map[string]any,
@@ -153,7 +153,7 @@ func navigationDeferredChecks(
 
 func navigationFreshnessChecks(
 	t *testing.T,
-	pool *pgxpool.Pool,
+	pool rdbms.Pool,
 	service navigation.Service,
 	a settings.AI,
 	payload map[string]any,

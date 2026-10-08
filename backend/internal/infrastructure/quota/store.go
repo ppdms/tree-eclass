@@ -6,12 +6,11 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Postgres struct{ Pool *pgxpool.Pool }
+type Postgres struct{ Pool rdbms.Pool }
 
 func (s Postgres) Load(ctx context.Context, provider string) (State, error) {
 	var state State
@@ -21,7 +20,7 @@ func (s Postgres) Load(ctx context.Context, provider string) (State, error) {
 	var raw string
 	err := s.Pool.QueryRow(ctx, `SELECT CASE WHEN octet_length(value)<=65536 THEN value END FROM knowledge.knowledge_state WHERE key=$1`, provider+"_quota").
 		Scan(&raw)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return state, nil
 	}
 	if err != nil {

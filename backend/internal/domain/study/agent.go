@@ -5,16 +5,16 @@ import (
 	"slices"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Priorities schedules arbitrary MCP course subsets from already-published
 // navigation content. It never rebuilds source evidence or invokes a provider.
 // Both source admission and the pure scheduler share a read-only snapshot.
 func (s Service) Priorities(ctx context.Context, requested []int64, limit int, now time.Time) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -23,8 +23,17 @@ func (s Service) Priorities(ctx context.Context, requested []int64, limit int, n
 	if err != nil {
 		return nil, err
 	}
-	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
-	if err != nil {
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	for _, id := range requested {

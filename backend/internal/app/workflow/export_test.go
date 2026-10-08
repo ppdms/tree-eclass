@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/app/server"
@@ -39,7 +40,8 @@ func TestNativeLearnerExport(t *testing.T) {
 	c := nativeSharedController(t)
 	conn, _ := startTestStorage(t, c)
 	defer conn.Close(t.Context())
-	pool, err := pgxpool.New(t.Context(), c.databaseURL())
+	nativePool, err := pgxpool.New(t.Context(), c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +151,7 @@ func exportHTTPCheck(t *testing.T, c *Controller) {
 	}
 }
 
-func seedLearnerExport(t *testing.T, pool *pgxpool.Pool) {
+func seedLearnerExport(t *testing.T, pool rdbms.Pool) {
 	t.Helper()
 	_, err := pool.Exec(t.Context(), `
 INSERT INTO app.courses(id,name,webdav_folder,hidden) VALUES(101,'hidden','/Courses/101',1);

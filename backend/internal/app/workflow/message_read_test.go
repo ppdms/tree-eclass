@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,7 +19,8 @@ func TestNativeMessageEvidenceScope(t *testing.T) {
 	ctx := t.Context()
 	conn, _ := startTestStorage(t, c)
 	defer conn.Close(ctx)
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +90,7 @@ func TestNativeMessageEvidenceScope(t *testing.T) {
 	}
 }
 
-func messageSearchChecks(t *testing.T, pool *pgxpool.Pool, service messages.Reader) {
+func messageSearchChecks(t *testing.T, pool rdbms.Pool, service messages.Reader) {
 	t.Helper()
 	ctx := t.Context()
 	if _, err := pool.Exec(ctx, `UPDATE messages.conversations SET text='Τα δένδρα και οι βαθμοί',normalized_text='τα δενδρα και οι βαθμοι' WHERE conversation_id='conversation';

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"time"
@@ -35,7 +36,8 @@ func TestNativeAskCompleteAndAbandonedTurns(t *testing.T) {
 	ctx := t.Context()
 	conn, _ := startTestStorage(t, c)
 	defer conn.Close(ctx)
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +201,7 @@ func askRequest(t *testing.T, ctx context.Context, endpoint, body, token string)
 	}
 	return response
 }
-func historyChecks(t *testing.T, pool *pgxpool.Pool, store chat.Store, id int64) {
+func historyChecks(t *testing.T, pool rdbms.Pool, store chat.Store, id int64) {
 	t.Helper()
 	ctx := t.Context()
 	for range 12 {
@@ -221,7 +223,7 @@ func historyChecks(t *testing.T, pool *pgxpool.Pool, store chat.Store, id int64)
 	}
 }
 
-func quotaPersistenceChecks(t *testing.T, pool *pgxpool.Pool) {
+func quotaPersistenceChecks(t *testing.T, pool rdbms.Pool) {
 	t.Helper()
 	calls := 0
 	fake := syntheticInference(

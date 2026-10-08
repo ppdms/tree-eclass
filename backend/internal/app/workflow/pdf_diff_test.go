@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -77,7 +78,7 @@ func (c *countDiff) Run(ctx context.Context, dir, old, next string) (bool, error
 type pdfDifferenceFixture struct {
 	c            *Controller
 	ctx          context.Context
-	pool         *pgxpool.Pool
+	pool         rdbms.Pool
 	objects      *blob.Store
 	synchronizer synchronization.Service
 	runner       *countDiff
@@ -102,7 +103,8 @@ func newPDFDifferenceFixture(t *testing.T) *pdfDifferenceFixture {
 	conn, objects := startTestStorage(t, c)
 	ctx := t.Context()
 	t.Cleanup(func() { conn.Close(ctx) })
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/infrastructure/jobs"
 	"tree-eclass/internal/integrations/eclass"
 	"tree-eclass/internal/services/synchronization"
@@ -53,7 +53,7 @@ func (s *Server) enqueueCheck(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Course not found")
 		return
 	}

@@ -2,8 +2,8 @@ package synchronization
 
 import (
 	"context"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 )
 
@@ -41,7 +41,7 @@ func (s Service) Versions(ctx context.Context, id int64, kind string, file, fold
 		return nil, err
 	}
 	if !exists {
-		return nil, pgx.ErrNoRows
+		return nil, rdbms.ErrNoRows
 	}
 	if file != nil {
 		encoded := identity.Encode(*file)
@@ -89,7 +89,7 @@ WHERE course_id=$1 AND change_type=$2 AND ($3::text IS NULL OR file_path=$3) AND
 
 func (s Service) History(ctx context.Context, id int64, number string) (ChangeRecord, []HistoryItem, error) {
 	var record ChangeRecord
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return record, nil, err
 	}

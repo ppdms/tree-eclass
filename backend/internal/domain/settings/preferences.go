@@ -9,12 +9,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool *pgxpool.Pool }
+type Service struct{ Pool rdbms.Pool }
 type Preferences struct {
 	CheckInterval  int64   `json:"check_interval_minutes"`
 	Downloads      int64   `json:"max_concurrent_downloads"`
@@ -30,7 +29,7 @@ type Preferences struct {
 	BasePath       string  `json:"download_base_path"`
 }
 type queryer interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
+	QueryRow(context.Context, string, ...any) rdbms.Row
 }
 
 func readPreferences(ctx context.Context, db queryer) (Preferences, error) {
@@ -59,7 +58,7 @@ func readPreferences(ctx context.Context, db queryer) (Preferences, error) {
 			&p.SemesterEnd,
 			&p.BasePath,
 		)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		err = nil
 	}
 	p.BasePath = normalizeBasePath(p.BasePath)
@@ -135,7 +134,7 @@ func flag(value bool) int {
 	return 0
 }
 func (s Service) SavePreferences(ctx context.Context, form url.Values) error {
-	return s.mutate(ctx, "preferences", func(tx pgx.Tx) error {
+	return s.mutate(ctx, "preferences", func(tx rdbms.Tx) error {
 		p, err := readPreferences(ctx, tx)
 		if err != nil {
 			return err
@@ -167,7 +166,7 @@ func (s Service) SavePreferences(ctx context.Context, form url.Values) error {
 type Invalid struct{ Message string }
 
 func (e Invalid) Error() string { return e.Message }
-func (s Service) mutate(ctx context.Context, key string, fn func(pgx.Tx) error) error {
+func (s Service) mutate(ctx context.Context, key string, fn func(rdbms.Tx) error) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err

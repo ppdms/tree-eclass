@@ -6,13 +6,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/courses"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool *pgxpool.Pool }
+type Service struct{ Pool rdbms.Pool }
 type Snapshot struct {
 	Courses  []courses.Course    `json:"courses"`
 	Inbox    []InboxItem         `json:"inbox"`
@@ -23,7 +22,7 @@ type Snapshot struct {
 
 func (s Service) Snapshot(ctx context.Context, selected *int64, now time.Time) (Snapshot, error) {
 	result := Snapshot{}
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return result, err
 	}
@@ -35,7 +34,7 @@ func (s Service) Snapshot(ctx context.Context, selected *int64, now time.Time) (
 	return result, tx.Commit(ctx)
 }
 
-func snapshotTx(ctx context.Context, tx pgx.Tx, selected *int64, now time.Time) (Snapshot, error) {
+func snapshotTx(ctx context.Context, tx rdbms.Tx, selected *int64, now time.Time) (Snapshot, error) {
 	result := Snapshot{}
 	var err error
 	result.Courses, result.Selected, err = courses.SnapshotCourses(ctx, tx, selected)

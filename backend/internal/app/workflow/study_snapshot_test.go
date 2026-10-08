@@ -3,12 +3,12 @@ package workflow
 import (
 	"testing"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/study"
 )
 
-func studySnapshotChecks(t *testing.T, pool *pgxpool.Pool, base string) {
+func studySnapshotChecks(t *testing.T, pool rdbms.Pool, base string) {
 	t.Helper()
 	ctx := t.Context()
 	_, err := pool.Exec(

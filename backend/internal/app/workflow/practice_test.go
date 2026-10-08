@@ -6,14 +6,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/practice"
 	"tree-eclass/internal/domain/settings"
 )
 
-func practiceChecks(t *testing.T, pool *pgxpool.Pool, base, document string, refresh func()) {
+func practiceChecks(t *testing.T, pool rdbms.Pool, base, document string, refresh func()) {
 	t.Helper()
 	ctx := t.Context()
 	raw, err := os.ReadFile("../../domain/blueprints/testdata/practice.json")
@@ -68,7 +68,7 @@ func practiceChecks(t *testing.T, pool *pgxpool.Pool, base, document string, ref
 
 func practiceStaleChecks(
 	t *testing.T,
-	pool *pgxpool.Pool,
+	pool rdbms.Pool,
 	base string,
 	refresh func(),
 	setID int64,
@@ -105,7 +105,7 @@ func practiceStaleChecks(
 	refresh()
 }
 
-func practiceAttemptChecks(t *testing.T, pool *pgxpool.Pool, base, question string) {
+func practiceAttemptChecks(t *testing.T, pool rdbms.Pool, base, question string) {
 	t.Helper()
 	ctx := t.Context()
 	service := practice.Service{Pool: pool}
@@ -171,7 +171,7 @@ func practiceAttemptChecks(t *testing.T, pool *pgxpool.Pool, base, question stri
 	}
 }
 
-func practiceAtomicityChecks(t *testing.T, pool *pgxpool.Pool, service practice.Service, in practice.Attempt) {
+func practiceAtomicityChecks(t *testing.T, pool rdbms.Pool, service practice.Service, in practice.Attempt) {
 	t.Helper()
 	ctx := t.Context()
 	_, err := pool.Exec(

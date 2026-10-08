@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // MaxSourceBytes bounds any single source document accepted by the pipeline.
@@ -33,8 +34,8 @@ type Store interface {
 
 // RegisterObject refuses to relabel an old object ID after out-of-band object
 // loss and recreation. Existing document revisions still refer to that exact version.
-func RegisterObject(ctx context.Context, db queries.DBTX, object Reference) error {
-	n, err := queries.New(db).
+func RegisterObject(ctx context.Context, db rdbms.DBTX, object Reference) error {
+	n, err := queries.ForDBTX(db).
 		RegisterObject(
 			ctx,
 			queries.RegisterObjectParams{

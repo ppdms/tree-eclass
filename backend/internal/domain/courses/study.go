@@ -5,9 +5,9 @@ import (
 	"errors"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Study levels retain the exact logical catalog path, including deleted-file
@@ -16,7 +16,7 @@ func (s Service) StudyLevel(ctx context.Context, id int64, path string, level in
 	if path == "" || utf8.RuneCountInString(path) > 4096 || level < 0 || level > 5 {
 		return errors.New("file_path and a level between 0 and 5 are required")
 	}
-	return s.studyMutation(ctx, id, func(tx pgx.Tx) error {
+	return s.studyMutation(ctx, id, func(tx rdbms.Tx) error {
 		_, err := tx.Exec(
 			ctx,
 			`INSERT INTO app.file_study(course_id,file_path,level,last_updated) VALUES($1,$2,$3,to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'))
@@ -37,7 +37,7 @@ func (s Service) FolderCollapsed(ctx context.Context, id int64, key string, coll
 	if key == "" || utf8.RuneCountInString(key) > 4096 {
 		return errors.New("a valid folder_key is required")
 	}
-	return s.studyMutation(ctx, id, func(tx pgx.Tx) error {
+	return s.studyMutation(ctx, id, func(tx rdbms.Tx) error {
 		var node int64
 		if err := tx.QueryRow(ctx, `SELECT id FROM app.nodes WHERE course_id=$1 AND (url=$2 OR local_path=$2) LIMIT 1 FOR SHARE`, id, identity.Encode(key)).Scan(&node); err != nil {
 			return err
@@ -58,7 +58,7 @@ ON CONFLICT(course_id,folder_key) DO UPDATE SET collapsed=$3,updated_at=to_char(
 	})
 }
 
-func (s Service) studyMutation(ctx context.Context, id int64, fn func(pgx.Tx) error) error {
+func (s Service) studyMutation(ctx context.Context, id int64, fn func(rdbms.Tx) error) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err

@@ -5,12 +5,20 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/settings"
 )
 
-func settingsChecks(t *testing.T, pool *pgxpool.Pool, base string) {
+func settingsChecks(t *testing.T, pool rdbms.Pool, base string) {
+	t.Helper()
+	settingsPreferencesChecks(t, pool, base)
+	settingsCredentialsChecks(t, pool, base)
+	apiJSON(t, "GET", base+"/api/settings/sync-status", nil, 200, nil)
+	settingsPageChecks(t, pool, base)
+}
+
+func settingsPreferencesChecks(t *testing.T, pool rdbms.Pool, base string) {
 	t.Helper()
 	ctx := context.Background()
 	service := settings.Service{Pool: pool}
@@ -56,6 +64,12 @@ func settingsChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 	if *prefs.SemesterStart != "2026-09-01" {
 		t.Fatal("failed preferences save partially committed")
 	}
+}
+
+func settingsCredentialsChecks(t *testing.T, pool rdbms.Pool, base string) {
+	t.Helper()
+	ctx := context.Background()
+	service := settings.Service{Pool: pool}
 	apiJSON(
 		t,
 		"POST",
@@ -91,6 +105,4 @@ func settingsChecks(t *testing.T, pool *pgxpool.Pool, base string) {
 	if credentials.Password != "" {
 		t.Fatal("explicit password clear did not persist")
 	}
-	apiJSON(t, "GET", base+"/api/settings/sync-status", nil, 200, nil)
-	settingsPageChecks(t, pool, base)
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func questionState(attempts, streak int64, last *string) (string, int) {
@@ -20,7 +20,7 @@ func questionState(attempts, streak int64, last *string) (string, int) {
 	return "review", 2
 }
 
-func readAttempts(ctx context.Context, tx pgx.Tx, course int64, units []*Unit) error {
+func readAttempts(ctx context.Context, tx rdbms.Tx, course int64, units []*Unit) error {
 	ids := []string{}
 	byID := map[string]*Question{}
 	for _, unit := range units {

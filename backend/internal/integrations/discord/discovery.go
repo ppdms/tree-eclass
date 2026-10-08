@@ -137,6 +137,9 @@ func (s Service) storeDiscovered(ctx context.Context, cfg settings.Discord, all 
 			return err
 		}
 		if !ch.Thread {
+			// Scalar jsonb_build_object (literal key + one text value) is
+			// covered by the sqlite shim, which renders the same postgres
+			// jsonb text; no Go rewrite needed.
 			if _, err = tx.Exec(ctx, `INSERT INTO app.discord_root_channels(root_channel_id,name,metadata) VALUES($1,$2,jsonb_build_object('guild_id',$3::text))`, fmt.Sprint(ch.ID), identity.Encode(ch.Name), fmt.Sprint(ch.Guild)); err != nil {
 				return err
 			}

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Material struct {
@@ -43,7 +43,7 @@ LEFT JOIN knowledge.document_enrichments e ON e.document_id=d.id
 WHERE d.course_id=$1 AND d.is_current=1 AND d.source_origin='external' AND ($2='' OR d.id=$2) ORDER BY d.display_name,d.id`
 
 func (s Service) List(ctx context.Context, id int64, document string, pendingAI bool) ([]Material, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (s Service) List(ctx context.Context, id int64, document string, pendingAI 
 	return items, tx.Commit(ctx)
 }
 
-func readMaterial(row pgx.Row, pendingAI bool) (Material, error) {
+func readMaterial(row rdbms.Row, pendingAI bool) (Material, error) {
 	var item Material
 	var override *string
 	var raw []byte

@@ -32,6 +32,8 @@ func (r NativeRunner) Run(ctx context.Context, dir, token string, args ...string
 	if r.Binary == "" {
 		return "", errors.New("native Discord exporter is not configured; run ./tree setup")
 	}
+	// No PATH is set: the pinned exporter bundle resolves its own runtime, so
+	// PATH-dependent shell lookups can never escape the configured binary.
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 	defer cancel()
 	command := exec.CommandContext(ctx, r.Binary, args...)

@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Reader struct{ Pool *pgxpool.Pool }
+type Reader struct{ Pool rdbms.Pool }
 
 func (r Reader) Page(ctx context.Context, limit, offset int64, timeline bool) (Page, error) {
 	limit = min(50, max(10, limit))
@@ -18,7 +18,7 @@ func (r Reader) Page(ctx context.Context, limit, offset int64, timeline bool) (P
 	if offset > 1<<31-1 {
 		return result, errors.New("activity offset exceeds the supported range")
 	}
-	rows, err := queries.New(r.Pool).
+	rows, err := queries.ForPool(r.Pool).
 		ActivityPage(ctx, queries.ActivityPageParams{Limit: int32(limit + 1), Offset: int32(offset)})
 	if err != nil {
 		return result, err

@@ -7,12 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"tree-eclass/internal/domain/objects"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // objectStore is the importer's object-storage contract: spool new archive
@@ -23,7 +22,7 @@ type objectStore interface {
 }
 
 type Importer struct {
-	Pool  *pgxpool.Pool
+	Pool  rdbms.Pool
 	Blobs objectStore
 	Temp  string
 }
@@ -60,7 +59,7 @@ func (s Importer) Import(ctx context.Context, source Archive, input io.Reader) (
 	}
 	return result, tx.Commit(ctx)
 }
-func (s Importer) importTx(ctx context.Context, tx pgx.Tx, source Archive, input io.Reader) (ImportResult, error) {
+func (s Importer) importTx(ctx context.Context, tx rdbms.Tx, source Archive, input io.Reader) (ImportResult, error) {
 	var result ImportResult
 	file, err := os.CreateTemp(s.Temp, "discord-import-*")
 	if err != nil {
@@ -81,7 +80,7 @@ func (s Importer) importTx(ctx context.Context, tx pgx.Tx, source Archive, input
 	return s.publishImport(ctx, tx, source, file)
 }
 
-func (s Importer) publishImport(ctx context.Context, tx pgx.Tx, source Archive, file *os.File) (ImportResult, error) {
+func (s Importer) publishImport(ctx context.Context, tx rdbms.Tx, source Archive, file *os.File) (ImportResult, error) {
 	var result ImportResult
 	h, count, err := stageArchive(ctx, tx, source, file)
 	if err != nil {
@@ -122,7 +121,7 @@ func (s Importer) publishImport(ctx context.Context, tx pgx.Tx, source Archive, 
 
 func (s Importer) registerArchive(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	source Archive,
 	h exportHeader,
 	result ImportResult,
@@ -156,32 +155,79 @@ var stageColumns = []string{
 	"attachment_metadata_json",
 }
 
-func stageArchive(ctx context.Context, tx pgx.Tx, source Archive, input io.Reader) (exportHeader, int64, error) {
+func stageArchive(ctx context.Context, tx rdbms.Tx, source Archive, input io.Reader) (exportHeader, int64, error) {
 	if err := createStageTable(ctx, tx); err != nil {
 		return exportHeader{}, 0, err
 	}
 	stream := newExportStream(input)
 	var count int64
-	copied, err := tx.CopyFrom(
-		ctx,
-		pgx.Identifier{"tree_discord_stage"},
-		stageColumns,
-		pgx.CopyFromFunc(func() ([]any, error) {
-			return stageNext(source, stream, &count)
-		}),
-	)
+	var rows [][]any
+	for {
+		row, err := stageNext(source, stream, &count)
+		if err == io.EOF || (err == nil && row == nil) {
+			break
+		}
+		if err != nil {
+			return exportHeader{}, 0, err
+		}
+		rows = append(rows, row)
+	}
+	copied, err := insertStageRows(ctx, tx, rows)
 	if err != nil {
 		return exportHeader{}, 0, err
 	}
 	return validateStage(source, stream, copied)
 }
 
-func createStageTable(ctx context.Context, tx pgx.Tx) error {
-	_, err := tx.Exec(
+// insertStageRows loads staged messages with multi-row INSERTs so both
+// drivers share one path: 500 rows per statement ($N placeholders per row).
+func insertStageRows(ctx context.Context, tx rdbms.Tx, rows [][]any) (int64, error) {
+	const chunk = 500
+	cols := strings.Join(stageColumns, ",")
+	var stmts []string
+	var args [][]any
+	for start := 0; start < len(rows); start += chunk {
+		end := start + chunk
+		if end > len(rows) {
+			end = len(rows)
+		}
+		batch := rows[start:end]
+		var sb strings.Builder
+		sb.WriteString(`INSERT INTO tree_discord_stage(`)
+		sb.WriteString(cols)
+		sb.WriteString(`) VALUES `)
+		flat := make([]any, 0, len(batch)*len(stageColumns))
+		for i, row := range batch {
+			if i > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("(")
+			for j := range stageColumns {
+				if j > 0 {
+					sb.WriteString(",")
+				}
+				fmt.Fprintf(&sb, "$%d", i*len(stageColumns)+j+1)
+			}
+			sb.WriteString(")")
+			flat = append(flat, row...)
+		}
+		stmts = append(stmts, sb.String())
+		args = append(args, flat)
+	}
+	if err := rdbms.Batch(ctx, tx, stmts, args); err != nil {
+		return 0, err
+	}
+	return int64(len(rows)), nil
+}
+
+func createStageTable(ctx context.Context, tx rdbms.Tx) error {
+	_, err := tx.Exec(ctx, `DROP TABLE IF EXISTS tree_discord_stage`)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(
 		ctx,
-		`DROP TABLE IF EXISTS pg_temp.tree_discord_stage; CREATE TEMP TABLE tree_discord_stage (LIKE messages.messages INCLUDING DEFAULTS) ON COMMIT DROP;
- ALTER TABLE tree_discord_stage ALTER COLUMN channel_id DROP NOT NULL,ALTER COLUMN course_id DROP NOT NULL,ALTER COLUMN source_path DROP NOT NULL;
- CREATE UNIQUE INDEX ON tree_discord_stage(message_id)`,
+		`CREATE TEMP TABLE tree_discord_stage(message_id BIGINT PRIMARY KEY,timestamp TEXT NOT NULL,timestamp_epoch DOUBLE PRECISION NOT NULL,author_key TEXT,author_name TEXT NOT NULL,content TEXT NOT NULL,searchable_text TEXT NOT NULL,reply_to_message_id BIGINT,message_type TEXT NOT NULL,is_pinned BIGINT NOT NULL,reaction_count BIGINT NOT NULL,attachment_metadata_json TEXT NOT NULL)`,
 	)
 	return err
 }

@@ -8,10 +8,9 @@ import (
 	"path"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
-
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/objects"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func mapAttachments(m *stagedMessage, media map[string]objects.Reference) error {
@@ -52,7 +51,7 @@ func mapAttachments(m *stagedMessage, media map[string]objects.Reference) error 
 	m.Attachments = string(raw)
 	return nil
 }
-func registerMedia(ctx context.Context, tx pgx.Tx, sourcePath string, media map[string]objects.Reference) error {
+func registerMedia(ctx context.Context, tx rdbms.Tx, sourcePath string, media map[string]objects.Reference) error {
 	for name, object := range media {
 		if !strings.HasPrefix(name, "media/") || path.Clean(name) != name || strings.ContainsAny(name, "\x00\\") ||
 			len(name) > 4096 ||
@@ -71,7 +70,7 @@ func registerMedia(ctx context.Context, tx pgx.Tx, sourcePath string, media map[
 func (s Reader) Media(ctx context.Context, id string) (objects.Reference, error) {
 	var object objects.Reference
 	if len(id) != 64 || strings.ContainsAny(id, "/\\") {
-		return object, pgx.ErrNoRows
+		return object, rdbms.ErrNoRows
 	}
 	err := s.Pool.QueryRow(ctx, `SELECT o.bucket,o.key,o.version_id,o.sha256,o.bytes,o.media_type FROM app.objects o WHERE o.id=$1 AND EXISTS(
  SELECT 1 FROM messages.archive_media am JOIN messages.archive_sources a ON a.path=am.source_path AND a.status='ready'
@@ -81,7 +80,7 @@ func (s Reader) Media(ctx context.Context, id string) (objects.Reference, error)
 	return object, err
 }
 
-func sameMedia(ctx context.Context, tx pgx.Tx, sourcePath string, media map[string]objects.Reference) error {
+func sameMedia(ctx context.Context, tx rdbms.Tx, sourcePath string, media map[string]objects.Reference) error {
 	rows, err := tx.Query(
 		ctx,
 		`SELECT relative_path,object_id FROM messages.archive_media WHERE source_path=$1 LIMIT 2001`,

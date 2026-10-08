@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Planner struct {
@@ -29,7 +29,7 @@ func ReadPlanner(ctx context.Context, db queryer) (Planner, error) {
 	var weekly, blackouts string
 	err := db.QueryRow(ctx, `SELECT daily_blocks,block_minutes,weekly_minutes_json,blackout_dates_json,max_courses_per_day FROM app.study_planner_settings WHERE id=1`).
 		Scan(&p.DailyBlocks, &p.BlockMinutes, &weekly, &blackouts, &p.MaxCourses)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return p, nil
 	}
 	if err != nil {

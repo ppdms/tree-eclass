@@ -43,7 +43,7 @@ func (s Service) crawl(ctx context.Context, source Source, root Directory, old T
 			oldFile, exists := previous[d.Path+"\x00"+link.URL]
 			file, err := s.fetch(ctx, source, d, link, oldFile, exists)
 			if err != nil {
-				return tree, err
+				return tree, fmt.Errorf("%s: %w", link.Name, err)
 			}
 			tree.Files = append(tree.Files, file)
 		}

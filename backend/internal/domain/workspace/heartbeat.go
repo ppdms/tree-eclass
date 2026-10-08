@@ -2,12 +2,14 @@ package workspace
 
 import (
 	"context"
+	"errors"
+
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Beat struct {
@@ -47,7 +49,7 @@ func (s Service) Heartbeat(ctx context.Context, in Beat) (BeatResult, error) {
 		result.Status = "duplicate"
 		return result, tx.Commit(ctx)
 	}
-	if err != pgx.ErrNoRows {
+	if !errors.Is(err, rdbms.ErrNoRows) {
 		return result, err
 	}
 	if result.Session.Ended != nil {
@@ -62,7 +64,7 @@ func (s Service) Heartbeat(ctx context.Context, in Beat) (BeatResult, error) {
 
 func (s Service) recordBeat(
 	ctx context.Context,
-	tx pgx.Tx,
+	tx rdbms.Tx,
 	session Session,
 	in Beat,
 	requestHash string,
@@ -84,7 +86,7 @@ func (s Service) recordBeat(
 		return Session{}, err
 	}
 	return sessionRow(
-		tx.QueryRow(ctx, `SELECT to_jsonb(s) FROM app.study_workspace_sessions s WHERE id=$1`, in.SessionID),
+		tx.QueryRow(ctx, `SELECT `+sessionColumns+` FROM app.study_workspace_sessions s WHERE id=$1`, in.SessionID),
 	)
 }
 
@@ -99,7 +101,7 @@ func validateBeat(in Beat) error {
 	return nil
 }
 
-func accumulate(ctx context.Context, tx pgx.Tx, session Session, in Beat, source string) error {
+func accumulate(ctx context.Context, tx rdbms.Tx, session Session, in Beat, source string) error {
 	interval := min(in.Interval, 90)
 	active := int64(0)
 	if in.Active {
@@ -109,7 +111,7 @@ func accumulate(ctx context.Context, tx pgx.Tx, session Session, in Beat, source
 		ctx,
 		`INSERT INTO app.study_reading_spans(session_id,course_id,document_id,source_hash,page_number,action_id,unit_key,plan_revision,active_seconds,visible_seconds,ended_at)
  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'))
- ON CONFLICT ON CONSTRAINT reading_span_revision DO UPDATE SET active_seconds=study_reading_spans.active_seconds+excluded.active_seconds,visible_seconds=study_reading_spans.visible_seconds+excluded.visible_seconds,ended_at=excluded.ended_at`,
+ ON CONFLICT(session_id,document_id,source_hash,page_number) DO UPDATE SET active_seconds=study_reading_spans.active_seconds+excluded.active_seconds,visible_seconds=study_reading_spans.visible_seconds+excluded.visible_seconds,ended_at=excluded.ended_at`,
 		session.ID,
 		session.CourseID,
 		in.Document,

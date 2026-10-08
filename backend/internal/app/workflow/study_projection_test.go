@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/study"
 )
 
-func studyProjectionChecks(t *testing.T, pool *pgxpool.Pool, base, action string) {
+func studyProjectionChecks(t *testing.T, pool rdbms.Pool, base, action string) {
 	t.Helper()
 	ctx := t.Context()
 	now := time.Now()
@@ -70,7 +70,7 @@ func studyProjectionChecks(t *testing.T, pool *pgxpool.Pool, base, action string
 	refreshNavigation(t, pool)
 }
 
-func studyProjectionProgress(t *testing.T, pool *pgxpool.Pool, base, action string, refresh func()) {
+func studyProjectionProgress(t *testing.T, pool rdbms.Pool, base, action string, refresh func()) {
 	t.Helper()
 	var response map[string]any
 	event := study.Event{

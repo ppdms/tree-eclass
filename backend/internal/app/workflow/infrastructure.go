@@ -39,6 +39,9 @@ func (c *Controller) infrastructure(ctx context.Context) error {
 	if err = store.Setup(ctx); err != nil {
 		return err
 	}
+	if c.sqliteSelected() {
+		return nil
+	}
 	if err := c.startPostgres(ctx); err != nil {
 		return err
 	}
@@ -190,7 +193,9 @@ func (c *Controller) freePorts() error {
 	return nil
 }
 
-func (c *Controller) migrate(ctx context.Context) error { return storage.Migrate(ctx, c.databaseURL()) }
+func (c *Controller) migrate(ctx context.Context) error {
+	return storage.MigrateConfig(ctx, c.storageConfig())
+}
 
 func (c *Controller) runMigration(ctx context.Context, binary string, env []string) error {
 	return c.Processes.Run(

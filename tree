@@ -3,7 +3,10 @@
 # source does not compile. Only setup/update builds a replacement controller.
 set -eu
 umask 077
-TREE_SOURCE_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
+case "$0" in
+    */*) TREE_SOURCE_ROOT=$(CDPATH='' cd -- "${0%/*}" && pwd -P) ;;
+    *) TREE_SOURCE_ROOT=$PWD ;;
+esac
 export TREE_SOURCE_ROOT
 tree_home=${TREE_WORKFLOW_HOME:-"$HOME/.local/share/tree-eclass"}
 case "$tree_home" in /*) ;; *) tree_home="$PWD/$tree_home" ;; esac

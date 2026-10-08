@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,7 +91,7 @@ func stopContainer(manager process.Manager, root string) error {
 
 func setupContainerObjects(ctx context.Context, cfg Config) (err error) {
 	// Keep exclusive DB admission while configuring the application's object store.
-	db, err := storage.Open(ctx, cfg.DatabaseURL)
+	db, err := storage.OpenConfig(ctx, cfg.StorageConfig())
 	if err != nil {
 		return err
 	}
@@ -111,6 +112,12 @@ func containerTools(cfg *Config) error {
 	cfg.DiscordExporter = "/opt/discord-exporter/DiscordChatExporter.Cli"
 	cfg.Tessdata = "/opt/tessdata"
 	cfg.PDFDiff = "/usr/local/bin/diff-pdf"
+	for _, tool := range []string{cfg.ParserPython, cfg.DiscordExporter, cfg.PDFDiff} {
+		info, err := os.Stat(tool)
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+			return fmt.Errorf("container tool unavailable: %s", tool)
+		}
+	}
 	checksum, err := os.ReadFile("/opt/pdf-diff.sha256")
 	if err != nil {
 		return err

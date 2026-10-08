@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/commands"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Discord struct {
@@ -30,7 +30,7 @@ func readDiscord(ctx context.Context, db queryer) (Discord, error) {
 	d := Discord{Interval: 3600, Threads: "All", Media: true, Parallel: 1}
 	err := db.QueryRow(ctx, `SELECT enabled=1,token,interval_seconds,include_threads,media=1,parallel FROM app.discord_export_settings WHERE id=1`).
 		Scan(&d.Enabled, &d.Token, &d.Interval, &d.Threads, &d.Media, &d.Parallel)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		err = nil
 	}
 	d.Token = identity.Decode(d.Token)
@@ -69,7 +69,7 @@ func (s Service) SaveDiscord(ctx context.Context, form url.Values) error {
 			return Invalid{"Thread policy must be None, Active, or All"}
 		}
 	}
-	return s.mutate(ctx, "discord-export", func(tx pgx.Tx) error {
+	return s.mutate(ctx, "discord-export", func(tx rdbms.Tx) error {
 		old, err := readDiscord(ctx, tx)
 		if err != nil {
 			return err
@@ -122,7 +122,7 @@ func (s Service) DiscordChannels(ctx context.Context) ([]DiscordChannel, error) 
 
 func (s Service) SaveDiscordMap(ctx context.Context, form url.Values) (int, error) {
 	count := 0
-	err := s.mutate(ctx, "discord-map", func(tx pgx.Tx) error {
+	err := s.mutate(ctx, "discord-map", func(tx rdbms.Tx) error {
 		rows, err := tx.Query(
 			ctx,
 			`SELECT root_channel_id FROM app.discord_root_channels UNION SELECT root_channel_id FROM app.discord_course_channels`,
@@ -130,10 +130,20 @@ func (s Service) SaveDiscordMap(ctx context.Context, form url.Values) (int, erro
 		if err != nil {
 			return err
 		}
-		roots, err := pgx.CollectRows(rows, pgx.RowTo[string])
-		if err != nil {
+		var roots []string
+		for rows.Next() {
+			var v string
+			if err := rows.Scan(&v); err != nil {
+				rows.Close()
+				return err
+			}
+			roots = append(roots, v)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
 			return err
 		}
+		rows.Close()
 		mapping := map[string]int64{}
 		for _, root := range roots {
 			raw := strings.TrimSpace(form.Get("discord_course_" + root))

@@ -3,21 +3,20 @@ package workspace
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool *pgxpool.Pool }
+type Service struct{ Pool rdbms.Pool }
 
 var ErrConflict = errors.New("the study request conflicts with existing state")
 var ErrInvalid = errors.New("invalid study session fields")
+var ErrDocumentPending = errors.New("this document is still being prepared for study")
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,128}$`)
 
 type Session struct {
@@ -44,13 +43,31 @@ type Start struct {
 	Planned                     *int64
 }
 
-func sessionRow(row pgx.Row) (Session, error) {
-	var raw []byte
+// sessionColumns lists app.study_workspace_sessions in Session scan order
+// (see sessionRow). Queries select these explicit columns instead of
+// to_jsonb(row), which has no sqlite form and fails at prepare time.
+const sessionColumns = `id,course_id,action_id,unit_key,plan_revision,client_session_key,planned_minutes,active_seconds,visible_seconds,outcome,note,started_at,last_seen_at,ended_at,confidence,study_event_id`
+
+func sessionRow(row rdbms.Row) (Session, error) {
 	var result Session
-	if err := row.Scan(&raw); err != nil {
-		return result, err
-	}
-	if err := json.Unmarshal(raw, &result); err != nil {
+	if err := row.Scan(
+		&result.ID,
+		&result.CourseID,
+		&result.Action,
+		&result.Unit,
+		&result.Revision,
+		&result.Key,
+		&result.Planned,
+		&result.Active,
+		&result.Visible,
+		&result.Outcome,
+		&result.Note,
+		&result.Started,
+		&result.Seen,
+		&result.Ended,
+		&result.Confidence,
+		&result.EventID,
+	); err != nil {
 		return result, err
 	}
 	for _, value := range []*string{&result.Action, &result.Unit, &result.Revision, result.Note} {
@@ -61,7 +78,7 @@ func sessionRow(row pgx.Row) (Session, error) {
 	return result, nil
 }
 
-func lockSession(ctx context.Context, tx pgx.Tx, id int64) (Session, error) {
+func lockSession(ctx context.Context, tx rdbms.Tx, id int64) (Session, error) {
 	// Serialize against course hiding/deletion before locking the session, in
 	// the same order as the rest of the learner mutations.
 	var course int64
@@ -69,7 +86,7 @@ func lockSession(ctx context.Context, tx pgx.Tx, id int64) (Session, error) {
 		return Session{}, err
 	}
 	return sessionRow(
-		tx.QueryRow(ctx, `SELECT to_jsonb(s) FROM app.study_workspace_sessions s WHERE s.id=$1 FOR UPDATE`, id),
+		tx.QueryRow(ctx, `SELECT `+sessionColumns+` FROM app.study_workspace_sessions s WHERE s.id=$1 FOR UPDATE`, id),
 	)
 }
 

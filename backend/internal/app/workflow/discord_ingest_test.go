@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -48,7 +49,7 @@ func discordFixture() []byte {
 
 type discordIngestFixture struct {
 	ctx      context.Context
-	pool     *pgxpool.Pool
+	pool     rdbms.Pool
 	blobs    *blob.Store
 	importer messages.Importer
 	reader   messages.Reader
@@ -71,7 +72,8 @@ func newDiscordIngestFixture(t *testing.T) *discordIngestFixture {
 	conn, blobs := startTestStorage(t, c)
 	ctx := t.Context()
 	t.Cleanup(func() { conn.Close(ctx) })
-	pool, err := pgxpool.New(ctx, c.databaseURL())
+	nativePool, err := pgxpool.New(ctx, c.databaseURL())
+	pool := rdbms.WrapPostgres(nativePool)
 	if err != nil {
 		t.Fatal(err)
 	}

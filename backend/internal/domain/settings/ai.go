@@ -12,7 +12,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 //go:embed ai_defaults.json
@@ -284,13 +284,11 @@ func (s Service) AI(ctx context.Context) (AI, error) {
 }
 
 // ReadAI accepts a transaction so derived reads share their source snapshot.
-func ReadAI(ctx context.Context, db interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}) (AI, error) {
+func ReadAI(ctx context.Context, db rdbms.DBTX) (AI, error) {
 	result := DefaultAI()
 	var raw []byte
 	err := db.QueryRow(ctx, `SELECT value FROM app.native_settings WHERE key='ai'`).Scan(&raw)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return result, nil
 	}
 	if err != nil {

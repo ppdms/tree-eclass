@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/infrastructure/jobs"
@@ -14,7 +13,7 @@ import (
 )
 
 func (s Service) SaveAnnouncements(ctx context.Context, courseID int64, items []eclass.Announcement) error {
-	return s.saveExtras(ctx, courseID, func(tx pgx.Tx) error {
+	return s.saveExtras(ctx, courseID, func(tx rdbms.Tx) error {
 		lines := []string{}
 		ids := []string{}
 		for _, a := range items {
@@ -64,7 +63,7 @@ ON CONFLICT(course_id,announcement_id) DO UPDATE SET title=excluded.title,link=e
 }
 
 func (s Service) SaveExercises(ctx context.Context, courseID int64, items []eclass.Exercise) error {
-	return s.saveExtras(ctx, courseID, func(tx pgx.Tx) error {
+	return s.saveExtras(ctx, courseID, func(tx rdbms.Tx) error {
 		lines := []string{}
 		for _, ex := range items {
 			if ex.ID == "" {
@@ -104,7 +103,7 @@ ON CONFLICT(course_id,exercise_id) DO UPDATE SET title=excluded.title,link=exclu
 	})
 }
 
-func (s Service) saveExtras(ctx context.Context, courseID int64, save func(pgx.Tx) error) error {
+func (s Service) saveExtras(ctx context.Context, courseID int64, save func(rdbms.Tx) error) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err

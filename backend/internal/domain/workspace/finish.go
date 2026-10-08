@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Finish struct {
@@ -65,7 +65,7 @@ func (s Service) Finish(ctx context.Context, in Finish) (FinishResult, error) {
 	return result, tx.Commit(ctx)
 }
 
-func closeSession(ctx context.Context, tx pgx.Tx, session Session, in Finish) (Session, error) {
+func closeSession(ctx context.Context, tx rdbms.Tx, session Session, in Finish) (Session, error) {
 	var event *int64
 	var note *string
 	if in.Note != nil {
@@ -104,7 +104,7 @@ func closeSession(ctx context.Context, tx pgx.Tx, session Session, in Finish) (S
 	return sessionRow(
 		tx.QueryRow(
 			ctx,
-			`UPDATE app.study_workspace_sessions SET outcome=$2,note=$3,confidence=$4,study_event_id=$5,ended_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS') WHERE id=$1 RETURNING to_jsonb(study_workspace_sessions)`,
+			`UPDATE app.study_workspace_sessions SET outcome=$2,note=$3,confidence=$4,study_event_id=$5,ended_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS') WHERE id=$1 RETURNING `+sessionColumns,
 			session.ID,
 			in.Outcome,
 			note,

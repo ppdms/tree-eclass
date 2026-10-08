@@ -1,11 +1,11 @@
 package workflow
 
 import (
-	"github.com/jackc/pgx/v5/pgxpool"
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-func archiveContentScopeChecks(t *testing.T, pool *pgxpool.Pool, base, document string) {
+func archiveContentScopeChecks(t *testing.T, pool rdbms.Pool, base, document string) {
 	t.Helper()
 	ctx := t.Context()
 	cleanup := seedArchiveParent(t, pool, document)
@@ -38,7 +38,7 @@ func archiveContentScopeChecks(t *testing.T, pool *pgxpool.Pool, base, document 
 	archiveContentProbe(t, url, 200)
 }
 
-func seedArchiveParent(t *testing.T, pool *pgxpool.Pool, document string) func() {
+func seedArchiveParent(t *testing.T, pool rdbms.Pool, document string) func() {
 	t.Helper()
 	ctx := t.Context()
 	_, err := pool.Exec(
@@ -66,7 +66,7 @@ func seedArchiveParent(t *testing.T, pool *pgxpool.Pool, document string) func()
 	}
 }
 
-func seedArchiveMember(t *testing.T, pool *pgxpool.Pool, document string) {
+func seedArchiveMember(t *testing.T, pool rdbms.Pool, document string) {
 	t.Helper()
 	_, err := pool.Exec(
 		t.Context(),

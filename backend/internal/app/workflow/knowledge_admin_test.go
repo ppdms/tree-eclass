@@ -2,13 +2,13 @@ package workflow
 
 import (
 	"testing"
+	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/infrastructure/jobs"
 )
 
-func knowledgeAdminChecks(t *testing.T, pool *pgxpool.Pool, base, document string, indexer knowledge.Indexer) {
+func knowledgeAdminChecks(t *testing.T, pool rdbms.Pool, base, document string, indexer knowledge.Indexer) {
 	t.Helper()
 	ctx := t.Context()
 	service := knowledge.Reader{Pool: pool}
@@ -81,7 +81,7 @@ func knowledgeAdminChecks(t *testing.T, pool *pgxpool.Pool, base, document strin
 	assertIndexQueue(t, pool, document, 0)
 }
 
-func assertIndexQueue(t *testing.T, pool *pgxpool.Pool, document string, wanted int) {
+func assertIndexQueue(t *testing.T, pool rdbms.Pool, document string, wanted int) {
 	t.Helper()
 	var count int
 	err := pool.QueryRow(t.Context(), `SELECT count(*) FROM app.control_commands WHERE queue='index' AND status='pending' AND payload->>'document_id'=$1`, document).

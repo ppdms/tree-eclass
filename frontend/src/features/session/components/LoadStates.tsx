@@ -150,3 +150,22 @@ function LoadingStateBody() {
     </div>
   );
 }
+
+export function PendingDocumentState() {
+  return (
+    <WorkspaceStateFrame busy>
+      <div {...stylex.props(styles.stateBody, styles.stateBodyLoading)}>
+        <div {...stylex.props(styles.loadingMark)} aria-hidden="true">
+          <span {...stylex.props(styles.pulseBar, styles.bar1)} />
+          <span {...stylex.props(styles.pulseBar, styles.bar2)} />
+          <span {...stylex.props(styles.pulseBar, styles.bar3)} />
+        </div>
+        <span {...stylex.props(styles.kicker)}>Preparing the document</span>
+        <h1 {...stylex.props(styles.title)}>This document is still being prepared…</h1>
+        <p {...stylex.props(styles.copy)}>
+          Indexing is running. The reader opens automatically once the document is ready.
+        </p>
+      </div>
+    </WorkspaceStateFrame>
+  );
+}

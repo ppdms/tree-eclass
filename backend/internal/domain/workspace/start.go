@@ -2,12 +2,14 @@ package workspace
 
 import (
 	"context"
+	"errors"
+
 	"strings"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/navigation"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func (s Service) Start(ctx context.Context, in Start) (Session, error) {
@@ -27,7 +29,7 @@ func (s Service) Start(ctx context.Context, in Start) (Session, error) {
 		return Session{}, err
 	}
 	existing, err := sessionRow(
-		tx.QueryRow(ctx, `SELECT to_jsonb(s) FROM app.study_workspace_sessions s WHERE client_session_key=$1`, in.Key),
+		tx.QueryRow(ctx, `SELECT `+sessionColumns+` FROM app.study_workspace_sessions s WHERE client_session_key=$1`, in.Key),
 	)
 	if err == nil {
 		if existing.CourseID != in.CourseID || existing.Action != in.Action || existing.Unit != in.Unit ||
@@ -37,7 +39,7 @@ func (s Service) Start(ctx context.Context, in Start) (Session, error) {
 		}
 		return existing, tx.Commit(ctx)
 	}
-	if err != pgx.ErrNoRows {
+	if !errors.Is(err, rdbms.ErrNoRows) {
 		return Session{}, err
 	}
 	if err = validateAction(ctx, tx, in); err != nil {
@@ -46,7 +48,7 @@ func (s Service) Start(ctx context.Context, in Start) (Session, error) {
 	row := tx.QueryRow(
 		ctx,
 		`INSERT INTO app.study_workspace_sessions(course_id,action_id,unit_key,plan_revision,client_session_key,planned_minutes,last_seen_at)
- VALUES($1,$2,$3,$4,$5,$6,to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')) RETURNING to_jsonb(study_workspace_sessions)`,
+ VALUES($1,$2,$3,$4,$5,$6,to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')) RETURNING `+sessionColumns,
 		in.CourseID,
 		identity.Encode(in.Action),
 		identity.Encode(in.Unit),
@@ -74,7 +76,7 @@ func (in *Start) validate() error {
 	return nil
 }
 
-func validateAction(ctx context.Context, tx pgx.Tx, in Start) error {
+func validateAction(ctx context.Context, tx rdbms.Tx, in Start) error {
 	if in.Action == "" {
 		if in.Unit != "" || in.Revision != "" {
 			return ErrInvalid

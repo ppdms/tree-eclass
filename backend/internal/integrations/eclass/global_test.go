@@ -55,3 +55,29 @@ func TestPublicFeedsAndDriveNeverInheritEclassCookies(t *testing.T) {
 		t.Fatal("unknown public feed accepted")
 	}
 }
+
+func TestDeadDriveFileKeepsItsLinkAsRedirect(t *testing.T) {
+	c, _ := New(BaseURL, "private-student", "private-password")
+	c.http.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		status := http.StatusNotFound
+		if strings.Contains(r.URL.RawQuery, "gone") {
+			status = http.StatusGone
+		}
+		if strings.Contains(r.URL.RawQuery, "denied") {
+			status = http.StatusForbidden
+		}
+		return &http.Response{
+			StatusCode: status,
+			Header:     http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+			Body:       io.NopCloser(strings.NewReader("<title>Error</title>")),
+			Request:    r,
+		}, nil
+	})
+	for _, id := range []string{"missing_1", "gone_2", "denied_3"} {
+		raw := "https://drive.google.com/file/d/" + id + "/view"
+		d, err := c.Drive(t.Context(), raw, "notes.pdf")
+		if err != nil || d.Body != nil || d.Redirect != raw {
+			t.Fatal(id, d, err)
+		}
+	}
+}

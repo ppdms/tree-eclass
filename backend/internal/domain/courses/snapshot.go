@@ -3,14 +3,15 @@ package courses
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-func SnapshotCourses(ctx context.Context, tx pgx.Tx, selected *int64) ([]Course, *Course, error) {
+func SnapshotCourses(ctx context.Context, tx rdbms.Tx, selected *int64) ([]Course, *Course, error) {
 	result := []Course{}
+	q := queries.ForTx(tx)
 	if selected == nil {
-		rows, err := queries.New(tx).ListCourses(ctx, false)
+		rows, err := q.ListCourses(ctx, false)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -19,7 +20,7 @@ func SnapshotCourses(ctx context.Context, tx pgx.Tx, selected *int64) ([]Course,
 		}
 		return result, nil, nil
 	}
-	row, err := queries.New(tx).Course(ctx, *selected)
+	row, err := q.Course(ctx, *selected)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -29,7 +30,7 @@ func SnapshotCourses(ctx context.Context, tx pgx.Tx, selected *int64) ([]Course,
 			return nil, nil, err
 		}
 		if !planned {
-			return nil, nil, pgx.ErrNoRows
+			return nil, nil, rdbms.ErrNoRows
 		}
 	}
 	item := course(row)

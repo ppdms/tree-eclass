@@ -71,7 +71,11 @@ SOURCE_SUFFIXES = {
 SPECIAL_FILES = {"tree"}
 EXCLUDED_PARTS = {"dist", "node_modules", "vendor"}
 EXCLUDED_PREFIXES = ("frontend/tools/oxlint/anti-slop/",)
-IMMUTABLE_MIGRATION_PREFIXES = ("backend/internal/infrastructure/storage/migrations/",)
+IMMUTABLE_MIGRATION_PREFIXES = (
+    "backend/internal/infrastructure/storage/migrations/",
+    "backend/internal/infrastructure/rdbms/postgres_migrations/",
+    "backend/internal/infrastructure/rdbms/sqlite_migrations/",
+)
 
 
 def source_files():

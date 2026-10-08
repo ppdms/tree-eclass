@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 const PageNotice = "Page insights are AI-derived reading aids, not source evidence. The page itself is beside them; check it before trusting a claim."
@@ -47,7 +47,7 @@ type PageInsights struct {
 
 func (s Reader) Pages(ctx context.Context, course int64, document string, first, last int64) (PageInsights, error) {
 	result := PageInsights{DocumentID: document, Pages: []PageInsight{}, Notice: PageNotice, UntrustedContent: true}
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return result, err
 	}
@@ -58,7 +58,7 @@ func (s Reader) Pages(ctx context.Context, course int64, document string, first,
 	}
 	return value, tx.Commit(ctx)
 }
-func pagesTx(ctx context.Context, tx pgx.Tx, course int64, document string, first, last int64) (PageInsights, error) {
+func pagesTx(ctx context.Context, tx rdbms.Tx, course int64, document string, first, last int64) (PageInsights, error) {
 	result := PageInsights{DocumentID: document, Pages: []PageInsight{}, Notice: PageNotice, UntrustedContent: true}
 	a, err := settings.ReadAI(ctx, tx)
 	if err != nil {
@@ -99,7 +99,7 @@ func clampPageRange(first, last int64, count *int64) (int64, int64) {
 	return first, min(last, first+23)
 }
 
-func appendPageInsights(rows pgx.Rows, hash, model string, result *PageInsights) error {
+func appendPageInsights(rows rdbms.Rows, hash, model string, result *PageInsights) error {
 	for rows.Next() {
 		var item PageInsight
 		var source, version, requested string
@@ -152,7 +152,7 @@ func pagePayload(raw string) map[string]any {
 	return result
 }
 func (s Reader) documentAnalysis(ctx context.Context, id, hash string) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -164,12 +164,12 @@ func (s Reader) documentAnalysis(ctx context.Context, id, hash string) (map[stri
 	return readDocumentAnalysis(ctx, tx, a, id, hash)
 }
 
-func readDocumentAnalysis(ctx context.Context, tx pgx.Tx, a settings.AI, id, hash string) (map[string]any, error) {
+func readDocumentAnalysis(ctx context.Context, tx rdbms.Tx, a settings.AI, id, hash string) (map[string]any, error) {
 	var status, source, model, requested, version, kind, currentHash string
 	var payload, generated *string
 	err := tx.QueryRow(ctx, `SELECT e.status,e.source_hash,e.model,coalesce(e.requested_model,e.model),e.analysis_version,CASE WHEN octet_length(e.payload_json)<=1048576 THEN e.payload_json END,e.generated_at,d.document_kind,d.source_hash FROM knowledge.document_enrichments e JOIN knowledge.documents d ON d.id=e.document_id JOIN app.courses c ON c.id=d.course_id WHERE e.document_id=$1 AND d.is_current=1 AND d.status='ready' AND c.hidden=0`, id).
 		Scan(&status, &source, &model, &requested, &version, &payload, &generated, &kind, &currentHash)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return map[string]any{
 			"status":                      "not_queued",
 			"ready":                       false,

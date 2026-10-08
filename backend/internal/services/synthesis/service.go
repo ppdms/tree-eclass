@@ -8,9 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/settings"
@@ -18,7 +16,7 @@ import (
 )
 
 type Service struct {
-	Pool      *pgxpool.Pool
+	Pool      rdbms.Pool
 	Generator inference.Generator
 	Keys      map[string]string
 }
@@ -106,7 +104,7 @@ func (s Service) RunOne(ctx context.Context, lane string) (bool, error) {
 		return false, err
 	}
 	j, err := s.claim(ctx, lane)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, rdbms.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {

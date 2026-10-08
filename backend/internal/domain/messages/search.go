@@ -6,9 +6,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/knowledge"
+	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type SearchRequest struct {
@@ -68,7 +68,7 @@ func (s Reader) Search(ctx context.Context, request SearchRequest, now time.Time
 	}
 	request.Query, request.Mode, request.Limit = check.Query, check.Mode, min(20, max(1, check.Limit))
 	result := SearchResult{Query: request.Query, Results: []Hit{}, Limit: request.Limit, Notice: CommunityNotice}
-	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
 	if err != nil {
 		return result, err
 	}
@@ -167,7 +167,7 @@ func better(a, b candidateHit) bool {
 	return a.ID < b.ID
 }
 
-func decorateHit(ctx context.Context, tx pgx.Tx, c *candidateHit) error {
+func decorateHit(ctx context.Context, tx rdbms.Tx, c *candidateHit) error {
 	for _, value := range []*string{&c.CourseName, c.CourseShortName, &c.Name, &c.Excerpt} {
 		if value != nil {
 			*value = identity.Decode(*value)
@@ -186,10 +186,19 @@ func decorateHit(ctx context.Context, tx pgx.Tx, c *candidateHit) error {
 	if err != nil {
 		return err
 	}
-	c.IDs, err = pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
 		return err
 	}
+	c.IDs = ids
 	if err = tx.QueryRow(ctx, `SELECT count(*) FROM messages.conversation_messages WHERE conversation_id=$1`, c.ID).Scan(&c.Count); err != nil {
 		return err
 	}
