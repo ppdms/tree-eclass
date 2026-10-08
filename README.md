@@ -96,6 +96,14 @@ storage only when no registered dataset exists. It preserves legacy caches and k
 If nix-darwin manages Homebrew, declare the Homebrew prerequisites in its
 configuration before rebuilding; do not install them manually.
 
+Parser dependency updates must change `requirements-parser.in` and regenerate its
+hashed lock with
+`uv pip compile requirements-parser.in --generate-hashes --output-file requirements-parser.txt --python-version 3.14`.
+The lock hash identifies the managed parser distribution. After changing it, run
+`./tree setup` with storage stopped, no development baseline and no pending
+activation before using the new lock in development. Existing stable artifacts
+keep their inventoried dependencies until a new release is built and activated.
+
 ```sh
 ./tree controller update  # after controller changes, while fully stopped
 ./tree release promote    # build, activate and start the current clean commit
