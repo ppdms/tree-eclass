@@ -6,9 +6,9 @@ import (
 	"sort"
 	"time"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/knowledge"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type SearchRequest struct {
@@ -68,7 +68,7 @@ func (s Reader) Search(ctx context.Context, request SearchRequest, now time.Time
 	}
 	request.Query, request.Mode, request.Limit = check.Query, check.Mode, min(20, max(1, check.Limit))
 	result := SearchResult{Query: request.Query, Results: []Hit{}, Limit: request.Limit, Notice: CommunityNotice}
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return result, err
 	}
@@ -167,7 +167,7 @@ func better(a, b candidateHit) bool {
 	return a.ID < b.ID
 }
 
-func decorateHit(ctx context.Context, tx rdbms.Tx, c *candidateHit) error {
+func decorateHit(ctx context.Context, tx database.Tx, c *candidateHit) error {
 	for _, value := range []*string{&c.CourseName, c.CourseShortName, &c.Name, &c.Excerpt} {
 		if value != nil {
 			*value = identity.Decode(*value)
@@ -178,30 +178,17 @@ func decorateHit(ctx context.Context, tx rdbms.Tx, c *candidateHit) error {
 	c.URL = messageURL(c.Guild, c.Channel, c.First)
 	c.Metadata = map[string]any{"guild_id": c.Guild}
 	c.Year = academicYear(c.Ended)
-	rows, err := tx.Query(
-		ctx,
-		`SELECT message_id::text FROM messages.conversation_messages WHERE conversation_id=$1 ORDER BY position LIMIT 201`,
-		c.ID,
-	)
+	ops := tx.Community()
+	ids, err := ops.ConversationMemberIDs(ctx, c.ID)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
 	c.IDs = ids
-	if err = tx.QueryRow(ctx, `SELECT count(*) FROM messages.conversation_messages WHERE conversation_id=$1`, c.ID).Scan(&c.Count); err != nil {
+	count, err := ops.ConversationMemberCount(ctx, c.ID)
+	if err != nil {
 		return err
 	}
+	c.Count = int(count)
 	c.IDsTruncated = c.Count > 200
 	c.IDs = c.IDs[:min(200, len(c.IDs))]
 	c.URLs = []string{}

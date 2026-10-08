@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type Window struct {
+type QuotaWindow struct {
 	Name      string     `json:"name"`
 	Used      *float64   `json:"used_percent,omitempty"`
 	Remaining *float64   `json:"remaining,omitempty"`
@@ -13,26 +13,26 @@ type Window struct {
 	Limited   bool       `json:"limited"`
 	Reset     *time.Time `json:"reset_at,omitempty"`
 }
-type Snapshot struct {
-	Windows []Window `json:"windows"`
+type QuotaSnapshot struct {
+	Windows []QuotaWindow `json:"windows"`
 }
-type State struct {
+type QuotaState struct {
 	Status   string     `json:"status"`
 	Message  string     `json:"message"`
 	Checked  time.Time  `json:"checked_at"`
 	Next     time.Time  `json:"next_check_at"`
 	Blocked  *time.Time `json:"blocked_until,omitempty"`
 	Requests int        `json:"requests_since_check"`
-	Snapshot
+	QuotaSnapshot
 }
 
-func evaluate(snapshot Snapshot, now time.Time) State {
-	state := State{
-		Status:   "available",
-		Message:  "Provider usage is below the configured thresholds.",
-		Checked:  now,
-		Next:     now.Add(time.Minute),
-		Snapshot: snapshot,
+func evaluate(snapshot QuotaSnapshot, now time.Time) QuotaState {
+	state := QuotaState{
+		Status:        "available",
+		Message:       "Provider usage is below the configured thresholds.",
+		Checked:       now,
+		Next:          now.Add(time.Minute),
+		QuotaSnapshot: snapshot,
 	}
 	var resets []time.Time
 	exceeded := 0
@@ -60,7 +60,7 @@ func evaluate(snapshot Snapshot, now time.Time) State {
 	state.Status, state.Message, state.Next, state.Blocked = "paused", "Provider usage reached its threshold; waiting for a fresh quota check.", until, &until
 	return state
 }
-func paused(status, message string, now time.Time, delay time.Duration) State {
+func paused(status, message string, now time.Time, delay time.Duration) QuotaState {
 	until := now.Add(delay)
-	return State{Status: status, Message: message, Checked: now, Next: until, Blocked: &until}
+	return QuotaState{Status: status, Message: message, Checked: now, Next: until, Blocked: &until}
 }

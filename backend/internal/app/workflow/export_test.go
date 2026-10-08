@@ -9,9 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/app/server"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
@@ -40,16 +38,12 @@ func TestNativeLearnerExport(t *testing.T) {
 	c := nativeSharedController(t)
 	conn, _ := startTestStorage(t, c)
 	defer conn.Close(t.Context())
-	nativePool, err := pgxpool.New(t.Context(), c.databaseURL())
-	pool := rdbms.WrapPostgres(nativePool)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := newFixtureStore(t, t.Context(), c)
 	defer pool.Close()
 	seedLearnerExport(t, pool)
 	service := settings.Service{Pool: pool}
 	out := &snapshotWriter{first: func() {
-		_, err := pool.Exec(
+		_, err := pool.Native.Exec(
 			t.Context(),
 			`UPDATE app.courses SET name='later'; INSERT INTO app.study_sessions(course_id,note) VALUES(101,'later')`,
 		)
@@ -57,11 +51,11 @@ func TestNativeLearnerExport(t *testing.T) {
 			t.Fatal(err)
 		}
 	}}
-	if err = service.Export(t.Context(), out); err != nil {
+	if err := service.Export(t.Context(), out); err != nil {
 		t.Fatal(err)
 	}
 	verifyLearnerExport(t, out)
-	if err = service.Export(t.Context(), failedExportWriter{}); !errors.Is(err, io.ErrClosedPipe) {
+	if err := service.Export(t.Context(), failedExportWriter{}); !errors.Is(err, io.ErrClosedPipe) {
 		t.Fatal("writer failure was lost", err)
 	}
 	exportHTTPCheck(t, c)
@@ -151,9 +145,9 @@ func exportHTTPCheck(t *testing.T, c *Controller) {
 	}
 }
 
-func seedLearnerExport(t *testing.T, pool rdbms.Pool) {
+func seedLearnerExport(t *testing.T, pool *fixtureStore) {
 	t.Helper()
-	_, err := pool.Exec(t.Context(), `
+	_, err := pool.Native.Exec(t.Context(), `
 INSERT INTO app.courses(id,name,webdav_folder,hidden) VALUES(101,'hidden','/Courses/101',1);
 INSERT INTO app.course_exam_plans(course_id,enabled,exam_at) VALUES(101,1,'2026-09-20T10:00');
 INSERT INTO app.study_sessions(course_id,note) VALUES(101,'original');
@@ -181,7 +175,7 @@ INSERT INTO app.discord_export_settings(id,token) VALUES(1,'private-discord');
 		{`UPDATE app.study_annotations SET body=$1`, "Σημείωση\x00\ue000"},
 		{`UPDATE app.chat_messages SET content=$1 WHERE role='assistant'`, "Απάντηση\x00"},
 	} {
-		if _, err = pool.Exec(t.Context(), change.Query, identity.Encode(change.Text)); err != nil {
+		if _, err = pool.Native.Exec(t.Context(), change.Query, identity.Encode(change.Text)); err != nil {
 			t.Fatal(err)
 		}
 	}

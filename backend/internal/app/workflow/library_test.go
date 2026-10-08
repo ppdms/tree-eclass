@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"tree-eclass/internal/services/library"
 )
 
-func libraryChecks(t *testing.T, pool rdbms.Pool, base, document string) {
+func libraryChecks(t *testing.T, pool *fixtureStore, base, document string) {
 	t.Helper()
 	ctx := t.Context()
 	r, err := library.New(pool)

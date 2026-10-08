@@ -2,15 +2,14 @@ package workflow
 
 import (
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/messages"
 )
 
-func blueprintCommunityFixture(t *testing.T, pool rdbms.Pool) string {
+func blueprintCommunityFixture(t *testing.T, pool *fixtureStore) string {
 	t.Helper()
 	ctx := t.Context()
-	_, err := pool.Exec(ctx, `INSERT INTO app.discord_course_channels(root_channel_id,course_id) VALUES('100001',101);
+	_, err := pool.Native.Exec(ctx, `INSERT INTO app.discord_course_channels(root_channel_id,course_id) VALUES('100001',101);
  INSERT INTO messages.archive_sources(path,root_id,course_id,fingerprint,channel_id,status,indexed_at) VALUES('blueprint-fixture','100001',101,'fixture-sha',100002,'ready','2026-09-12');
  INSERT INTO messages.conversations(conversation_id,course_id,root_id,channel_id,channel_name,channel_type,first_message_id,last_message_id,started_at,ended_at,ended_at_epoch,text,normalized_text,participant_count,reaction_count,source_path)
  VALUES('two',101,100001,100002,'Synthetic discussion','text',100003,100003,'2026-09-12','2026-09-12',1789171201,'Contradictory fixture claim','contradictory fixture claim',1,0,'blueprint-fixture');

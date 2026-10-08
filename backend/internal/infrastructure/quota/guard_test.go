@@ -12,16 +12,16 @@ import (
 
 type memoryStore struct {
 	mu      sync.Mutex
-	values  map[string]State
+	values  map[string]QuotaState
 	failure bool
 }
 
-func (s *memoryStore) Load(_ context.Context, key string) (State, error) {
+func (s *memoryStore) Load(_ context.Context, key string) (QuotaState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.values[key], nil
 }
-func (s *memoryStore) Save(_ context.Context, key string, value State) error {
+func (s *memoryStore) Save(_ context.Context, key string, value QuotaState) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.failure {
@@ -31,9 +31,9 @@ func (s *memoryStore) Save(_ context.Context, key string, value State) error {
 	return nil
 }
 
-type probeFunc func(context.Context, inference.Candidate) (Snapshot, error)
+type probeFunc func(context.Context, inference.Candidate) (QuotaSnapshot, error)
 
-func (f probeFunc) Fetch(ctx context.Context, c inference.Candidate) (Snapshot, error) {
+func (f probeFunc) Fetch(ctx context.Context, c inference.Candidate) (QuotaSnapshot, error) {
 	return f(ctx, c)
 }
 
@@ -48,13 +48,16 @@ func (f streamFunc) Stream(
 	return f(ctx, c, r, emit)
 }
 func fixtureGuard(now *time.Time) (*Guard, *memoryStore, *int, *int) {
-	store := &memoryStore{values: map[string]State{}}
+	store := &memoryStore{values: map[string]QuotaState{}}
 	checks, calls := 0, 0
 	guard := &Guard{
 		Store: store,
 		Now:   func() time.Time { return *now },
 		Probe: probeFunc(
-			func(context.Context, inference.Candidate) (Snapshot, error) { checks++; return Snapshot{}, nil },
+			func(context.Context, inference.Candidate) (QuotaSnapshot, error) {
+				checks++
+				return QuotaSnapshot{}, nil
+			},
 		),
 		Client: streamFunc(
 			func(context.Context, inference.Candidate, inference.Request, func(inference.Delta) error) error {
@@ -104,8 +107,8 @@ func TestQuotaFailureAndCanceledProbeRemainClosed(t *testing.T) {
 	now := time.Now()
 	g, store, _, calls := fixtureGuard(&now)
 	c := inference.Candidate{Provider: "ollama"}
-	g.Probe = probeFunc(func(context.Context, inference.Candidate) (Snapshot, error) {
-		return Snapshot{}, errors.New("private fixture")
+	g.Probe = probeFunc(func(context.Context, inference.Candidate) (QuotaSnapshot, error) {
+		return QuotaSnapshot{}, errors.New("private fixture")
 	})
 	if err := g.Stream(t.Context(), c, inference.Request{}, nil); err == nil || *calls != 0 {
 		t.Fatal("failed quota check admitted model")
@@ -116,14 +119,20 @@ func TestQuotaFailureAndCanceledProbeRemainClosed(t *testing.T) {
 	now = now.Add(5 * time.Minute)
 	canceled, cancel := context.WithCancel(t.Context())
 	g.Probe = probeFunc(
-		func(context.Context, inference.Candidate) (Snapshot, error) { cancel(); return Snapshot{}, nil },
+		func(context.Context, inference.Candidate) (QuotaSnapshot, error) {
+			cancel()
+			return QuotaSnapshot{}, nil
+		},
 	)
 	if err := g.Stream(canceled, c, inference.Request{}, nil); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	probes := 0
 	g.Probe = probeFunc(
-		func(context.Context, inference.Candidate) (Snapshot, error) { probes++; return Snapshot{}, nil },
+		func(context.Context, inference.Candidate) (QuotaSnapshot, error) {
+			probes++
+			return QuotaSnapshot{}, nil
+		},
 	)
 	if err := g.Stream(t.Context(), c, inference.Request{}, nil); err != nil || probes != 1 {
 		t.Fatal("canceled probe cached as available", err, probes)

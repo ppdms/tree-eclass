@@ -3,15 +3,14 @@ package workflow
 import (
 	"testing"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/study"
 )
 
-func studySnapshotChecks(t *testing.T, pool rdbms.Pool, base string) {
+func studySnapshotChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
 	ctx := t.Context()
-	_, err := pool.Exec(
+	_, err := pool.Native.Exec(
 		ctx,
 		`INSERT INTO app.courses(id,name,webdav_folder,hidden) VALUES(801,'Study visible','/Courses/801',0),(802,'Study hidden planned','/Courses/802',1),(803,'Study hidden inactive','/Courses/803',1);
  INSERT INTO app.course_exam_plans(course_id,enabled,exam_at) VALUES(802,1,'2026-09-20');
@@ -65,7 +64,7 @@ func studySnapshotChecks(t *testing.T, pool rdbms.Pool, base string) {
 			t.Fatal("hidden study files leaked into unscoped inbox")
 		}
 	}
-	_, err = pool.Exec(ctx, `INSERT INTO app.files(node_id,url,name,local_path,last_updated)
+	_, err = pool.Native.Exec(ctx, `INSERT INTO app.files(node_id,url,name,local_path,last_updated)
  SELECT 9801,'https://example.invalid/future-'||i,'future-'||i||'.txt','/Courses/801/eclass/future-'||i||'.txt','2100-01-01' FROM generate_series(1,65) i`)
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +75,7 @@ func studySnapshotChecks(t *testing.T, pool rdbms.Pool, base string) {
 		snapshot.Inbox[1].Priority != 0 {
 		t.Fatal("inbox bound, ordering or future timestamps", err)
 	}
-	if _, err = pool.Exec(ctx, `DELETE FROM app.courses WHERE id IN(801,802,803)`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.courses WHERE id IN(801,802,803)`); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -72,15 +72,15 @@ func seedColdBaseline(
 	if err != nil || same.VersionID != ref.VersionID || same.MediaType != ref.MediaType {
 		t.Fatalf("immutable retry: %#v %v", same, err)
 	}
-	if err = storage.RegisterObject(ctx, rdbms.WrapConn(conn), ref); err != nil {
+	if err = rdbms.WrapConn(conn).Objects().RegisterObject(ctx, asObjectReference(ref)); err != nil {
 		t.Fatal(err)
 	}
-	if err = storage.RegisterObject(ctx, rdbms.WrapConn(conn), same); err != nil {
+	if err = rdbms.WrapConn(conn).Objects().RegisterObject(ctx, asObjectReference(same)); err != nil {
 		t.Fatal("idempotent catalog registration", err)
 	}
 	changed := ref
 	changed.VersionID = "must-not-relabel-a-revision"
-	if err = storage.RegisterObject(ctx, rdbms.WrapConn(conn), changed); err == nil {
+	if err = rdbms.WrapConn(conn).Objects().RegisterObject(ctx, asObjectReference(changed)); err == nil {
 		t.Fatal("object ID silently relabeled to a different object version")
 	}
 	if err = storage.Migrate(ctx, c.databaseURL()); err != nil {

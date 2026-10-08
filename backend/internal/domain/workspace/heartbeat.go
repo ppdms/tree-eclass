@@ -8,8 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Beat struct {
@@ -39,9 +39,7 @@ func (s Service) Heartbeat(ctx context.Context, in Beat) (BeatResult, error) {
 	raw, _ := json.Marshal(in)
 	hash := sha256.Sum256(raw)
 	requestHash := hex.EncodeToString(hash[:])
-	var previous *string
-	err = tx.QueryRow(ctx, `SELECT request_hash FROM app.study_reading_beats WHERE session_id=$1 AND sequence=$2`, in.SessionID, in.Sequence).
-		Scan(&previous)
+	previous, err := tx.Workspace().BeatHash(ctx, in.SessionID, in.Sequence)
 	if err == nil {
 		if previous != nil && *previous != requestHash {
 			return result, ErrConflict
@@ -49,45 +47,40 @@ func (s Service) Heartbeat(ctx context.Context, in Beat) (BeatResult, error) {
 		result.Status = "duplicate"
 		return result, tx.Commit(ctx)
 	}
-	if !errors.Is(err, rdbms.ErrNoRows) {
+	if !errors.Is(err, database.ErrNoRows) {
 		return result, err
 	}
 	if result.Session.Ended != nil {
 		return result, ErrConflict
 	}
-	result.Session, err = s.recordBeat(ctx, tx, result.Session, in, requestHash)
+	result.Session, err = recordBeat(ctx, tx, result.Session, in, requestHash)
 	if err != nil {
 		return result, err
 	}
 	return result, tx.Commit(ctx)
 }
 
-func (s Service) recordBeat(
+func recordBeat(
 	ctx context.Context,
-	tx rdbms.Tx,
+	tx database.Tx,
 	session Session,
 	in Beat,
 	requestHash string,
 ) (Session, error) {
-	var source string
-	var pages *int64
-	err := tx.QueryRow(ctx, `SELECT source_hash,page_count FROM knowledge.documents WHERE id=$1 AND course_id=$2 AND is_current=1 AND status='ready' FOR SHARE`, in.Document, session.CourseID).
-		Scan(&source, &pages)
+	source, pages, err := tx.Workspace().ReadyDocument(ctx, session.CourseID, in.Document)
 	if err != nil {
 		return Session{}, err
 	}
 	if pages != nil && *pages > 0 && in.Page > *pages {
 		return Session{}, ErrInvalid
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO app.study_reading_beats(session_id,sequence,request_hash) VALUES($1,$2,$3)`, in.SessionID, in.Sequence, requestHash); err != nil {
+	if err = tx.Workspace().InsertBeat(ctx, in.SessionID, in.Sequence, requestHash); err != nil {
 		return Session{}, err
 	}
 	if err = accumulate(ctx, tx, session, in, source); err != nil {
 		return Session{}, err
 	}
-	return sessionRow(
-		tx.QueryRow(ctx, `SELECT `+sessionColumns+` FROM app.study_workspace_sessions s WHERE id=$1`, in.SessionID),
-	)
+	return sessionFromRow(tx.Workspace().SessionByID(ctx, in.SessionID))
 }
 
 func validateBeat(in Beat) error {
@@ -101,37 +94,26 @@ func validateBeat(in Beat) error {
 	return nil
 }
 
-func accumulate(ctx context.Context, tx rdbms.Tx, session Session, in Beat, source string) error {
+func accumulate(ctx context.Context, tx database.Tx, session Session, in Beat, source string) error {
 	interval := min(in.Interval, 90)
 	active := int64(0)
 	if in.Active {
 		active = interval
 	}
-	_, err := tx.Exec(
-		ctx,
-		`INSERT INTO app.study_reading_spans(session_id,course_id,document_id,source_hash,page_number,action_id,unit_key,plan_revision,active_seconds,visible_seconds,ended_at)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'))
- ON CONFLICT(session_id,document_id,source_hash,page_number) DO UPDATE SET active_seconds=study_reading_spans.active_seconds+excluded.active_seconds,visible_seconds=study_reading_spans.visible_seconds+excluded.visible_seconds,ended_at=excluded.ended_at`,
-		session.ID,
-		session.CourseID,
-		in.Document,
-		source,
-		in.Page,
-		identity.Encode(session.Action),
-		identity.Encode(session.Unit),
-		identity.Encode(session.Revision),
-		active,
-		interval,
-	)
+	err := tx.Workspace().AccumulateSpan(ctx, database.AccumulateSpanParams{
+		SessionID:  session.ID,
+		CourseID:   session.CourseID,
+		Document:   in.Document,
+		SourceHash: source,
+		Page:       in.Page,
+		Action:     identity.Encode(session.Action),
+		Unit:       identity.Encode(session.Unit),
+		Revision:   identity.Encode(session.Revision),
+		Active:     active,
+		Visible:    interval,
+	})
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(
-		ctx,
-		`UPDATE app.study_workspace_sessions SET active_seconds=active_seconds+$2,visible_seconds=visible_seconds+$3,last_seen_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS') WHERE id=$1`,
-		session.ID,
-		active,
-		interval,
-	)
-	return err
+	return tx.Workspace().AddAttention(ctx, session.ID, active, interval)
 }

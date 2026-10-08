@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/objects"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func mapAttachments(m *stagedMessage, media map[string]objects.Reference) error {
@@ -51,8 +53,11 @@ func mapAttachments(m *stagedMessage, media map[string]objects.Reference) error 
 	m.Attachments = string(raw)
 	return nil
 }
-func registerMedia(ctx context.Context, tx rdbms.Tx, sourcePath string, media map[string]objects.Reference) error {
-	for name, object := range media {
+
+func registerMedia(ctx context.Context, tx database.Tx, sourcePath string, media map[string]objects.Reference) error {
+	// Deterministic order keeps same-tx registration backend-neutral.
+	for _, name := range slices.Sorted(maps.Keys(media)) {
+		object := media[name]
 		if !strings.HasPrefix(name, "media/") || path.Clean(name) != name || strings.ContainsAny(name, "\x00\\") ||
 			len(name) > 4096 ||
 			object.Bytes > objects.MaxSourceBytes {
@@ -61,51 +66,39 @@ func registerMedia(ctx context.Context, tx rdbms.Tx, sourcePath string, media ma
 		if err := objects.RegisterObject(ctx, tx, object); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO messages.archive_media(source_path,relative_path,object_id) VALUES($1,$2,$3)`, sourcePath, identity.Encode(name), object.SHA256); err != nil {
+		if err := tx.DiscordImports().RegisterArchiveMedia(
+			ctx, sourcePath, identity.Encode(name), object.SHA256,
+		); err != nil {
 			return err
 		}
 	}
 	return nil
 }
+
 func (s Reader) Media(ctx context.Context, id string) (objects.Reference, error) {
 	var object objects.Reference
 	if len(id) != 64 || strings.ContainsAny(id, "/\\") {
-		return object, rdbms.ErrNoRows
+		return object, database.ErrNoRows
 	}
-	err := s.Pool.QueryRow(ctx, `SELECT o.bucket,o.key,o.version_id,o.sha256,o.bytes,o.media_type FROM app.objects o WHERE o.id=$1 AND EXISTS(
- SELECT 1 FROM messages.archive_media am JOIN messages.archive_sources a ON a.path=am.source_path AND a.status='ready'
- JOIN app.discord_course_channels mapping ON mapping.root_channel_id=a.root_id AND mapping.course_id=a.course_id
- JOIN app.courses c ON c.id=a.course_id AND c.hidden=0 WHERE am.object_id=o.id)`, id).
-		Scan(&object.Bucket, &object.Key, &object.VersionID, &object.SHA256, &object.Bytes, &object.MediaType)
-	return object, err
+	resolved, err := s.Pool.DiscordImports().ReadyMediaObject(ctx, id)
+	if err != nil {
+		return object, err
+	}
+	return fromObjectReference(resolved), nil
 }
 
-func sameMedia(ctx context.Context, tx rdbms.Tx, sourcePath string, media map[string]objects.Reference) error {
-	rows, err := tx.Query(
-		ctx,
-		`SELECT relative_path,object_id FROM messages.archive_media WHERE source_path=$1 LIMIT 2001`,
-		sourcePath,
-	)
+func sameMedia(ctx context.Context, tx database.Tx, sourcePath string, media map[string]objects.Reference) error {
+	items, err := tx.DiscordImports().MediaInventory(ctx, sourcePath, 2001)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	count := 0
-	for rows.Next() {
-		var name, id string
-		if err = rows.Scan(&name, &id); err != nil {
-			return err
-		}
-		ref, exists := media[identity.Decode(name)]
-		if !exists || ref.SHA256 != id {
+	for _, item := range items {
+		ref, exists := media[identity.Decode(item.RelativePath)]
+		if !exists || ref.SHA256 != item.ObjectID {
 			return errors.New("immutable Discord export has different attachment bytes")
 		}
-		count++
 	}
-	if err = rows.Err(); err != nil {
-		return err
-	}
-	if count != len(media) {
+	if len(items) != len(media) {
 		return errors.New("immutable Discord export has different attachment inventory")
 	}
 	return nil

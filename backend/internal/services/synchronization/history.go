@@ -2,8 +2,8 @@ package synchronization
 
 import (
 	"context"
-	"tree-eclass/internal/infrastructure/rdbms"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 )
 
@@ -36,12 +36,12 @@ type HistoryItem struct {
 }
 
 func (s Service) Versions(ctx context.Context, id int64, kind string, file, folder *string) ([]Version, error) {
-	var exists bool
-	if err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app.courses WHERE id=$1 AND hidden=0)`, id).Scan(&exists); err != nil {
+	visible, err := s.Pool.Sync().CourseVisible(ctx, id)
+	if err != nil {
 		return nil, err
 	}
-	if !exists {
-		return nil, rdbms.ErrNoRows
+	if !visible {
+		return nil, database.ErrNoRows
 	}
 	if file != nil {
 		encoded := identity.Encode(*file)
@@ -51,87 +51,66 @@ func (s Service) Versions(ctx context.Context, id int64, kind string, file, fold
 		encoded := identity.Encode(*folder)
 		folder = &encoded
 	}
-	rows, err := s.Pool.Query(
-		ctx,
-		`SELECT id,course_id,file_path,version_webdav_path,change_type,timestamp,display_name,redirect_url,diff_webdav_path FROM app.file_versions
-WHERE course_id=$1 AND change_type=$2 AND ($3::text IS NULL OR file_path=$3) AND ($4::text IS NULL OR $4='' OR file_path=$4 OR starts_with(file_path,rtrim($4,'/')||'/')) ORDER BY timestamp DESC,id DESC`,
-		id,
-		kind,
-		file,
-		folder,
-	)
+	rows, err := s.Pool.Sync().ListVersions(ctx, id, kind, file, folder)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	versions := []Version{}
-	for rows.Next() {
-		var v Version
-		if err = rows.Scan(
-			&v.ID,
-			&v.CourseID,
-			&v.Path,
-			&v.StoragePath,
-			&v.Type,
-			&v.Timestamp,
-			&v.Name,
-			&v.Redirect,
-			&v.Diff,
-		); err != nil {
-			return nil, err
+	for _, row := range rows {
+		v := Version{
+			ID:          row.ID,
+			CourseID:    row.CourseID,
+			Path:        identity.Decode(row.Path),
+			StoragePath: row.StoragePath,
+			Type:        row.Type,
+			Timestamp:   row.Timestamp,
+			Name:        row.Name,
+			Redirect:    row.Redirect,
+			Diff:        row.Diff,
 		}
-		v.Path = identity.Decode(v.Path)
 		decodeText(v.Name, v.StoragePath, v.Diff)
 		versions = append(versions, v)
 	}
-	return versions, rows.Err()
+	return versions, nil
 }
 
 func (s Service) History(ctx context.Context, id int64, number string) (ChangeRecord, []HistoryItem, error) {
 	var record ChangeRecord
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return record, nil, err
 	}
 	defer tx.Rollback(ctx)
-	err = tx.QueryRow(ctx, `SELECT r.id,r.course_id,c.name,r.change_no,r.timestamp,r.message,r.changes_count FROM app.change_records r JOIN app.courses c ON c.id=r.course_id WHERE r.course_id=$1 AND r.change_no=$2 AND c.hidden=0`, id, number).
-		Scan(
-			&record.ID,
-			&record.CourseID,
-			&record.CourseName,
-			&record.Number,
-			&record.Timestamp,
-			&record.Message,
-			&record.Count,
-		)
+	stored, course, err := tx.Sync().ChangeRecord(ctx, id, number)
 	if err != nil {
 		return record, nil, err
 	}
-	record.CourseName = identity.Decode(record.CourseName)
+	record = ChangeRecord{
+		ID:         stored.ID,
+		CourseID:   stored.CourseID,
+		CourseName: identity.Decode(course),
+		Number:     stored.Number,
+		Timestamp:  stored.Timestamp,
+		Message:    stored.Message,
+		Count:      stored.Count,
+	}
 	decodeText(record.Message)
-	rows, err := tx.Query(
-		ctx,
-		`SELECT change_type,file_path,display_name,redirect_url,diff_webdav_path FROM app.change_record_items WHERE change_record_id=$1 ORDER BY id`,
-		record.ID,
-	)
+	rows, err := tx.Sync().ChangeRecordItems(ctx, stored.ID)
 	if err != nil {
 		return record, nil, err
 	}
-	defer rows.Close()
 	items := []HistoryItem{}
-	for rows.Next() {
-		var item HistoryItem
-		if err = rows.Scan(&item.Type, &item.Path, &item.Name, &item.Redirect, &item.Diff); err != nil {
-			return record, nil, err
+	for _, row := range rows {
+		item := HistoryItem{
+			Type:     row.Type,
+			Path:     identity.Decode(row.Path),
+			Name:     row.Name,
+			Redirect: row.Redirect,
+			Diff:     row.Diff,
 		}
-		item.Path = identity.Decode(item.Path)
 		decodeText(item.Name, item.Diff)
 		items = append(items, item)
 	}
-	if err = rows.Err(); err != nil {
-		return record, nil, err
-	}
-	rows.Close()
 	return record, items, tx.Commit(ctx)
 }
 

@@ -9,14 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/materials"
-	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/rdbms"
-	"tree-eclass/internal/infrastructure/storage"
 	"tree-eclass/internal/integrations/parser"
 )
 
@@ -51,7 +48,7 @@ func TestNativeArchiveMemberPublication(t *testing.T) {
 type archivePublicationFixture struct {
 	ctx          context.Context
 	temp         string
-	pool         rdbms.Pool
+	pool         *fixtureStore
 	objects      *blob.Store
 	indexer      knowledge.Indexer
 	reader       knowledge.Reader
@@ -66,7 +63,7 @@ func archiveMemberPublication(t *testing.T, format string) {
 	_, unchanged, removed := archiveChildren(t, fixture)
 	archiveReplacementChecks(t, fixture, unchanged, removed)
 	archiveUnsafeChecks(t, fixture, unchanged)
-	archiveSyncChecks(t, fixture.indexer)
+	archiveSyncChecks(t, fixture.pool, fixture.indexer)
 	files, err := os.ReadDir(fixture.temp)
 	if err != nil || len(files) != 0 {
 		t.Fatal("archive parser leaked local artifacts", files, err)
@@ -79,13 +76,9 @@ func newArchivePublicationFixture(t *testing.T, format string) archivePublicatio
 	ctx := t.Context()
 	conn, objects := startTestStorage(t, c)
 	t.Cleanup(func() { conn.Close(ctx) })
-	nativePool, err := pgxpool.New(ctx, c.databaseURL())
-	pool := rdbms.WrapPostgres(nativePool)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
-	if _, err = pool.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(791,'Archive fixture','/Courses/791')`); err != nil {
+	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(791,'Archive fixture','/Courses/791')`); err != nil {
 		t.Fatal(err)
 	}
 	temp := t.TempDir()
@@ -132,11 +125,11 @@ func archiveChildren(t *testing.T, fixture archivePublicationFixture) ([]string,
 		t.Fatal("archive indexing", err)
 	}
 	var parentChunks int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM knowledge.chunks WHERE document_id=$1`, parent.DocumentID).Scan(&parentChunks); err != nil ||
+	if err := pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.chunks WHERE document_id=$1`, parent.DocumentID).Scan(&parentChunks); err != nil ||
 		parentChunks != 0 {
 		t.Fatal("archive source was flattened outside its admitted leaves", parentChunks)
 	}
-	rows, err := pool.Query(
+	rows, err := pool.Native.Query(
 		ctx,
 		`SELECT d.id FROM knowledge.archive_members m JOIN knowledge.documents d ON d.id=m.child_document_id WHERE m.parent_document_id=$1 ORDER BY d.id`,
 		parent.DocumentID,
@@ -215,7 +208,7 @@ func archiveReplacementChecks(t *testing.T, fixture archivePublicationFixture, u
 		t.Fatal("removed leaf remained current")
 	}
 	var current int64
-	if err := fixture.pool.QueryRow(ctx, `SELECT count(*) FROM knowledge.archive_members m JOIN knowledge.documents d ON d.id=m.child_document_id WHERE m.parent_document_id=$1 AND d.is_current=1`, parent.DocumentID).Scan(&current); err != nil ||
+	if err := fixture.pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.archive_members m JOIN knowledge.documents d ON d.id=m.child_document_id WHERE m.parent_document_id=$1 AND d.is_current=1`, parent.DocumentID).Scan(&current); err != nil ||
 		current != 2 {
 		t.Fatal("member replacement was not atomic", current, err)
 	}
@@ -233,7 +226,7 @@ func archiveUnsafeChecks(t *testing.T, fixture archivePublicationFixture, unchan
 		t.Fatal("failed parent authorized old child")
 	}
 	var current int
-	if err := fixture.pool.QueryRow(ctx, `SELECT count(*) FROM knowledge.archive_members WHERE parent_document_id=$1`, parent.DocumentID).Scan(&current); err != nil ||
+	if err := fixture.pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.archive_members WHERE parent_document_id=$1`, parent.DocumentID).Scan(&current); err != nil ||
 		current != 3 {
 		t.Fatal("failed scan overwrote prior membership history", current, err)
 	}
@@ -241,7 +234,7 @@ func archiveUnsafeChecks(t *testing.T, fixture archivePublicationFixture, unchan
 
 func replaceArchiveFixture(
 	t *testing.T,
-	pool rdbms.Pool,
+	pool *fixtureStore,
 	objects *blob.Store,
 	temp, document string,
 	data []byte,
@@ -258,21 +251,16 @@ func replaceArchiveFixture(
 		t.Fatal(err)
 	}
 	defer tx.Rollback(ctx)
-	native, ok := rdbms.UnwrapPostgresTx(tx)
-	if !ok {
-		t.Fatal("sqlc queries require postgres")
-	}
-	q := queries.New(native)
-	d, err := q.IndexDocument(ctx, document)
+	d, err := tx.Indexing().IndexDocument(ctx, document)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = storage.RegisterObject(ctx, tx, ref); err != nil {
+	if err = tx.Objects().RegisterObject(ctx, asObjectReference(ref)); err != nil {
 		t.Fatal(err)
 	}
-	if err = q.RegisterRevision(
+	if err = tx.Objects().RegisterRevision(
 		ctx,
-		queries.RegisterRevisionParams{
+		database.RegisterRevisionParams{
 			ID:          identity.Stable("rev", document, ref.SHA256),
 			DocumentID:  document,
 			CourseID:    d.CourseID,
@@ -282,7 +270,9 @@ func replaceArchiveFixture(
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE knowledge.documents SET source_hash=$2,source_size_bytes=$3,status='pending' WHERE id=$1`, document, ref.SHA256, ref.Bytes); err != nil {
+	if err = tx.Indexing().RequeueDocument(ctx, database.RequeueDocumentParams{
+		ID: document, Hash: ref.SHA256, Bytes: ref.Bytes,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err = tx.Commit(ctx); err != nil {

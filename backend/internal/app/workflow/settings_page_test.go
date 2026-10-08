@@ -5,12 +5,11 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/settings"
 )
 
-func settingsPageChecks(t *testing.T, pool rdbms.Pool, base string) {
+func settingsPageChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
 	ctx := t.Context()
 	service := settings.Service{Pool: pool}
@@ -33,7 +32,7 @@ func settingsPageChecks(t *testing.T, pool rdbms.Pool, base string) {
 	if err != nil || d.Token != "synthetic-discord-secret" || d.Interval != 1800 || d.Threads != "Active" || !d.Media {
 		t.Fatal("Discord settings", d.Interval, d.Threads, err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO app.discord_root_channels(root_channel_id,name) VALUES('1234567890123456789','Συνθετικό κανάλι')`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `INSERT INTO app.discord_root_channels(root_channel_id,name) VALUES('1234567890123456789','Συνθετικό κανάλι')`); err != nil {
 		t.Fatal(err)
 	}
 	var mapped struct {
@@ -49,7 +48,7 @@ func settingsPageChecks(t *testing.T, pool rdbms.Pool, base string) {
 	if err != nil || len(channels) != 1 || channels[0].CourseID == nil || *channels[0].CourseID != 101 {
 		t.Fatal("mapping validation erased valid mapping", channels, err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO knowledge.knowledge_state(key,value,updated_at) VALUES('synthetic_quota','{"status":"ready"}','now')`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `INSERT INTO knowledge.knowledge_state(key,value,updated_at) VALUES('synthetic_quota','{"status":"ready"}','now')`); err != nil {
 		t.Fatal(err)
 	}
 	page, err := service.Page(ctx, map[string]string{"SYNTHETIC_API_KEY": "synthetic-ai-secret"})

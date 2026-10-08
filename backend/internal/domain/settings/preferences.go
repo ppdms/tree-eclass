@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"strings"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool rdbms.Pool }
+type Service struct{ Pool database.Store }
 type Preferences struct {
 	CheckInterval  int64   `json:"check_interval_minutes"`
 	Downloads      int64   `json:"max_concurrent_downloads"`
@@ -28,11 +28,8 @@ type Preferences struct {
 	SemesterEnd    *string `json:"semester_end"`
 	BasePath       string  `json:"download_base_path"`
 }
-type queryer interface {
-	QueryRow(context.Context, string, ...any) rdbms.Row
-}
 
-func readPreferences(ctx context.Context, db queryer) (Preferences, error) {
+func readPreferences(ctx context.Context, db database.Operations) (Preferences, error) {
 	p := Preferences{
 		CheckInterval:  60,
 		Downloads:      3,
@@ -43,26 +40,26 @@ func readPreferences(ctx context.Context, db queryer) (Preferences, error) {
 		DepartmentFeed: true,
 		BasePath:       "/University",
 	}
-	err := db.QueryRow(ctx, `SELECT check_interval_minutes,max_concurrent_downloads,request_timeout_seconds,retry_attempts,notification_enabled=1,notification_on_error=1,global_feed_dept_enabled=1,global_feed_undergrad_enabled=1,global_feed_rector_enabled=1,semester_start,semester_end,download_base_path FROM app.preferences WHERE id=1`).
-		Scan(
-			&p.CheckInterval,
-			&p.Downloads,
-			&p.Timeout,
-			&p.Retries,
-			&p.Notifications,
-			&p.NotifyErrors,
-			&p.DepartmentFeed,
-			&p.UndergradFeed,
-			&p.RectorFeed,
-			&p.SemesterStart,
-			&p.SemesterEnd,
-			&p.BasePath,
-		)
-	if errors.Is(err, rdbms.ErrNoRows) {
-		err = nil
+	stored, err := db.Settings().LoadPreferences(ctx)
+	if database.IsNoRows(err) {
+		return p, nil
 	}
-	p.BasePath = normalizeBasePath(p.BasePath)
-	return p, err
+	if err != nil {
+		return p, err
+	}
+	p.CheckInterval = stored.CheckInterval
+	p.Downloads = stored.Downloads
+	p.Timeout = stored.Timeout
+	p.Retries = stored.Retries
+	p.Notifications = stored.Notifications
+	p.NotifyErrors = stored.NotifyErrors
+	p.DepartmentFeed = stored.DepartmentFeed
+	p.UndergradFeed = stored.UndergradFeed
+	p.RectorFeed = stored.RectorFeed
+	p.SemesterStart = stored.SemesterStart
+	p.SemesterEnd = stored.SemesterEnd
+	p.BasePath = normalizeBasePath(stored.BasePath)
+	return p, nil
 }
 func (s Service) Preferences(ctx context.Context) (Preferences, error) {
 	return readPreferences(ctx, s.Pool)
@@ -127,14 +124,8 @@ func normalizeBasePath(value string) string {
 	}
 	return identity.Path(value)
 }
-func flag(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
-}
 func (s Service) SavePreferences(ctx context.Context, form url.Values) error {
-	return s.mutate(ctx, "preferences", func(tx rdbms.Tx) error {
+	return s.mutate(ctx, "preferences", func(tx database.Tx) error {
 		p, err := readPreferences(ctx, tx)
 		if err != nil {
 			return err
@@ -142,37 +133,33 @@ func (s Service) SavePreferences(ctx context.Context, form url.Values) error {
 		if err = p.Apply(form); err != nil {
 			return Invalid{err.Error()}
 		}
-		_, err = tx.Exec(
-			ctx,
-			`INSERT INTO app.preferences(id,check_interval_minutes,max_concurrent_downloads,request_timeout_seconds,retry_attempts,notification_enabled,notification_on_error,global_feed_dept_enabled,global_feed_undergrad_enabled,global_feed_rector_enabled,semester_start,semester_end,download_base_path)
- VALUES(1,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(id) DO UPDATE SET check_interval_minutes=$1,max_concurrent_downloads=$2,request_timeout_seconds=$3,retry_attempts=$4,notification_enabled=$5,notification_on_error=$6,global_feed_dept_enabled=$7,global_feed_undergrad_enabled=$8,global_feed_rector_enabled=$9,semester_start=$10,semester_end=$11,download_base_path=$12`,
-			p.CheckInterval,
-			p.Downloads,
-			p.Timeout,
-			p.Retries,
-			flag(p.Notifications),
-			flag(p.NotifyErrors),
-			flag(p.DepartmentFeed),
-			flag(p.UndergradFeed),
-			flag(p.RectorFeed),
-			p.SemesterStart,
-			p.SemesterEnd,
-			identity.Encode(p.BasePath),
-		)
-		return err
+		return tx.Settings().SavePreferences(ctx, database.SettingsPreferences{
+			CheckInterval:  p.CheckInterval,
+			Downloads:      p.Downloads,
+			Timeout:        p.Timeout,
+			Retries:        p.Retries,
+			Notifications:  p.Notifications,
+			NotifyErrors:   p.NotifyErrors,
+			DepartmentFeed: p.DepartmentFeed,
+			UndergradFeed:  p.UndergradFeed,
+			RectorFeed:     p.RectorFeed,
+			SemesterStart:  p.SemesterStart,
+			SemesterEnd:    p.SemesterEnd,
+			BasePath:       identity.Encode(p.BasePath),
+		})
 	})
 }
 
 type Invalid struct{ Message string }
 
 func (e Invalid) Error() string { return e.Message }
-func (s Service) mutate(ctx context.Context, key string, fn func(rdbms.Tx) error) error {
+func (s Service) mutate(ctx context.Context, key string, fn func(database.Tx) error) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('settings:'||$1,0))`, key); err != nil {
+	if err = tx.Settings().LockSettingsSection(ctx, key); err != nil {
 		return err
 	}
 	if err = fn(tx); err != nil {

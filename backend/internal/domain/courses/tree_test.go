@@ -3,12 +3,12 @@ package courses
 import (
 	"testing"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/domain/queries"
 )
 
 func TestCatalogTreePreservesPathsAndRejectsDisconnectedNodes(t *testing.T) {
-	rows := []queries.TreeNodesRow{
+	rows := []database.TreeNode{
 		{
 			ID:        2,
 			ParentID:  new(int64(1)),
@@ -17,7 +17,7 @@ func TestCatalogTreePreservesPathsAndRejectsDisconnectedNodes(t *testing.T) {
 		},
 		{ID: 1, Name: "Root", LocalPath: "/Courses/101/eclass"},
 	}
-	files := []queries.TreeFilesRow{{NodeID: 2, Name: "file.txt", LocalPath: new("/Courses/101/eclass/notes/file.txt")}}
+	files := []database.TreeFile{{NodeID: 2, Name: "file.txt", LocalPath: new("/Courses/101/eclass/notes/file.txt")}}
 	root, err := assembleTree(rows, files)
 	if err != nil || root.Name != "Root" || len(root.Children) != 1 || root.Children[0].Name != "Σημειώσεις\x00" ||
 		len(root.Children[0].Files) != 1 {
@@ -28,8 +28,8 @@ func TestCatalogTreePreservesPathsAndRejectsDisconnectedNodes(t *testing.T) {
 	}
 	rows = append(
 		rows,
-		queries.TreeNodesRow{ID: 3, ParentID: new(int64(4))},
-		queries.TreeNodesRow{ID: 4, ParentID: new(int64(3))},
+		database.TreeNode{ID: 3, ParentID: new(int64(4))},
+		database.TreeNode{ID: 4, ParentID: new(int64(3))},
 	)
 	if _, err = assembleTree(rows, files); err == nil {
 		t.Fatal("unreachable cycle silently dropped files")

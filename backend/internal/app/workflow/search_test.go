@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/url"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -44,7 +43,7 @@ func searchChecks(t *testing.T, db *pgx.Conn, base, document string) {
 	apiJSON(t, "GET", base+"/api/knowledge/search?q=tree&mode=invalid", nil, 400, nil)
 }
 
-func readChecks(t *testing.T, pool rdbms.Pool, document string) {
+func readChecks(t *testing.T, pool *fixtureStore, document string) {
 	t.Helper()
 	reader := knowledge.Reader{Pool: pool}
 	ctx := context.Background()

@@ -5,25 +5,27 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
-	"tree-eclass/internal/integrations/inference"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/settings"
+	"tree-eclass/internal/integrations/inference"
 )
 
 var errStale = errors.New("analysis source or settings changed")
 
-func (s Service) readSnapshot(ctx context.Context, j job) (rdbms.Tx, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+func (s Service) readSnapshot(ctx context.Context, j job) (database.Tx, error) {
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
-	d, err := currentDocument(ctx, tx, j.Document.ID, false)
-	if err != nil || d.Hash != j.Document.Hash || d.Context != j.Document.Context {
+	current, err := tx.Analysis().CurrentDocument(ctx, j.Document.ID, false)
+	if err != nil {
 		tx.Rollback(ctx)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
+	}
+	d := fromAnalysisDocument(current)
+	if d.Hash != j.Document.Hash || d.Context != j.Document.Context {
+		tx.Rollback(ctx)
 		return nil, errStale
 	}
 	return tx, nil
@@ -34,75 +36,49 @@ func (s Service) publish(ctx context.Context, j job, result inference.Generated)
 		return err
 	}
 	defer tx.Rollback(ctx)
-	var course int64
-	err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 FOR UPDATE`, j.Document.Course).Scan(&course)
-	if errors.Is(err, rdbms.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
+	if err = tx.Analysis().LockCourseForClaim(ctx, j.Document.Course); err != nil {
+		if errors.Is(err, database.ErrNoRows) {
+			return nil
+		}
 		return err
 	}
-	d, err := currentDocument(ctx, tx, j.Document.ID, true)
-	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
+	current, err := tx.Analysis().CurrentDocument(ctx, j.Document.ID, true)
+	if err != nil && !errors.Is(err, database.ErrNoRows) {
 		return err
 	}
 	a, settingsErr := settings.ReadAI(ctx, tx)
 	if settingsErr != nil {
 		return settingsErr
 	}
+	d := document{}
+	if err == nil {
+		d = fromAnalysisDocument(current)
+	}
 	if err != nil || d.Hash != j.Document.Hash || d.Context != j.Document.Context || a.Model != j.Requested ||
 		!a.EnrichmentEnabled {
-		if err = finishFailure(ctx, tx, j, "pending", "Source or settings changed; analysis will be reconsidered.", time.Now(), true); err != nil {
+		if err = finishFailure(ctx, tx, j, "pending",
+			"Source or settings changed; analysis will be reconsidered.", time.Now(), true); err != nil {
 			return err
 		}
 		return tx.Commit(ctx)
 	}
-	raw, err := json.Marshal(result.Payload)
-	if err != nil {
-		return err
-	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if j.Page > 0 {
-		err = publishPage(ctx, tx, j, result.Model, string(raw), now)
-	} else {
-		err = publishDocument(ctx, tx, j, result.Model, string(raw), now)
-	}
-	if err != nil {
+	if err := publishReadyResult(ctx, tx, j, result); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
-func publishPage(ctx context.Context, tx rdbms.Tx, j job, model, payload, generatedAt string) error {
-	_, err := tx.Exec(
-		ctx,
-		`UPDATE knowledge.page_enrichments SET status='ready',model=$4,payload_json=$5,generated_at=$6,error=NULL,claimed_at=NULL WHERE document_id=$1 AND page_number=$2 AND claimed_at=$3 AND status='running' AND source_hash=$7 AND requested_model=$8 AND analysis_version=$9`,
-		j.Document.ID,
-		j.Page,
-		j.Claim,
-		model,
-		payload,
-		generatedAt,
-		j.Document.Hash,
-		j.Requested,
-		j.Version,
-	)
-	return err
-}
-func publishDocument(ctx context.Context, tx rdbms.Tx, j job, model, payload, generatedAt string) error {
-	_, err := tx.Exec(
-		ctx,
-		`UPDATE knowledge.document_enrichments SET status='ready',model=$3,requested_model=$4,payload_json=$5,generated_at=$6,error=NULL,claimed_at=NULL WHERE document_id=$1 AND claimed_at=$2 AND status='running' AND source_hash=$7 AND context_hash=$8 AND analysis_version=$9`,
-		j.Document.ID,
-		j.Claim,
-		model,
-		j.Requested,
-		payload,
-		generatedAt,
-		j.Document.Hash,
-		j.Document.Context,
-		j.Version,
-	)
-	return err
+
+func publishReadyResult(ctx context.Context, tx database.Tx, j job, result inference.Generated) error {
+	raw, err := json.Marshal(result.Payload)
+	if err != nil {
+		return err
+	}
+	return tx.Analysis().PublishReady(ctx, database.AnalysisPublishParams{
+		DocumentID: j.Document.ID, Page: j.Page, ClaimedAt: j.Claim,
+		Model: result.Model, Requested: j.Requested, Payload: string(raw),
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		Hash:        j.Document.Hash, ContextHash: j.Document.Context, Version: j.Version,
+	})
 }
 func (s Service) fail(ctx context.Context, j job, failure error) error {
 	status, message, delay, reset := "pending", "Analysis failed; no partial result was published.", 30*time.Second, false
@@ -127,30 +103,14 @@ func (s Service) fail(ctx context.Context, j job, failure error) error {
 	}
 	return tx.Commit(ctx)
 }
-func finishFailure(ctx context.Context, tx rdbms.Tx, j job, status, message string, at time.Time, reset bool) error {
-	if j.Page > 0 {
-		_, err := tx.Exec(
-			ctx,
-			`UPDATE knowledge.page_enrichments SET status=$4,error=$5,available_at=$6,claimed_at=NULL,attempts=CASE WHEN $7 THEN greatest(0,attempts-1) ELSE attempts END WHERE document_id=$1 AND page_number=$2 AND claimed_at=$3 AND status='running'`,
-			j.Document.ID,
-			j.Page,
-			j.Claim,
-			status,
-			message,
-			at.UTC().Format(time.RFC3339Nano),
-			reset,
-		)
-		return err
-	}
-	_, err := tx.Exec(
-		ctx,
-		`UPDATE knowledge.document_enrichments SET status=$3,error=$4,available_at=$5,claimed_at=NULL,attempts=CASE WHEN $6 THEN greatest(0,attempts-1) ELSE attempts END WHERE document_id=$1 AND claimed_at=$2 AND status='running'`,
-		j.Document.ID,
-		j.Claim,
-		status,
-		message,
-		at.UTC().Format(time.RFC3339Nano),
-		reset,
-	)
-	return err
+func finishFailure(ctx context.Context, tx database.Tx, j job, status, message string, at time.Time, reset bool) error {
+	return tx.Analysis().FinishClaim(ctx, database.AnalysisFinishParams{
+		DocumentID:  j.Document.ID,
+		Page:        j.Page,
+		ClaimedAt:   j.Claim,
+		Status:      status,
+		Error:       message,
+		AvailableAt: at.UTC().Format(time.RFC3339Nano),
+		Reset:       reset,
+	})
 }

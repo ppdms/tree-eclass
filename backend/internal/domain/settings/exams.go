@@ -3,8 +3,8 @@ package settings
 import (
 	"context"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type ExamPlan struct {
@@ -21,62 +21,52 @@ type ExamPlan struct {
 	Notes       *string `json:"planning_notes"`
 }
 
-type rowsQueryer interface {
-	Query(context.Context, string, ...any) (rdbms.Rows, error)
+func decodeExamPlan(plan database.SettingsExamPlan) ExamPlan {
+	out := ExamPlan{
+		CourseID:    plan.CourseID,
+		CourseName:  identity.Decode(plan.CourseName),
+		ExamAt:      plan.ExamAt,
+		Remaining:   plan.Remaining,
+		Importance:  plan.Importance,
+		MaxBlocks:   plan.MaxBlocks,
+		Enabled:     plan.Enabled,
+		Commitment:  plan.Commitment,
+		TargetGrade: plan.TargetGrade,
+	}
+	if plan.ShortName != nil {
+		text := identity.Decode(*plan.ShortName)
+		out.ShortName = &text
+	}
+	if plan.Notes != nil {
+		text := identity.Decode(*plan.Notes)
+		out.Notes = &text
+	}
+	return out
 }
 
-func ReadExamPlans(ctx context.Context, db rowsQueryer) ([]ExamPlan, error) {
-	query := examPlanSelect + `WHERE c.hidden=0 OR coalesce(p.enabled,0)=1 ORDER BY c.sort_order,c.id`
-	return readExamPlans(ctx, db, query)
+// ReadExamPlans accepts store or transaction operations so derived reads
+// share their source snapshot.
+func ReadExamPlans(ctx context.Context, db database.Operations) ([]ExamPlan, error) {
+	rows, err := db.Settings().ListExamPlans(ctx)
+	if err != nil {
+		return nil, err
+	}
+	plans := make([]ExamPlan, 0, len(rows))
+	for _, row := range rows {
+		plans = append(plans, decodeExamPlan(row))
+	}
+	return plans, nil
 }
 
-func ReadExamPlan(ctx context.Context, db rowsQueryer, course int64) (ExamPlan, error) {
-	rows, err := readExamPlans(ctx, db, examPlanSelect+`WHERE c.id=$1`, course)
+// ReadExamPlan accepts store or transaction operations so derived reads
+// share their source snapshot. It reports database.ErrNoRows when the
+// course commitment is absent.
+func ReadExamPlan(ctx context.Context, db database.Operations, course int64) (ExamPlan, error) {
+	row, err := db.Settings().GetExamPlan(ctx, course)
 	if err != nil {
 		return ExamPlan{}, err
 	}
-	if len(rows) == 0 {
-		return ExamPlan{}, rdbms.ErrNoRows
-	}
-	return rows[0], nil
-}
-
-func readExamPlans(ctx context.Context, db rowsQueryer, query string, args ...any) ([]ExamPlan, error) {
-	rows, err := db.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	plans := []ExamPlan{}
-	for rows.Next() {
-		var p ExamPlan
-		if err := rows.Scan(
-			&p.CourseID,
-			&p.CourseName,
-			&p.ExamAt,
-			&p.Remaining,
-			&p.Importance,
-			&p.MaxBlocks,
-			&p.Enabled,
-			&p.ShortName,
-			&p.Commitment,
-			&p.TargetGrade,
-			&p.Notes,
-		); err != nil {
-			return nil, err
-		}
-		p.CourseName = identity.Decode(p.CourseName)
-		for _, value := range []*string{p.ShortName, p.Notes} {
-			if value != nil {
-				*value = identity.Decode(*value)
-			}
-		}
-		plans = append(plans, p)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return plans, nil
+	return decodeExamPlan(row), nil
 }
 
 func (s Service) ExamPlans(ctx context.Context) ([]ExamPlan, error) {

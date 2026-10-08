@@ -1,14 +1,13 @@
 // Package storage owns database connections and SQL migration compatibility.
 //
-// It is the historical postgres entry point, now re-homed over the rdbms
-// abstraction: Open/Migrate/Require/Manifest resolve the driver from the
-// Config and delegate. Postgres behavior is unchanged (pool + ownership lock
-// + schema validation); sqlite opens a file database through the same calls.
+// Open selects a backend implementation whose typed operations satisfy domain
+// persistence ports. SQL, driver handles and result decoding stay in rdbms.
 package storage
 
 import (
 	"context"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/infrastructure/rdbms"
 )
 
@@ -16,11 +15,9 @@ import (
 // configure one type: DatabaseURL for postgres, SQLitePath for sqlite.
 type Config = rdbms.Config
 
-// Database is the open database handle. Pool is the driver-neutral query
-// surface every connector programs against; it replaces the former
-// *pgxpool.Pool field without changing call-site shapes.
+// Database owns an admitted backend and exposes SQL-free operation ports.
 type Database struct {
-	Pool rdbms.Pool
+	Pool database.Store
 }
 
 // ConfigForURL builds a postgres Config from a postgresql:// URL, preserving
@@ -51,8 +48,8 @@ func (d *Database) Close() {
 	d.Pool.Close()
 }
 
-// CheckOwner probes the ownership lock. It MUST stay on the dedicated owner
-// connection (enforced inside the driver), never a pooled query.
+// CheckOwner probes the admitted backend's exclusive ownership. PostgreSQL
+// probes its dedicated session; SQLite verifies its locked file identity.
 func (d *Database) CheckOwner(ctx context.Context) error {
 	return d.Pool.Ping(ctx)
 }

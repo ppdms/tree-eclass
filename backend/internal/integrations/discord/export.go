@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/messages"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func (s Service) export(
@@ -82,7 +82,7 @@ func (s Service) export(
 		source,
 		parts,
 		next,
-		func(tx rdbms.Tx) error { return checkSettings(ctx, tx, cfg) },
+		func(tx database.Tx) error { return checkSettings(ctx, tx, cfg) },
 	)
 }
 func (s Service) artifacts(ctx context.Context, dir string) ([]string, map[string]blob.Reference, error) {

@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Files struct {
@@ -26,7 +26,7 @@ func (s Service) Files(ctx context.Context, id int64) (Files, error) {
 		Expanded:  []string{},
 		Study:     map[string]int64{},
 	}
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return result, err
 	}
@@ -43,24 +43,15 @@ func (s Service) Files(ctx context.Context, id int64) (Files, error) {
 	return result, tx.Commit(ctx)
 }
 
-func (f *Files) history(ctx context.Context, tx rdbms.Tx, id int64) error {
-	rows, err := tx.Query(
-		ctx,
-		`SELECT DISTINCT file_path,change_type FROM app.file_versions WHERE course_id=$1 AND change_type IN('modified','deleted') ORDER BY file_path`,
-		id,
-	)
+func (f *Files) history(ctx context.Context, tx database.Tx, id int64) error {
+	changes, err := tx.Courses().FileVersionChanges(ctx, id)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 	deleted := map[string]bool{}
-	for rows.Next() {
-		var path, kind string
-		if err = rows.Scan(&path, &kind); err != nil {
-			return err
-		}
-		path = identity.Decode(path)
-		if kind == "modified" {
+	for _, change := range changes {
+		path := identity.Decode(change.FilePath)
+		if change.ChangeType == "modified" {
 			f.Versions = append(f.Versions, path)
 			continue
 		}
@@ -74,48 +65,27 @@ func (f *Files) history(ctx context.Context, tx rdbms.Tx, id int64) error {
 	}
 	slices.Sort(f.Deleted)
 	slices.Sort(f.Versions)
-	return rows.Err()
+	return nil
 }
 
-func (f *Files) preferences(ctx context.Context, tx rdbms.Tx, id int64) error {
-	rows, err := tx.Query(
-		ctx,
-		`SELECT folder_key,collapsed FROM app.collapsed_course_folders WHERE course_id=$1 ORDER BY folder_key`,
-		id,
-	)
+func (f *Files) preferences(ctx context.Context, tx database.Tx, id int64) error {
+	prefs, err := tx.Courses().FolderPreferences(ctx, id)
 	if err != nil {
 		return err
 	}
-	for rows.Next() {
-		var key string
-		var collapsed int64
-		if err = rows.Scan(&key, &collapsed); err != nil {
-			rows.Close()
-			return err
-		}
-		if collapsed != 0 {
-			f.Collapsed = append(f.Collapsed, identity.Decode(key))
+	for _, pref := range prefs {
+		if pref.Collapsed != 0 {
+			f.Collapsed = append(f.Collapsed, identity.Decode(pref.FolderKey))
 		} else {
-			f.Expanded = append(f.Expanded, identity.Decode(key))
+			f.Expanded = append(f.Expanded, identity.Decode(pref.FolderKey))
 		}
 	}
-	err = rows.Err()
-	rows.Close()
+	levels, err := tx.Courses().StudyLevelsForCourse(ctx, id)
 	if err != nil {
 		return err
 	}
-	rows, err = tx.Query(ctx, `SELECT file_path,level FROM app.file_study WHERE course_id=$1`, id)
-	if err != nil {
-		return err
+	for _, level := range levels {
+		f.Study[identity.Decode(level.FilePath)] = level.Level
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var path string
-		var level int64
-		if err = rows.Scan(&path, &level); err != nil {
-			return err
-		}
-		f.Study[identity.Decode(path)] = level
-	}
-	return rows.Err()
+	return nil
 }

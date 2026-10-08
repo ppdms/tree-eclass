@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"net/url"
 	"slices"
 	"strconv"
@@ -12,7 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 )
 
 //go:embed ai_defaults.json
@@ -283,12 +282,12 @@ func (s Service) AI(ctx context.Context) (AI, error) {
 	return ReadAI(ctx, s.Pool)
 }
 
-// ReadAI accepts a transaction so derived reads share their source snapshot.
-func ReadAI(ctx context.Context, db rdbms.DBTX) (AI, error) {
+// ReadAI accepts store or transaction operations so derived reads share
+// their source snapshot.
+func ReadAI(ctx context.Context, db database.Operations) (AI, error) {
 	result := DefaultAI()
-	var raw []byte
-	err := db.QueryRow(ctx, `SELECT value FROM app.native_settings WHERE key='ai'`).Scan(&raw)
-	if errors.Is(err, rdbms.ErrNoRows) {
+	raw, err := db.Settings().RawAISettings(ctx)
+	if database.IsNoRows(err) {
 		return result, nil
 	}
 	if err != nil {
@@ -319,10 +318,5 @@ func (s Service) SaveAI(ctx context.Context, a AI) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.Pool.Exec(
-		ctx,
-		`INSERT INTO app.native_settings(key,value) VALUES('ai',$1) ON CONFLICT(key) DO UPDATE SET value=$1,updated_at=now()`,
-		data,
-	)
-	return err
+	return s.Pool.Settings().SaveAISettings(ctx, data)
 }

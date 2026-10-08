@@ -2,14 +2,13 @@ package settings
 
 import (
 	"context"
-	"errors"
 	"net/url"
 	"strconv"
 	"strings"
 
 	"tree-eclass/internal/domain/commands"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Discord struct {
@@ -26,15 +25,22 @@ type DiscordChannel struct {
 	CourseID *int64 `json:"mapped_course_id"`
 }
 
-func readDiscord(ctx context.Context, db queryer) (Discord, error) {
+func readDiscord(ctx context.Context, db database.Operations) (Discord, error) {
 	d := Discord{Interval: 3600, Threads: "All", Media: true, Parallel: 1}
-	err := db.QueryRow(ctx, `SELECT enabled=1,token,interval_seconds,include_threads,media=1,parallel FROM app.discord_export_settings WHERE id=1`).
-		Scan(&d.Enabled, &d.Token, &d.Interval, &d.Threads, &d.Media, &d.Parallel)
-	if errors.Is(err, rdbms.ErrNoRows) {
-		err = nil
+	stored, err := db.Settings().LoadDiscordSettings(ctx)
+	if database.IsNoRows(err) {
+		return d, nil
 	}
-	d.Token = identity.Decode(d.Token)
-	return d, err
+	if err != nil {
+		return d, err
+	}
+	d.Enabled = stored.Enabled
+	d.Token = identity.Decode(stored.Token)
+	d.Interval = stored.Interval
+	d.Threads = stored.Threads
+	d.Media = stored.Media
+	d.Parallel = stored.Parallel
+	return d, nil
 }
 func (s Service) Discord(ctx context.Context) (Discord, error) { return readDiscord(ctx, s.Pool) }
 
@@ -69,7 +75,7 @@ func (s Service) SaveDiscord(ctx context.Context, form url.Values) error {
 			return Invalid{"Thread policy must be None, Active, or All"}
 		}
 	}
-	return s.mutate(ctx, "discord-export", func(tx rdbms.Tx) error {
+	return s.mutate(ctx, "discord-export", func(tx database.Tx) error {
 		old, err := readDiscord(ctx, tx)
 		if err != nil {
 			return err
@@ -80,18 +86,14 @@ func (s Service) SaveDiscord(ctx context.Context, form url.Values) error {
 		} else if value := strings.TrimSpace(form.Get("token")); value != "" {
 			token = value
 		}
-		_, err = tx.Exec(
-			ctx,
-			`INSERT INTO app.discord_export_settings(id,enabled,token,interval_seconds,include_threads,media,parallel) VALUES(1,$1,$2,$3,$4,$5,$6)
-ON CONFLICT(id) DO UPDATE SET enabled=$1,token=$2,interval_seconds=$3,include_threads=$4,media=$5,parallel=$6,updated_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')`,
-			flag(checked(form, "enabled")),
-			identity.Encode(token),
-			interval*60,
-			threads,
-			flag(checked(form, "media")),
-			parallel,
-		)
-		if err != nil {
+		if err := tx.Settings().SaveDiscordSettings(ctx, database.SettingsDiscord{
+			Enabled:  checked(form, "enabled"),
+			Token:    identity.Encode(token),
+			Interval: interval * 60,
+			Threads:  threads,
+			Media:    checked(form, "media"),
+			Parallel: parallel,
+		}); err != nil {
 			return err
 		}
 		_, err = commands.EnqueueTx(ctx, tx, "discord", "reload_export", map[string]any{}, true)
@@ -100,50 +102,28 @@ ON CONFLICT(id) DO UPDATE SET enabled=$1,token=$2,interval_seconds=$3,include_th
 }
 
 func (s Service) DiscordChannels(ctx context.Context) ([]DiscordChannel, error) {
-	rows, err := s.Pool.Query(
-		ctx,
-		`SELECT coalesce(r.root_channel_id,m.root_channel_id),coalesce(r.name,'Unavailable channel'),m.course_id FROM app.discord_root_channels r FULL JOIN app.discord_course_channels m ON m.root_channel_id=r.root_channel_id ORDER BY lower(coalesce(r.name,'Unavailable channel')),coalesce(r.root_channel_id,m.root_channel_id)`,
-	)
+	rows, err := s.Pool.Settings().ListDiscordChannels(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	channels := []DiscordChannel{}
-	for rows.Next() {
-		var c DiscordChannel
-		if err = rows.Scan(&c.RootID, &c.Name, &c.CourseID); err != nil {
-			return nil, err
-		}
-		c.Name = identity.Decode(c.Name)
-		channels = append(channels, c)
+	channels := make([]DiscordChannel, 0, len(rows))
+	for _, row := range rows {
+		channels = append(channels, DiscordChannel{
+			RootID:   row.RootID,
+			Name:     identity.Decode(row.Name),
+			CourseID: row.CourseID,
+		})
 	}
-	return channels, rows.Err()
+	return channels, nil
 }
 
 func (s Service) SaveDiscordMap(ctx context.Context, form url.Values) (int, error) {
 	count := 0
-	err := s.mutate(ctx, "discord-map", func(tx rdbms.Tx) error {
-		rows, err := tx.Query(
-			ctx,
-			`SELECT root_channel_id FROM app.discord_root_channels UNION SELECT root_channel_id FROM app.discord_course_channels`,
-		)
+	err := s.mutate(ctx, "discord-map", func(tx database.Tx) error {
+		roots, err := tx.Settings().ListDiscordMappingRoots(ctx)
 		if err != nil {
 			return err
 		}
-		var roots []string
-		for rows.Next() {
-			var v string
-			if err := rows.Scan(&v); err != nil {
-				rows.Close()
-				return err
-			}
-			roots = append(roots, v)
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return err
-		}
-		rows.Close()
 		mapping := map[string]int64{}
 		for _, root := range roots {
 			raw := strings.TrimSpace(form.Get("discord_course_" + root))
@@ -154,22 +134,15 @@ func (s Service) SaveDiscordMap(ctx context.Context, form url.Values) (int, erro
 			if err != nil || id < 1 {
 				return Invalid{"Invalid eClass course selection"}
 			}
-			var exists bool
-			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app.courses WHERE id=$1)`, id).Scan(&exists); err != nil {
-				return err
-			}
-			if !exists {
+			if _, err = tx.Courses().Course(ctx, id); database.IsNoRows(err) {
 				return Invalid{"Unknown eClass course selection"}
+			} else if err != nil {
+				return err
 			}
 			mapping[root] = id
 		}
-		if _, err = tx.Exec(ctx, `DELETE FROM app.discord_course_channels`); err != nil {
+		if err = tx.Settings().ReplaceDiscordMapping(ctx, mapping); err != nil {
 			return err
-		}
-		for root, id := range mapping {
-			if _, err = tx.Exec(ctx, `INSERT INTO app.discord_course_channels(root_channel_id,course_id) VALUES($1,$2)`, root, id); err != nil {
-				return err
-			}
 		}
 		count = len(mapping)
 		_, err = commands.EnqueueTx(ctx, tx, "discord", "reload_messages", map[string]any{}, true)

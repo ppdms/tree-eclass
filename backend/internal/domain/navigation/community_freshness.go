@@ -5,12 +5,12 @@ import (
 	"errors"
 	"strings"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/messages"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-func freshCommunity(ctx context.Context, tx rdbms.Tx, course int64, packet map[string]any) (string, error) {
+func freshCommunity(ctx context.Context, tx database.Tx, course int64, packet map[string]any) (string, error) {
 	source, _ := packet["source_snapshot"].(map[string]any)
 	captured := map[string]string{}
 	entries, _ := source["conversations"].([]any)
@@ -41,7 +41,7 @@ func freshCommunity(ctx context.Context, tx rdbms.Tx, course int64, packet map[s
 			return "cached_community_snapshot_missing", nil
 		}
 		hash, err := messages.Snapshot(ctx, tx, course, id)
-		if errors.Is(err, rdbms.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			return "cached_community_mapping_stale", nil
 		}
 		if err != nil {
@@ -59,7 +59,7 @@ func freshCommunity(ctx context.Context, tx rdbms.Tx, course int64, packet map[s
 // match exactly before a completed model result becomes usable.
 func ValidateEvidence(
 	ctx context.Context,
-	tx rdbms.Tx,
+	tx database.Tx,
 	course int64,
 	a settings.AI,
 	packet map[string]any,

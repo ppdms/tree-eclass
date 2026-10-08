@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/settings"
 )
 
-func settingsChecks(t *testing.T, pool rdbms.Pool, base string) {
+func settingsChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
 	settingsPreferencesChecks(t, pool, base)
 	settingsCredentialsChecks(t, pool, base)
@@ -18,7 +17,7 @@ func settingsChecks(t *testing.T, pool rdbms.Pool, base string) {
 	settingsPageChecks(t, pool, base)
 }
 
-func settingsPreferencesChecks(t *testing.T, pool rdbms.Pool, base string) {
+func settingsPreferencesChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
 	ctx := context.Background()
 	service := settings.Service{Pool: pool}
@@ -66,7 +65,7 @@ func settingsPreferencesChecks(t *testing.T, pool rdbms.Pool, base string) {
 	}
 }
 
-func settingsCredentialsChecks(t *testing.T, pool rdbms.Pool, base string) {
+func settingsCredentialsChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
 	ctx := context.Background()
 	service := settings.Service{Pool: pool}

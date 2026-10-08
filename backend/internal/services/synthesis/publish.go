@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
+
+	"tree-eclass/internal/domain/database"
 
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/settings"
@@ -18,22 +19,18 @@ func (s Service) publish(ctx context.Context, j job, result inference.Generated)
 		return err
 	}
 	defer tx.Rollback(ctx)
-	var locked int64
-	err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 FOR UPDATE`, j.Course).Scan(&locked)
-	if errors.Is(err, rdbms.ErrNoRows) {
+	if err = tx.Synthesis().LockCourseForPublish(ctx, j.Course); database.IsNoRows(err) {
 		return nil
-	}
-	if err != nil {
+	} else if err != nil {
 		return err
 	}
 	// Source writers increment this row in their transaction. Holding it through
 	// validation/publication serializes the visibility of a concurrent mutation.
-	if err = tx.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=$1 FOR UPDATE`, j.Course).Scan(&locked); err != nil {
+	if err = tx.Synthesis().LockGenerationForPublish(ctx, j.Course); err != nil {
 		return err
 	}
-	var active bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM `+table(j.Lane)+` WHERE id=$1 AND claimed_at=$2 AND status='running')`, j.ID, j.Claim).Scan(&active); err != nil ||
-		!active {
+	active, err := tx.Synthesis().ClaimActive(ctx, j.Lane, j.ID, j.Claim)
+	if err != nil || !active {
 		return err
 	}
 	a, err := settings.ReadAI(ctx, tx)
@@ -55,72 +52,42 @@ func (s Service) publish(ctx context.Context, j job, result inference.Generated)
 	}
 	return tx.Commit(ctx)
 }
-func replaceReady(ctx context.Context, tx rdbms.Tx, j job, result inference.Generated) error {
+
+func replaceReady(ctx context.Context, tx database.Tx, j job, result inference.Generated) error {
 	now := stamp(time.Now())
-	scope := `course_id=$1`
-	args := []any{j.Course, now}
-	if j.Lane == "practice" {
-		scope += ` AND unit_key=$3`
-		args = append(args, j.Unit)
-	}
-	if _, err := tx.Exec(ctx, `UPDATE `+table(j.Lane)+` SET status='stale',finished_at=$2 WHERE `+scope+` AND status='ready'`, args...); err != nil {
-		return err
-	}
 	raw, err := json.Marshal(result.Payload)
 	if err != nil {
 		return err
 	}
-	if j.Lane == "practice" {
+	if j.Lane == database.SynthesisPractice {
 		if err = insertQuestions(ctx, tx, j, raw); err != nil {
 			return err
 		}
 	}
-	_, err = tx.Exec(
-		ctx,
-		`UPDATE `+table(
-			j.Lane,
-		)+` SET status='ready',model=$3,payload_json=$4,generated_at=$5,finished_at=$5,claimed_at=NULL,error=NULL WHERE id=$1 AND claimed_at=$2 AND status='running'`,
-		j.ID,
-		j.Claim,
-		result.Model,
-		string(raw),
-		now,
-	)
-	return err
+	return tx.Synthesis().PublishReady(ctx, j.Lane, database.PublishParams{
+		ID: j.ID, CourseID: j.Course, UnitKey: j.Unit,
+		ClaimedAt: j.Claim, Model: result.Model, Payload: string(raw), ReadyAt: now,
+	})
 }
-func insertQuestions(ctx context.Context, tx rdbms.Tx, j job, raw []byte) error {
+
+func insertQuestions(ctx context.Context, tx database.Tx, j job, raw []byte) error {
 	var set blueprints.PracticeSet
 	if err := json.Unmarshal(raw, &set); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM knowledge.practice_questions WHERE set_id=$1`, j.ID); err != nil {
-		return err
-	}
-	for i, q := range set.Questions {
+	questions := make([]database.SynthesisQuestion, 0, len(set.Questions))
+	for _, q := range set.Questions {
 		payload, err := json.Marshal(q)
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(
-			ctx,
-			`INSERT INTO knowledge.practice_questions(question_id,set_id,course_id,unit_key,ordinal,question_key,response_mode,difficulty,estimated_minutes,payload_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			q.ID,
-			j.ID,
-			j.Course,
-			j.Unit,
-			i+1,
-			q.Key,
-			q.Mode,
-			q.Difficulty,
-			q.Minutes,
-			string(payload),
-		)
-		if err != nil {
-			return err
-		}
+		questions = append(questions, database.SynthesisQuestion{
+			ID: q.ID, Key: q.Key, Mode: q.Mode, Difficulty: q.Difficulty, Minutes: q.Minutes, Payload: string(payload),
+		})
 	}
-	return nil
+	return tx.Synthesis().ReplaceQuestions(ctx, j.Course, j.ID, j.Unit, questions)
 }
+
 func (s Service) fail(ctx context.Context, j job, failure error) error {
 	status, message, delay, reset := "pending", "Synthesis failed; no partial result was published.", 30*time.Second, false
 	var pause inference.Paused
@@ -144,19 +111,10 @@ func (s Service) fail(ctx context.Context, j job, failure error) error {
 	}
 	return tx.Commit(ctx)
 }
-func finish(ctx context.Context, tx rdbms.Tx, j job, status, message string, at time.Time, reset bool) error {
-	_, err := tx.Exec(
-		ctx,
-		`UPDATE `+table(
-			j.Lane,
-		)+` SET status=$3,error=$4,available_at=$5,claimed_at=NULL,attempts=CASE WHEN $6 THEN greatest(0,attempts-1) ELSE attempts END,finished_at=CASE WHEN $3 IN('stale','failed') THEN $7 ELSE NULL END WHERE id=$1 AND claimed_at=$2 AND status='running'`,
-		j.ID,
-		j.Claim,
-		status,
-		message,
-		stamp(at),
-		reset,
-		stamp(time.Now()),
-	)
-	return err
+
+func finish(ctx context.Context, tx database.Tx, j job, status, message string, at time.Time, reset bool) error {
+	return tx.Synthesis().FinishClaim(ctx, j.Lane, database.FinishParams{
+		ID: j.ID, ClaimedAt: j.Claim, Status: status, Error: message,
+		AvailableAt: stamp(at), Reset: reset, FinishedAt: stamp(time.Now()),
+	})
 }

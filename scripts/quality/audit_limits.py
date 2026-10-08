@@ -88,7 +88,7 @@ def source_files():
     return [
         Path(path)
         for path in out.stdout.splitlines()
-        if Path(path).suffix in SOURCE_SUFFIXES or Path(path).name in SPECIAL_FILES
+        if (Path(path).suffix in SOURCE_SUFFIXES or Path(path).name in SPECIAL_FILES) and Path(path).is_file()
     ]
 
 

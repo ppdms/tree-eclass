@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"tree-eclass/internal/domain/courses"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 )
 
 func pathID(w http.ResponseWriter, r *http.Request, key string) (int64, bool) {
@@ -87,7 +87,7 @@ func (s *Server) addCourse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.courseService().Add(r.Context(), body.CourseID, body.Name, body.ShortName); err != nil {
-		if rdbms.IsUniqueViolation(err) {
+		if database.IsUniqueViolation(err) {
 			writeFailure(w, http.StatusBadRequest, "Course already exists")
 			return
 		}
@@ -137,7 +137,7 @@ func (s *Server) reorderCourses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "course_ids": ids})
 }
 func (s *Server) courseError(w http.ResponseWriter, err error) {
-	if errors.Is(err, rdbms.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Course not found")
 		return
 	}

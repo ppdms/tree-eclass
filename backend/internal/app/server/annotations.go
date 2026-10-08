@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 
 	"tree-eclass/internal/domain/annotations"
 )
@@ -18,7 +18,7 @@ func (s *Server) annotationRoutes() {
 func (s *Server) annotationService() annotations.Service { return annotations.Service{Pool: s.db.Pool} }
 func (s *Server) requireStudyCourse(w http.ResponseWriter, r *http.Request, id int64) bool {
 	err := s.annotationService().RequireCourse(r.Context(), id)
-	if errors.Is(err, rdbms.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Course not found")
 		return false
 	}
@@ -41,7 +41,7 @@ func (s *Server) annotationError(w http.ResponseWriter, err error) {
 		writeFailure(w, http.StatusConflict, err.Error())
 		return
 	}
-	if errors.Is(err, rdbms.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Annotation or indexed document not found")
 		return
 	}

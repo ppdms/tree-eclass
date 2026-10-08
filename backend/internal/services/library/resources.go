@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"tree-eclass/internal/infrastructure/rdbms"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/messages"
 )
@@ -87,7 +87,7 @@ func (r *Registry) course(ctx context.Context, id int64) (map[string]any, error)
 			return c, nil
 		}
 	}
-	return nil, rdbms.ErrNoRows
+	return nil, database.ErrNoRows
 }
 
 func (r *Registry) guide(ctx context.Context, id int64) (any, error) {

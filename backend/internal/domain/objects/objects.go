@@ -4,11 +4,9 @@ package objects
 
 import (
 	"context"
-	"errors"
 	"io"
 
-	"tree-eclass/internal/domain/queries"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 )
 
 // MaxSourceBytes bounds any single source document accepted by the pipeline.
@@ -34,27 +32,13 @@ type Store interface {
 
 // RegisterObject refuses to relabel an old object ID after out-of-band object
 // loss and recreation. Existing document revisions still refer to that exact version.
-func RegisterObject(ctx context.Context, db rdbms.DBTX, object Reference) error {
-	n, err := queries.ForDBTX(db).
-		RegisterObject(
-			ctx,
-			queries.RegisterObjectParams{
-				ID:        object.SHA256,
-				Bucket:    object.Bucket,
-				Key:       object.Key,
-				VersionID: object.VersionID,
-				Sha256:    object.SHA256,
-				Bytes:     object.Bytes,
-				MediaType: object.MediaType,
-			},
-		)
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return errors.New(
-			"object catalog identity differs from storage; restore or reconcile the stored revision before publishing",
-		)
-	}
-	return nil
+func RegisterObject(ctx context.Context, ops database.Operations, object Reference) error {
+	return ops.Objects().RegisterObject(ctx, database.ObjectReference{
+		Bucket:    object.Bucket,
+		Key:       object.Key,
+		VersionID: object.VersionID,
+		SHA256:    object.SHA256,
+		Bytes:     object.Bytes,
+		MediaType: object.MediaType,
+	})
 }

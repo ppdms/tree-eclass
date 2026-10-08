@@ -9,9 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"time"
 	"tree-eclass/internal/app/server"
 	"tree-eclass/internal/infrastructure/quota"
@@ -36,11 +34,7 @@ func TestNativeAskCompleteAndAbandonedTurns(t *testing.T) {
 	ctx := t.Context()
 	conn, _ := startTestStorage(t, c)
 	defer conn.Close(ctx)
-	nativePool, err := pgxpool.New(ctx, c.databaseURL())
-	pool := rdbms.WrapPostgres(nativePool)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := newFixtureStore(t, ctx, c)
 	defer pool.Close()
 	entered, abandoned := make(chan struct{}), make(chan struct{})
 	endpoint := newAskFixtureServer(t, c, ctx, entered, abandoned)
@@ -201,7 +195,7 @@ func askRequest(t *testing.T, ctx context.Context, endpoint, body, token string)
 	}
 	return response
 }
-func historyChecks(t *testing.T, pool rdbms.Pool, store chat.Store, id int64) {
+func historyChecks(t *testing.T, pool *fixtureStore, store chat.Store, id int64) {
 	t.Helper()
 	ctx := t.Context()
 	for range 12 {
@@ -213,7 +207,7 @@ func historyChecks(t *testing.T, pool rdbms.Pool, store chat.Store, id int64) {
 	if err != nil || len(history) != 20 {
 		t.Fatal("history not bounded", len(history), err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE app.chat_messages SET content=repeat('x',400001) WHERE id=(SELECT max(id) FROM app.chat_messages WHERE conversation_id=$1)`, id); err != nil {
+	if _, err = pool.Native.Exec(ctx, `UPDATE app.chat_messages SET content=repeat('x',400001) WHERE id=(SELECT max(id) FROM app.chat_messages WHERE conversation_id=$1)`, id); err != nil {
 		t.Fatal(err)
 	}
 	history, err = store.History(ctx, id)
@@ -223,7 +217,7 @@ func historyChecks(t *testing.T, pool rdbms.Pool, store chat.Store, id int64) {
 	}
 }
 
-func quotaPersistenceChecks(t *testing.T, pool rdbms.Pool) {
+func quotaPersistenceChecks(t *testing.T, pool *fixtureStore) {
 	t.Helper()
 	calls := 0
 	fake := syntheticInference(
@@ -232,15 +226,15 @@ func quotaPersistenceChecks(t *testing.T, pool rdbms.Pool) {
 			return &inference.Error{Status: 429, Retryable: true, RetryAfter: time.Hour}
 		},
 	)
-	g := &quota.Guard{Store: quota.Postgres{Pool: pool}, Client: fake}
+	g := &quota.Guard{Store: quota.Store{Pool: pool}, Client: fake}
 	candidate := inference.Candidate{Provider: "huggingface", APIKey: "must-not-enter-database"}
 	_ = g.Stream(t.Context(), candidate, inference.Request{}, nil)
-	g = &quota.Guard{Store: quota.Postgres{Pool: pool}, Client: fake}
+	g = &quota.Guard{Store: quota.Store{Pool: pool}, Client: fake}
 	if err := g.Stream(t.Context(), candidate, inference.Request{}, nil); err == nil || calls != 1 {
 		t.Fatal("database pause lost on restart", calls, err)
 	}
 	var raw string
-	if err := pool.QueryRow(t.Context(), `SELECT value FROM knowledge.knowledge_state WHERE key='huggingface_quota'`).Scan(&raw); err != nil ||
+	if err := pool.Native.QueryRow(t.Context(), `SELECT value FROM knowledge.knowledge_state WHERE key='huggingface_quota'`).Scan(&raw); err != nil ||
 		strings.Contains(raw, candidate.APIKey) {
 		t.Fatal("unsafe quota persistence", err)
 	}

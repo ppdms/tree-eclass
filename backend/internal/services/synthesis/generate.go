@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"tree-eclass/internal/domain/blueprints"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/integrations/inference"
 )
 
@@ -39,7 +40,7 @@ func (s Service) generate(ctx context.Context, j job) (inference.Generated, erro
 		if err != nil {
 			return nil, err
 		}
-		if j.Lane == "practice" {
+		if j.Lane == database.SynthesisPractice {
 			p, err := blueprints.ValidatePractice(raw, j.Packet, j.Course, j.Unit)
 			if err != nil {
 				return nil, err
@@ -52,7 +53,7 @@ func (s Service) generate(ctx context.Context, j job) (inference.Generated, erro
 		}
 		return asMap(b)
 	}
-	return s.Generator.Generate(ctx, inference.AnalysisCandidates(j.AI, s.Keys, j.Lane), request, validate)
+	return s.Generator.Generate(ctx, inference.AnalysisCandidates(j.AI, s.Keys, j.Lane.String()), request, validate)
 }
 func prompt(j job) (inference.Request, map[string]string, error) {
 	// Clone before relabeling. Stored identities and their hashes never change.
@@ -88,7 +89,7 @@ func prompt(j job) (inference.Request, map[string]string, error) {
 		return inference.Request{}, nil, err
 	}
 	rules, shape, tag, extra, limit := courseRules, courseShape, "EVIDENCE_PACKET", "", 140000
-	if j.Lane == "practice" {
+	if j.Lane == database.SynthesisPractice {
 		rules, shape, tag, extra, limit = practiceRules, practiceShape, "PRACTICE_PACKET", "TARGET_QUESTION_COUNT: 8 (maximum 12; use fewer if evidence is thin)\n", 90000
 	}
 	raw, err := json.Marshal(packet)

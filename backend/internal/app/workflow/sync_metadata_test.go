@@ -5,21 +5,20 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/integrations/eclass"
 	"tree-eclass/internal/services/synchronization"
 )
 
-func syncMetadataChecks(t *testing.T, pool rdbms.Pool, service synchronization.Service) {
+func syncMetadataChecks(t *testing.T, pool *fixtureStore, service synchronization.Service) {
 	t.Helper()
 	ctx := t.Context()
 	ex := eclass.Exercise{ID: "42", Title: "Εργασία", SubmissionStatus: "pending", Grade: "7"}
 	if err := service.SaveExercises(ctx, 101, []eclass.Exercise{ex}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE app.exercises SET ignored=1 WHERE exercise_id='42'`); err != nil {
+	if _, err := pool.Native.Exec(ctx, `UPDATE app.exercises SET ignored=1 WHERE exercise_id='42'`); err != nil {
 		t.Fatal(err)
 	}
 	ex.Grade = "9"
@@ -29,7 +28,7 @@ func syncMetadataChecks(t *testing.T, pool rdbms.Pool, service synchronization.S
 	}
 	var grade string
 	var ignored int
-	if err := pool.QueryRow(ctx, `SELECT grade,ignored FROM app.exercises WHERE exercise_id='42'`).Scan(&grade, &ignored); err != nil ||
+	if err := pool.Native.QueryRow(ctx, `SELECT grade,ignored FROM app.exercises WHERE exercise_id='42'`).Scan(&grade, &ignored); err != nil ||
 		grade != "9" ||
 		ignored != 1 {
 		t.Fatal("exercise refresh lost grade or ignore", grade, ignored, err)
@@ -43,7 +42,7 @@ func syncMetadataChecks(t *testing.T, pool rdbms.Pool, service synchronization.S
 		t.Fatal("invalid observation committed")
 	}
 	var title string
-	if err := pool.QueryRow(ctx, `SELECT title FROM app.announcements WHERE announcement_id='stable-guid'`).Scan(&title); err != nil ||
+	if err := pool.Native.QueryRow(ctx, `SELECT title FROM app.announcements WHERE announcement_id='stable-guid'`).Scan(&title); err != nil ||
 		title != "Original" {
 		t.Fatal("failed feed partially replaced rows", title, err)
 	}
@@ -56,7 +55,7 @@ func syncMetadataChecks(t *testing.T, pool rdbms.Pool, service synchronization.S
 		t.Fatal("folder boundary", deleted, err)
 	}
 	var number string
-	if err = pool.QueryRow(ctx, `SELECT change_no FROM app.change_records ORDER BY id DESC LIMIT 1`).Scan(&number); err != nil {
+	if err = pool.Native.QueryRow(ctx, `SELECT change_no FROM app.change_records ORDER BY id DESC LIMIT 1`).Scan(&number); err != nil {
 		t.Fatal(err)
 	}
 	record, items, err := service.History(ctx, 101, number)
@@ -66,7 +65,7 @@ func syncMetadataChecks(t *testing.T, pool rdbms.Pool, service synchronization.S
 	syncAdmissionChecks(t, pool, service)
 }
 
-func syncAdmissionChecks(t *testing.T, pool rdbms.Pool, service synchronization.Service) {
+func syncAdmissionChecks(t *testing.T, pool *fixtureStore, service synchronization.Service) {
 	t.Helper()
 	ctx := t.Context()
 	var admitted atomic.Int32

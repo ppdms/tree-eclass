@@ -9,16 +9,16 @@ import (
 	"fmt"
 	"sort"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/integrations/inference"
 )
 
 var ErrArguments = errors.New("invalid tool arguments")
 
 type Registry struct {
-	Pool  rdbms.Pool
+	Pool  database.Store
 	tools map[string]registered
 }
 type registered struct {
@@ -27,7 +27,7 @@ type registered struct {
 	Handler    func(context.Context, json.RawMessage) (any, error)
 }
 
-func New(pool rdbms.Pool) (*Registry, error) {
+func New(pool database.Store) (*Registry, error) {
 	r := &Registry{Pool: pool, tools: map[string]registered{}}
 	for _, spec := range specifications() {
 		raw, err := json.Marshal(spec.Schema)

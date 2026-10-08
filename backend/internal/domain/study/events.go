@@ -8,9 +8,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/navigation"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 var ErrInvalidEvent = errors.New("invalid study event")
@@ -78,15 +78,14 @@ func (s Service) Record(ctx context.Context, in Event) (Event, error) {
 		return Event{}, err
 	}
 	defer tx.Rollback(ctx)
-	var course int64
-	if err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND (hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=app.courses.id AND p.enabled=1)) FOR SHARE`, in.CourseID).Scan(&course); err != nil {
+	if err = tx.Study().LockCourseForEvent(ctx, in.CourseID); err != nil {
 		return Event{}, err
 	}
 	in.Unit, err = navigation.AdmitAction(ctx, tx, in.CourseID, in.Action, in.Revision)
 	if err != nil {
 		return Event{}, err
 	}
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('study-event:'||$1,0))`, in.Key); err != nil {
+	if err = tx.Study().LockEventKey(ctx, in.Key); err != nil {
 		return Event{}, err
 	}
 	in.ID, err = storeEvent(ctx, tx, in)
@@ -100,20 +99,8 @@ func (s Service) Record(ctx context.Context, in Event) (Event, error) {
 	return in, tx.Commit(ctx)
 }
 
-func storeEvent(ctx context.Context, tx rdbms.Tx, in Event) (int64, error) {
-	var existing Event
-	err := tx.QueryRow(ctx, `SELECT id,course_id,action_id,plan_revision,unit_key,event_type,confidence,actual_minutes,note FROM app.study_unit_events WHERE idempotency_key=$1`, in.Key).
-		Scan(
-			&existing.ID,
-			&existing.CourseID,
-			&existing.Action,
-			&existing.Revision,
-			&existing.Unit,
-			&existing.Type,
-			&existing.Confidence,
-			&existing.Minutes,
-			&existing.Note,
-		)
+func storeEvent(ctx context.Context, ops database.Operations, in Event) (int64, error) {
+	existing, err := ops.Study().StudyEventByKey(ctx, in.Key)
 	if err == nil {
 		if existing.CourseID != in.CourseID || identity.Decode(existing.Action) != in.Action ||
 			identity.Decode(existing.Revision) != in.Revision ||
@@ -125,24 +112,18 @@ func storeEvent(ctx context.Context, tx rdbms.Tx, in Event) (int64, error) {
 			return 0, ErrEventConflict
 		}
 		return existing.ID, nil
-	} else if errors.Is(err, rdbms.ErrNoRows) {
-		err = tx.QueryRow(
-			ctx,
-			`INSERT INTO app.study_unit_events(course_id,action_id,plan_revision,unit_key,event_type,idempotency_key,confidence,actual_minutes,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-			in.CourseID,
-			identity.Encode(in.Action),
-			identity.Encode(in.Revision),
-			identity.Encode(in.Unit),
-			in.Type,
-			in.Key,
-			in.Confidence,
-			in.Minutes,
-			in.Note,
-		).Scan(&in.ID)
-		if err != nil {
-			return 0, err
-		}
-		return in.ID, nil
+	} else if errors.Is(err, database.ErrNoRows) {
+		return ops.Study().InsertStudyEvent(ctx, database.StudyEventParams{
+			CourseID:   in.CourseID,
+			Action:     identity.Encode(in.Action),
+			Revision:   identity.Encode(in.Revision),
+			Unit:       identity.Encode(in.Unit),
+			Type:       in.Type,
+			Key:        in.Key,
+			Confidence: in.Confidence,
+			Minutes:    in.Minutes,
+			Note:       in.Note,
+		})
 	}
 	return 0, err
 }

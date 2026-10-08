@@ -8,11 +8,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool rdbms.Pool }
+type Service struct{ Pool database.Store }
 
 var ErrConflict = errors.New("the study request conflicts with existing state")
 var ErrInvalid = errors.New("invalid study session fields")
@@ -43,51 +43,36 @@ type Start struct {
 	Planned                     *int64
 }
 
-// sessionColumns lists app.study_workspace_sessions in Session scan order
-// (see sessionRow). Queries select these explicit columns instead of
-// to_jsonb(row), which has no sqlite form and fails at prepare time.
-const sessionColumns = `id,course_id,action_id,unit_key,plan_revision,client_session_key,planned_minutes,active_seconds,visible_seconds,outcome,note,started_at,last_seen_at,ended_at,confidence,study_event_id`
-
-func sessionRow(row rdbms.Row) (Session, error) {
-	var result Session
-	if err := row.Scan(
-		&result.ID,
-		&result.CourseID,
-		&result.Action,
-		&result.Unit,
-		&result.Revision,
-		&result.Key,
-		&result.Planned,
-		&result.Active,
-		&result.Visible,
-		&result.Outcome,
-		&result.Note,
-		&result.Started,
-		&result.Seen,
-		&result.Ended,
-		&result.Confidence,
-		&result.EventID,
-	); err != nil {
-		return result, err
+func sessionFromRow(stored database.WorkspaceSession, err error) (Session, error) {
+	if err != nil {
+		return Session{}, err
 	}
-	for _, value := range []*string{&result.Action, &result.Unit, &result.Revision, result.Note} {
-		if value != nil {
-			*value = identity.Decode(*value)
-		}
+	result := Session{
+		ID:         stored.ID,
+		CourseID:   stored.CourseID,
+		Action:     identity.Decode(stored.Action),
+		Unit:       identity.Decode(stored.Unit),
+		Revision:   identity.Decode(stored.Revision),
+		Key:        stored.Key,
+		Planned:    stored.Planned,
+		Active:     stored.Active,
+		Visible:    stored.Visible,
+		Outcome:    stored.Outcome,
+		Started:    stored.Started,
+		Seen:       stored.Seen,
+		Ended:      stored.Ended,
+		Confidence: stored.Confidence,
+		EventID:    stored.EventID,
+	}
+	if stored.Note != nil {
+		note := identity.Decode(*stored.Note)
+		result.Note = &note
 	}
 	return result, nil
 }
 
-func lockSession(ctx context.Context, tx rdbms.Tx, id int64) (Session, error) {
-	// Serialize against course hiding/deletion before locking the session, in
-	// the same order as the rest of the learner mutations.
-	var course int64
-	if err := tx.QueryRow(ctx, `SELECT c.id FROM app.courses c JOIN app.study_workspace_sessions s ON s.course_id=c.id WHERE s.id=$1 AND (c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=c.id AND p.enabled=1)) FOR SHARE OF c`, id).Scan(&course); err != nil {
-		return Session{}, err
-	}
-	return sessionRow(
-		tx.QueryRow(ctx, `SELECT `+sessionColumns+` FROM app.study_workspace_sessions s WHERE s.id=$1 FOR UPDATE`, id),
-	)
+func lockSession(ctx context.Context, tx database.Tx, id int64) (Session, error) {
+	return sessionFromRow(tx.Workspace().LockSession(ctx, id))
 }
 
 func cleanNote(note *string) (*string, error) {

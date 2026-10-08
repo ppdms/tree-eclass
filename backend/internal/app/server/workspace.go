@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 
 	"tree-eclass/internal/domain/workspace"
 )
@@ -56,7 +56,7 @@ func (s *Server) workspaceError(w http.ResponseWriter, err error) {
 		writeFailure(w, http.StatusConflict, "This document is still being prepared for study. It opens automatically once indexing finishes.")
 	case errors.Is(err, workspace.ErrConflict):
 		writeFailure(w, http.StatusConflict, "This study request conflicts with the saved session or current roadmap")
-	case errors.Is(err, rdbms.ErrNoRows):
+	case errors.Is(err, database.ErrNoRows):
 		writeFailure(w, http.StatusNotFound, "Study session, document or course not found")
 	default:
 		s.internal(w, err)

@@ -7,8 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"tree-eclass/internal/domain/queries"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 )
 
 type Coverage struct {
@@ -44,15 +43,6 @@ type coveragePayload struct {
 	Levels       map[string]int64 `json:"study_levels"`
 }
 
-// shelfQuery loads one row per visible course with its cached coverage
-// payload, recent materials, staleness flag, and generation stamp.
-const shelfQuery = `SELECT c.id,c.name,c.webdav_folder,c.sort_order,c.hidden,c.short_name,p.payload_json,p.recent_json,p.generated_at,
- coalesce(p.generation<>g.generation OR p.learner_generation<>coalesce(l.generation,0),true),coalesce(p.generation,0)
- FROM app.courses c JOIN read_model.course_generation g ON g.course_id=c.id
- LEFT JOIN read_model.learner_generation l ON l.course_id=c.id
- LEFT JOIN read_model.course_coverage p ON p.course_id=c.id
- WHERE c.hidden=0 ORDER BY c.sort_order,c.id`
-
 // Shelf never rebuilds source facts. A committed source or learner mutation
 // immediately marks just that course stale until the processor catches up.
 func (s Service) Shelf(ctx context.Context) (Shelf, error) {
@@ -62,18 +52,14 @@ func (s Service) Shelf(ctx context.Context) (Shelf, error) {
 		Recent:  []RecentMaterial{},
 		Status:  "ready",
 	}
-	rows, err := s.Pool.Query(ctx, shelfQuery)
+	rows, err := s.Pool.Courses().ShelfRows(ctx)
 	if err != nil {
 		return result, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		if err = appendShelfRow(rows, &result); err != nil {
+	for _, row := range rows {
+		if err = appendShelfRow(row, &result); err != nil {
 			return result, err
 		}
-	}
-	if err = rows.Err(); err != nil {
-		return result, err
 	}
 	if result.Stale {
 		result.Status = "pending"
@@ -82,36 +68,23 @@ func (s Service) Shelf(ctx context.Context) (Shelf, error) {
 	return result, nil
 }
 
-// appendShelfRow scans one shelf row and merges its course, levels, and
-// materials into the result, tracking staleness and the oldest stamp.
-func appendShelfRow(rows rdbms.Rows, result *Shelf) error {
-	var row queries.AppCourse
-	var recent []byte
-	var payload *string
-	var stamp *string
-	var generation int64
-	var stale bool
-	if err := rows.Scan(
-		&row.ID, &row.Name, &row.WebdavFolder, &row.SortOrder,
-		&row.Hidden, &row.ShortName,
-		&payload, &recent, &stamp, &stale, &generation,
-	); err != nil {
-		return err
-	}
-	item, levels, materials, err := decodeCoverage(row, payload, recent)
+// appendShelfRow merges one shelf row's course, levels, and materials into
+// the result, tracking staleness and the oldest stamp.
+func appendShelfRow(row database.ShelfRow, result *Shelf) error {
+	item, levels, materials, err := decodeCoverage(row.Course, row.Payload, row.Recent)
 	if err != nil {
 		return err
 	}
-	item.Stale = stale
+	item.Stale = row.Stale
 	result.Courses = append(result.Courses, item)
 	result.Levels[strconv.FormatInt(item.ID, 10)] = levels
-	if !stale {
+	if !row.Stale {
 		result.Recent = append(result.Recent, materials...)
 	}
-	result.Stale = result.Stale || stale
-	result.Generation = max(result.Generation, generation)
-	if stamp != nil && (result.Generated == nil || *stamp < *result.Generated) {
-		result.Generated = stamp
+	result.Stale = result.Stale || row.Stale
+	result.Generation = max(result.Generation, row.Generation)
+	if row.Generated != nil && (result.Generated == nil || *row.Generated < *result.Generated) {
+		result.Generated = row.Generated
 	}
 	return nil
 }
@@ -136,7 +109,7 @@ func sortShelfRecent(recent []RecentMaterial) []RecentMaterial {
 }
 
 func decodeCoverage(
-	row queries.AppCourse, payload *string, recent []byte,
+	row database.AppCourse, payload *string, recent []byte,
 ) (Coverage, map[string]int64, []RecentMaterial, error) {
 	item := Coverage{}
 	p := coveragePayload{
@@ -161,9 +134,4 @@ func decodeCoverage(
 
 func emptyDistribution() map[string]int64 {
 	return map[string]int64{"0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
-}
-
-func visibleCourse(ctx context.Context, tx rdbms.Tx, id int64) error {
-	var found int64
-	return tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0`, id).Scan(&found)
 }

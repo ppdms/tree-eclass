@@ -4,29 +4,15 @@ import (
 	"context"
 	"slices"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/knowledge"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-func visible(ctx context.Context, tx rdbms.Tx, requested []int64) ([]int64, error) {
-	rows, err := tx.Query(ctx, `SELECT id FROM app.courses WHERE hidden=0 ORDER BY id`)
+func visible(ctx context.Context, tx database.Tx, requested []int64) ([]int64, error) {
+	ids, err := tx.Community().VisibleCourseIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	ids := []int64{}
-	for rows.Next() {
-		var v int64
-		if err := rows.Scan(&v); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, v)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	rows.Close()
 	if len(requested) == 0 {
 		return ids, nil
 	}
@@ -61,7 +47,7 @@ type Status struct {
 }
 
 func (s Reader) Status(ctx context.Context, requested []int64) (Status, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return Status{}, err
 	}
@@ -77,32 +63,25 @@ func (s Reader) Status(ctx context.Context, requested []int64) (Status, error) {
 	return result, tx.Commit(ctx)
 }
 
-func statusTx(ctx context.Context, tx rdbms.Tx, ids []int64) (Status, error) {
+func statusTx(ctx context.Context, tx database.Tx, ids []int64) (Status, error) {
 	result := Status{
 		Courses: []CourseStatus{},
 		Totals:  map[string]int64{"messages": 0, "conversations": 0, "sources": 0, "failed_sources": 0},
 		Mapped:  []int64{},
 		Notice:  CommunityNotice,
 	}
-	rows, err := tx.Query(ctx, `WITH sources AS (
- SELECT a.* FROM messages.archive_sources a JOIN app.discord_course_channels m ON m.root_channel_id=a.root_id AND m.course_id=a.course_id WHERE a.course_id=ANY($1::bigint[])
-), message_counts AS (
- SELECT m.course_id,count(*) n,max(m.timestamp) latest FROM messages.messages m JOIN sources s ON s.path=m.source_path AND s.course_id=m.course_id AND s.status='ready' GROUP BY m.course_id
-), conversation_counts AS (
- SELECT c.course_id,count(*) n FROM messages.conversations c JOIN sources s ON s.path=c.source_path AND s.course_id=c.course_id AND s.root_id=c.root_id::text AND s.status='ready' GROUP BY c.course_id
-), source_counts AS (
- SELECT course_id,count(*) n,count(*) FILTER(WHERE status='failed') failed FROM sources GROUP BY course_id
-), mapped AS (SELECT DISTINCT course_id FROM app.discord_course_channels WHERE course_id=ANY($1::bigint[]))
- SELECT m.course_id,coalesce(mc.n,0),coalesce(cc.n,0),coalesce(sc.n,0),coalesce(sc.failed,0),mc.latest
- FROM mapped m LEFT JOIN message_counts mc USING(course_id) LEFT JOIN conversation_counts cc USING(course_id) LEFT JOIN source_counts sc USING(course_id) ORDER BY m.course_id`, ids)
+	rows, err := tx.Community().CourseStatus(ctx, ids)
 	if err != nil {
 		return result, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var c CourseStatus
-		if err = rows.Scan(&c.CourseID, &c.Messages, &c.Conversations, &c.Sources, &c.FailedSources, &c.Latest); err != nil {
-			return result, err
+	for _, row := range rows {
+		c := CourseStatus{
+			CourseID:      row.CourseID,
+			Messages:      row.Messages,
+			Conversations: row.Conversations,
+			Sources:       row.Sources,
+			FailedSources: row.FailedSources,
+			Latest:        row.Latest,
 		}
 		result.Courses = append(result.Courses, c)
 		result.Mapped = append(result.Mapped, c.CourseID)
@@ -115,5 +94,5 @@ func statusTx(ctx context.Context, tx rdbms.Tx, ids []int64) (Status, error) {
 		}
 	}
 	result.Available = len(result.Mapped) > 0
-	return result, rows.Err()
+	return result, nil
 }

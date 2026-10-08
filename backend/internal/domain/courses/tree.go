@@ -4,9 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/domain/queries"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Node struct {
@@ -28,7 +27,7 @@ type File struct {
 }
 
 func (s Service) Tree(ctx context.Context, id int64) (*Node, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -40,30 +39,28 @@ func (s Service) Tree(ctx context.Context, id int64) (*Node, error) {
 	return root, tx.Commit(ctx)
 }
 
-func treeSnapshot(ctx context.Context, tx rdbms.Tx, id int64) (*Node, error) {
-	var found int64
-	if err := tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0`, id).Scan(&found); err != nil {
+func treeSnapshot(ctx context.Context, tx database.Tx, id int64) (*Node, error) {
+	if _, err := tx.Courses().VisibleCourse(ctx, id); err != nil {
 		return nil, err
 	}
-	q := queries.ForTx(tx)
-	nodes, err := q.TreeNodes(ctx, id)
+	nodes, err := tx.Courses().TreeNodes(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	files, err := q.TreeFiles(ctx, id)
+	files, err := tx.Courses().TreeFiles(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	return assembleTree(nodes, files)
 }
 
-func assembleTree(rows []queries.TreeNodesRow, files []queries.TreeFilesRow) (*Node, error) {
+func assembleTree(rows []database.TreeNode, files []database.TreeFile) (*Node, error) {
 	byID := map[int64]*Node{}
 	var root *Node
 	for _, row := range rows {
 		node := &Node{
 			Name:     identity.Decode(row.Name),
-			URL:      row.Url,
+			URL:      row.URL,
 			Path:     identity.Decode(row.LocalPath),
 			Children: []*Node{},
 			Files:    []File{},
@@ -95,20 +92,20 @@ func assembleTree(rows []queries.TreeNodesRow, files []queries.TreeFilesRow) (*N
 	return root, nil
 }
 
-func attachFiles(byID map[int64]*Node, files []queries.TreeFilesRow) error {
+func attachFiles(byID map[int64]*Node, files []database.TreeFile) error {
 	for _, row := range files {
 		node := byID[row.NodeID]
 		if node == nil {
 			return errors.New("course file belongs to an unavailable directory")
 		}
 		file := File{
-			URL:      row.Url,
+			URL:      row.URL,
 			Name:     identity.Decode(row.Name),
-			MD5:      row.Md5Hash,
+			MD5:      row.MD5Hash,
 			ETag:     row.Etag,
 			Updated:  row.LastUpdated,
 			Path:     row.LocalPath,
-			Redirect: row.RedirectUrl,
+			Redirect: row.RedirectURL,
 		}
 		if file.Path != nil {
 			text := identity.Decode(*file.Path)

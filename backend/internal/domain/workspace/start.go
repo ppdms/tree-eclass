@@ -7,9 +7,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/navigation"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func (s Service) Start(ctx context.Context, in Start) (Session, error) {
@@ -21,16 +21,13 @@ func (s Service) Start(ctx context.Context, in Start) (Session, error) {
 		return Session{}, err
 	}
 	defer tx.Rollback(ctx)
-	var id int64
-	if err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND (hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=app.courses.id AND p.enabled=1)) FOR SHARE`, in.CourseID).Scan(&id); err != nil {
+	if err = tx.Workspace().LockVisibleCourse(ctx, in.CourseID); err != nil {
 		return Session{}, err
 	}
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('workspace:'||$1,0))`, in.Key); err != nil {
+	if err = tx.Workspace().LockSessionKey(ctx, in.Key); err != nil {
 		return Session{}, err
 	}
-	existing, err := sessionRow(
-		tx.QueryRow(ctx, `SELECT `+sessionColumns+` FROM app.study_workspace_sessions s WHERE client_session_key=$1`, in.Key),
-	)
+	existing, err := sessionFromRow(tx.Workspace().SessionByKey(ctx, in.Key))
 	if err == nil {
 		if existing.CourseID != in.CourseID || existing.Action != in.Action || existing.Unit != in.Unit ||
 			existing.Revision != in.Revision ||
@@ -39,24 +36,24 @@ func (s Service) Start(ctx context.Context, in Start) (Session, error) {
 		}
 		return existing, tx.Commit(ctx)
 	}
-	if !errors.Is(err, rdbms.ErrNoRows) {
+	if !errors.Is(err, database.ErrNoRows) {
 		return Session{}, err
 	}
 	if err = validateAction(ctx, tx, in); err != nil {
 		return Session{}, err
 	}
-	row := tx.QueryRow(
-		ctx,
-		`INSERT INTO app.study_workspace_sessions(course_id,action_id,unit_key,plan_revision,client_session_key,planned_minutes,last_seen_at)
- VALUES($1,$2,$3,$4,$5,$6,to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')) RETURNING `+sessionColumns,
-		in.CourseID,
-		identity.Encode(in.Action),
-		identity.Encode(in.Unit),
-		identity.Encode(in.Revision),
-		in.Key,
-		in.Planned,
-	)
-	result, err := sessionRow(row)
+	stored, err := tx.Workspace().InsertSession(ctx, database.InsertSessionParams{
+		CourseID: in.CourseID,
+		Action:   identity.Encode(in.Action),
+		Unit:     identity.Encode(in.Unit),
+		Revision: identity.Encode(in.Revision),
+		Key:      in.Key,
+		Planned:  in.Planned,
+	})
+	if err != nil {
+		return Session{}, err
+	}
+	result, err := sessionFromRow(stored, nil)
 	if err != nil {
 		return Session{}, err
 	}
@@ -76,7 +73,7 @@ func (in *Start) validate() error {
 	return nil
 }
 
-func validateAction(ctx context.Context, tx rdbms.Tx, in Start) error {
+func validateAction(ctx context.Context, tx database.Tx, in Start) error {
 	if in.Action == "" {
 		if in.Unit != "" || in.Revision != "" {
 			return ErrInvalid

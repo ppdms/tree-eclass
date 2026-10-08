@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"tree-eclass/internal/domain/commands"
-	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/domain/database"
 )
 
 func (s Service) UpdateType(ctx context.Context, id int64, document, kind string) error {
@@ -17,18 +17,16 @@ func (s Service) UpdateType(ctx context.Context, id int64, document, kind string
 		return err
 	}
 	defer tx.Rollback(ctx)
-	var found int64
-	if err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0 FOR SHARE`, id).Scan(&found); err != nil {
+	if _, err = tx.Courses().LockCourseForWrite(ctx, id); err != nil {
 		return err
 	}
-	q := queries.ForTx(tx)
-	row, err := q.Material(ctx, queries.MaterialParams{CourseID: id, ID: document})
+	row, err := tx.Materials().GetMaterial(ctx, id, document)
 	if err != nil {
 		return err
 	}
-	if err = q.MaterialMetadata(
+	if err = tx.Materials().SetMaterialMetadata(
 		ctx,
-		queries.MaterialMetadataParams{
+		database.MaterialMetadataParams{
 			CourseID:     id,
 			SourcePath:   row.NormalizedPath,
 			MaterialType: kind,

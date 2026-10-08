@@ -6,13 +6,13 @@ import (
 	"path"
 	"strings"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/integrations/pdfdiff"
 )
 
-func saveChanges(ctx context.Context, tx rdbms.Tx, courseID int64, changes []Change) error {
+func saveChanges(ctx context.Context, tx database.Tx, courseID int64, changes []Change) error {
 	if len(changes) == 0 {
 		return nil
 	}
@@ -22,16 +22,8 @@ func saveChanges(ctx context.Context, tx rdbms.Tx, courseID int64, changes []Cha
 		return err
 	}
 	changeNo := time.Now().In(zone).Format("2006-01-02T15:04:05.000000000")
-	var record int64
-	err = tx.QueryRow(
-		ctx,
-		`INSERT INTO app.change_records(course_id,change_no,message,changes_count) VALUES($1,$2,$3,$4) RETURNING id`,
-		courseID,
-		changeNo,
-		fmt.Sprintf("+ %d − %d ~ %d", counts.Added, counts.Deleted, counts.Modified),
-		len(changes),
-	).
-		Scan(&record)
+	record, err := tx.Sync().InsertChangeRecord(ctx, courseID, changeNo,
+		fmt.Sprintf("+ %d − %d ~ %d", counts.Added, counts.Deleted, counts.Modified), len(changes))
 	if err != nil {
 		return err
 	}
@@ -40,20 +32,18 @@ func saveChanges(ctx context.Context, tx rdbms.Tx, courseID int64, changes []Cha
 		if err != nil {
 			return err
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO app.change_history(course_id,change_type,file_path) VALUES($1,$2,$3)`, courseID, change.Type, identity.Encode(change.Path)); err != nil {
+		if err = tx.Sync().InsertChangeHistory(ctx, courseID, change.Type, identity.Encode(change.Path)); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(
-			ctx,
-			`INSERT INTO app.change_record_items(change_record_id,change_type,file_path,display_name,redirect_url,pdf_difference_id,diff_webdav_path) VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7)`,
-			record,
-			change.Type,
-			identity.Encode(change.Path),
-			identity.Encode(change.Name),
-			change.Redirect,
-			difference,
-			alias,
-		); err != nil {
+		if err = tx.Sync().InsertChangeRecordItem(ctx, database.SyncChangeRecordItemInput{
+			RecordID:   record,
+			Type:       change.Type,
+			Path:       identity.Encode(change.Path),
+			Name:       identity.Encode(change.Name),
+			Redirect:   change.Redirect,
+			Difference: difference,
+			DiffAlias:  alias,
+		}); err != nil {
 			return err
 		}
 		if change.Previous != nil {
@@ -67,7 +57,7 @@ func saveChanges(ctx context.Context, tx rdbms.Tx, courseID int64, changes []Cha
 
 func archiveVersion(
 	ctx context.Context,
-	tx rdbms.Tx,
+	tx database.Tx,
 	courseID int64,
 	change Change,
 	difference, diffAlias *string,
@@ -80,23 +70,20 @@ func archiveVersion(
 		alias = &value
 	}
 	kind := strings.TrimSuffix(change.Type, "_file")
-	_, err := tx.Exec(
-		ctx,
-		`INSERT INTO app.file_versions(course_id,file_path,version_webdav_path,change_type,display_name,redirect_url,revision_id,pdf_difference_id,diff_webdav_path) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),$7,$8,$9)`,
-		courseID,
-		identity.Encode(change.Path),
-		alias,
-		kind,
-		identity.Encode(f.Name),
-		f.Redirect,
-		revision,
-		difference,
-		diffAlias,
-	)
-	return err
+	return tx.Sync().InsertFileVersion(ctx, database.SyncFileVersionInput{
+		CourseID:    courseID,
+		Path:        identity.Encode(change.Path),
+		StoragePath: alias,
+		Type:        kind,
+		Name:        identity.Encode(f.Name),
+		Redirect:    f.Redirect,
+		Revision:    revision,
+		Difference:  difference,
+		DiffAlias:   diffAlias,
+	})
 }
 
-func queueDifference(ctx context.Context, tx rdbms.Tx, course int64, change Change) (*string, *string, error) {
+func queueDifference(ctx context.Context, tx database.Tx, course int64, change Change) (*string, *string, error) {
 	old, next := change.Previous, change.Current
 	if change.Type != "modified_file" || old == nil || next == nil || old.Object == nil || next.Object == nil ||
 		!strings.EqualFold(path.Ext(old.Name), ".pdf") ||

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Finish struct {
@@ -65,7 +65,7 @@ func (s Service) Finish(ctx context.Context, in Finish) (FinishResult, error) {
 	return result, tx.Commit(ctx)
 }
 
-func closeSession(ctx context.Context, tx rdbms.Tx, session Session, in Finish) (Session, error) {
+func closeSession(ctx context.Context, tx database.Tx, session Session, in Finish) (Session, error) {
 	var event *int64
 	var note *string
 	if in.Note != nil {
@@ -82,34 +82,27 @@ func closeSession(ctx context.Context, tx rdbms.Tx, session Session, in Finish) 
 		if minutes > 0 {
 			measured = &minutes
 		}
-		var id int64
-		err := tx.QueryRow(ctx, `INSERT INTO app.study_unit_events(course_id,plan_revision,action_id,unit_key,event_type,idempotency_key,confidence,actual_minutes,note)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-			session.CourseID,
-			identity.Encode(session.Revision),
-			identity.Encode(session.Action),
-			identity.Encode(session.Unit),
-			kind,
-			fmt.Sprintf("workspace:%d:%s", session.ID, kind),
-			in.Confidence,
-			measured,
-			note,
-		).
-			Scan(&id)
+		id, err := tx.Study().InsertStudyEvent(ctx, database.StudyEventParams{
+			CourseID:   session.CourseID,
+			Action:     identity.Encode(session.Action),
+			Revision:   identity.Encode(session.Revision),
+			Unit:       identity.Encode(session.Unit),
+			Type:       kind,
+			Key:        fmt.Sprintf("workspace:%d:%s", session.ID, kind),
+			Confidence: in.Confidence,
+			Minutes:    measured,
+			Note:       note,
+		})
 		if err != nil {
 			return session, err
 		}
 		event = &id
 	}
-	return sessionRow(
-		tx.QueryRow(
-			ctx,
-			`UPDATE app.study_workspace_sessions SET outcome=$2,note=$3,confidence=$4,study_event_id=$5,ended_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS') WHERE id=$1 RETURNING `+sessionColumns,
-			session.ID,
-			in.Outcome,
-			note,
-			in.Confidence,
-			event,
-		),
-	)
+	return sessionFromRow(tx.Workspace().CloseSession(ctx, database.CloseSessionParams{
+		ID:         session.ID,
+		Outcome:    in.Outcome,
+		Note:       note,
+		Confidence: in.Confidence,
+		EventID:    event,
+	}))
 }

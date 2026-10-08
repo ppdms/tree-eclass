@@ -5,36 +5,28 @@ import (
 	"slices"
 	"time"
 
+	"tree-eclass/internal/domain/courses"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Priorities schedules arbitrary MCP course subsets from already-published
 // navigation content. It never rebuilds source evidence or invokes a provider.
 // Both source admission and the pure scheduler share a read-only snapshot.
 func (s Service) Priorities(ctx context.Context, requested []int64, limit int, now time.Time) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	rows, err := tx.Query(ctx, `SELECT id FROM app.courses WHERE hidden=0 ORDER BY id`)
+	visible, _, err := courses.SnapshotCourses(ctx, tx, nil)
 	if err != nil {
 		return nil, err
 	}
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
+	ids := make([]int64, 0, len(visible))
+	for _, course := range visible {
+		ids = append(ids, course.ID)
 	}
 	for _, id := range requested {
 		if !slices.Contains(ids, id) {

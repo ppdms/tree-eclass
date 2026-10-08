@@ -5,15 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
-
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"tree-eclass/internal/domain/courses"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Increment when the scheduler/intelligence serialization or rules change.
@@ -31,16 +30,16 @@ func studyDay(now time.Time) time.Time {
 // A fingerprint of transactionally updated per-course generations avoids a
 // global write lock. Readers compare it in the same snapshot as their payload;
 // an older publication can never masquerade as current after a committed write.
-func fingerprint(ctx context.Context, tx rdbms.Tx, now time.Time) (string, settings.AI, error) {
-	a, err := settings.ReadAI(ctx, tx)
+func fingerprint(ctx context.Context, ops database.Operations, now time.Time) (string, settings.AI, error) {
+	a, err := settings.ReadAI(ctx, ops)
 	if err != nil {
 		return "", a, err
 	}
-	planner, err := settings.ReadPlanner(ctx, tx)
+	planner, err := settings.ReadPlanner(ctx, ops)
 	if err != nil {
 		return "", a, err
 	}
-	sources, err := marshalSources(ctx, tx)
+	sources, err := marshalSources(ctx, ops)
 	if err != nil {
 		return "", a, err
 	}
@@ -56,38 +55,22 @@ func fingerprint(ctx context.Context, tx rdbms.Tx, now time.Time) (string, setti
 }
 
 // marshalSources assembles the per-course generation rows the fingerprint
-// hashes. Explicit columns replace the old
-// jsonb_agg(jsonb_build_array(...) ORDER BY c.id). Element order mirrors the
-// old build_array argument order, so fingerprints stay stable.
-const sourcesQuery = `SELECT c.id,g.generation,coalesce(l.generation,0),n.source_generation,n.config_generation,n.content_id
- FROM app.courses c JOIN read_model.course_generation g ON g.course_id=c.id
- LEFT JOIN read_model.learner_generation l ON l.course_id=c.id LEFT JOIN read_model.navigation n ON n.course_id=c.id
- WHERE c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=c.id AND p.enabled=1) ORDER BY c.id`
-
-func marshalSources(ctx context.Context, tx rdbms.Tx) ([]byte, error) {
-	rows, err := tx.Query(ctx, sourcesQuery)
+// hashes. Element order mirrors the old build_array argument order, so
+// fingerprints stay stable.
+func marshalSources(ctx context.Context, ops database.Operations) ([]byte, error) {
+	rows, err := ops.Study().ListSourceRows(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	sources := []json.RawMessage{}
-	for rows.Next() {
-		var id, generation, learner int64
-		var source *int64
-		var config, content *string
-		if err = rows.Scan(&id, &generation, &learner, &source, &config, &content); err != nil {
-			return nil, err
-		}
+	for _, row := range rows {
 		elem, err := json.Marshal([]any{
-			id, generation, learner, nullableInt(source), nullableText(config), nullableText(content),
+			row.Course, row.CourseGen, row.Learner, nullableInt(row.Source), nullableText(row.Config), nullableText(row.Content),
 		})
 		if err != nil {
 			return nil, err
 		}
 		sources = append(sources, elem)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
 	}
 	return json.Marshal(sources)
 }
@@ -109,7 +92,7 @@ func nullableText(raw *string) any {
 }
 
 func (s Service) Intelligence(ctx context.Context, selected *int64, now time.Time) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +104,7 @@ func (s Service) Intelligence(ctx context.Context, selected *int64, now time.Tim
 	return view, tx.Commit(ctx)
 }
 
-func intelligenceTx(ctx context.Context, tx rdbms.Tx, selected *int64, now time.Time) (map[string]any, error) {
+func intelligenceTx(ctx context.Context, tx database.Tx, selected *int64, now time.Time) (map[string]any, error) {
 	var err error
 	if _, _, err = courses.SnapshotCourses(ctx, tx, selected); err != nil {
 		return nil, err
@@ -134,18 +117,15 @@ func intelligenceTx(ctx context.Context, tx rdbms.Tx, selected *int64, now time.
 	if selected != nil {
 		scope = "course:" + strconv.FormatInt(*selected, 10)
 	}
-	var raw, stored, status, generated string
-	var generation int64
-	err = tx.QueryRow(ctx, `SELECT payload_json,source_fingerprint,status,generated_at,generation FROM read_model.study_metrics WHERE scope=$1 AND octet_length(payload_json)<=16777216`, scope).
-		Scan(&raw, &stored, &status, &generated, &generation)
-	if errors.Is(err, rdbms.ErrNoRows) || err == nil && stored != fingerprint {
+	metric, err := tx.Study().StudyMetric(ctx, scope)
+	if errors.Is(err, database.ErrNoRows) || err == nil && metric.SourceFingerprint != fingerprint {
 		return pendingIntelligence(), nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	view := map[string]any{}
-	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder := json.NewDecoder(strings.NewReader(metric.Payload))
 	decoder.UseNumber()
 	if err = decoder.Decode(&view); err != nil {
 		return nil, err
@@ -153,14 +133,18 @@ func intelligenceTx(ctx context.Context, tx rdbms.Tx, selected *int64, now time.
 	if view == nil {
 		return nil, fmt.Errorf("invalid study projection payload")
 	}
-	view["generated_at"], view["generation"], view["stale"], view["status"], view["study_projection_status"] = generated, generation, false, status, status
+	stamp := map[string]any{"generated_at": metric.GeneratedAt, "generation": metric.Generation,
+		"stale": false, "status": metric.Status, "study_projection_status": metric.Status}
+	for key, value := range stamp {
+		view[key] = value
+	}
 	return view, nil
 }
 
 // Full keeps the compatibility response's mutable snapshot and derived-state
 // freshness decision in one database snapshot.
 func (s Service) Full(ctx context.Context, selected *int64, now time.Time) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return nil, err
 	}

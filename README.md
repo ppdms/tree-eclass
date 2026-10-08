@@ -39,15 +39,22 @@ helper resources are bounded, and Python has no persistent API or worker process
 Stable releases contain the compiled Go application, frontend, Python interpreter,
 locked parser packages and relocated native document helpers.
 
+Application and domain code use typed, SQL-free persistence operations from
+`backend/internal/domain/database`. Deployment configuration selects either
+`database_url` (PostgreSQL) or `sqlite_path` (SQLite), never both. Each adapter in
+`backend/internal/infrastructure/rdbms` owns its directly written native SQL;
+there is no PostgreSQL-to-SQLite translation or PostgreSQL-function emulation.
+Transactions span operation groups, with backend-neutral records and errors.
+
 ## Local development and regular use
 
 The local machine owns the database and the objects store. Startup uses no login services,
 container engine, or external Git hosting. The private `laptop` Git remote is a
 local bare repository; only sanitized, public-safe history is published.
 
-On a Linux server the same application runs from `Dockerfile` next to PostgreSQL
-18; the container contract (commands, runtime configuration, objects directory,
-`/jobs`, health) is documented in
+On a Linux server the same application runs from `Dockerfile` with SQLite or
+PostgreSQL selected by configuration. The container contract (commands, runtime
+configuration, objects directory, `/jobs`, health) is documented in
 [docs/linux-deployment.md](docs/linux-deployment.md).
 
 ### Daily Mac start and stop

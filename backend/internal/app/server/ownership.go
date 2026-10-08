@@ -3,18 +3,12 @@ package server
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
-
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-// Ownership watches the exclusive database lock. Postgres probes the lock on
-// a dedicated owner connection, so a failure means a real takeover and must
-// stop the server. Sqlite serializes all work on one connection: a slow
-// projection build or upstream crawl can hold it past the probe timeout
-// without any takeover. Killing the server for that turns every slow query
-// into a crash loop, so sqlite only logs and keeps serving.
+// Ownership watches the exclusive database lock. Store.Ping probes the
+// owning session or locked file identically on every backend, so any probe
+// failure means real ownership loss and must stop the server.
 func (s *Server) watchOwnership(ctx context.Context) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -30,9 +24,6 @@ func (s *Server) watchOwnership(ctx context.Context) error {
 		if err == nil {
 			continue
 		}
-		if _, ok := rdbms.UnwrapPostgres(s.db.Pool); ok {
-			return fmt.Errorf("runtime database ownership lost: %w", err)
-		}
-		slog.Warn("database probe slow; continuing without ownership check", "error", err)
+		return fmt.Errorf("runtime database ownership lost: %w", err)
 	}
 }

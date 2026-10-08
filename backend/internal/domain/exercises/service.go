@@ -2,15 +2,14 @@ package exercises
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
 	"time"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool rdbms.Pool }
+type Service struct{ Pool database.Store }
 
 // Detail is a pointer so summary responses omit descriptions instead of fetching
 // and retaining every potentially large assignment body.
@@ -40,58 +39,47 @@ type Exercise struct {
 	timestamp          int64
 }
 
-const summaryColumns = `e.id,e.course_id,c.name AS course_name,e.exercise_id,e.title,e.link,
- e.deadline,e.submission_status,e.grade,e.max_grade,e.ignored,e.fetched_at`
-const detailColumns = `,e.description,e.work_type,e.start_date,e.assignment_file_name,
- e.assignment_file_url,e.grade_comments,e.submission_date`
+func exercise(row database.ExerciseRow) Exercise {
+	result := Exercise{
+		ID:                 row.ID,
+		CourseID:           row.CourseID,
+		CourseName:         identity.Decode(row.CourseName),
+		ExerciseID:         identity.Decode(row.ExerciseID),
+		Title:              identity.Decode(row.Title),
+		Link:               identity.Decode(row.Link),
+		Ignored:            row.Ignored,
+		Deadline:           decodeField(row.Deadline),
+		SubmissionStatus:   decodeField(row.SubmissionStatus),
+		Grade:              decodeField(row.Grade),
+		MaxGrade:           decodeField(row.MaxGrade),
+		FetchedAt:          decodeField(row.FetchedAt),
+		Description:        decodeField(row.Description),
+		WorkType:           decodeField(row.WorkType),
+		StartDate:          decodeField(row.StartDate),
+		AssignmentFileName: decodeField(row.AssignmentName),
+		AssignmentFileURL:  decodeField(row.AssignmentURL),
+		GradeComments:      decodeField(row.GradeComments),
+		SubmissionDate:     decodeField(row.SubmissionDate),
+	}
+	return result
+}
 
-func decode(raw []byte) (Exercise, error) {
-	var result Exercise
-	err := json.Unmarshal(raw, &result)
-	for _, field := range []*string{&result.CourseName, &result.ExerciseID, &result.Title, &result.Link} {
-		*field = identity.Decode(*field)
+func decodeField(value *string) *string {
+	if value == nil {
+		return nil
 	}
-	for _, field := range []*string{
-		result.Deadline,
-		result.SubmissionStatus,
-		result.Grade,
-		result.MaxGrade,
-		result.FetchedAt,
-		result.Description,
-		result.WorkType,
-		result.StartDate,
-		result.AssignmentFileName,
-		result.AssignmentFileURL,
-		result.GradeComments,
-		result.SubmissionDate,
-	} {
-		if field != nil {
-			*field = identity.Decode(*field)
-		}
-	}
-	return result, err
+	text := identity.Decode(*value)
+	return &text
 }
 
 func (s Service) List(ctx context.Context, ignored, details bool, now time.Time) ([]Exercise, error) {
-	columns := summaryColumns
-	if details {
-		columns += detailColumns
-	}
-	rows, err := s.Pool.Query(
-		ctx,
-		`SELECT `+columns+` FROM app.exercises e JOIN app.courses c ON c.id=e.course_id WHERE c.hidden=0 AND ($1 OR e.ignored=0) ORDER BY e.course_id,e.id DESC LIMIT 200`,
-		ignored,
-	)
+	rows, err := s.Pool.Exercises().List(ctx, ignored, details)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := make([]Exercise, 0)
-	for rows.Next() {
-		item, err := scanExercise(rows, details)
-		if err != nil {
-			return nil, err
-		}
+	result := make([]Exercise, 0, len(rows))
+	for _, row := range rows {
+		item := exercise(row)
 		item.annotate(now)
 		result = append(result, item)
 	}
@@ -102,36 +90,7 @@ func (s Service) List(ctx context.Context, ignored, details bool, now time.Time)
 		}
 		return result[i].timestamp < result[j].timestamp
 	})
-	return result, rows.Err()
-}
-
-// scanExercise reads one explicit-column exercise row in summaryColumns (+
-// detailColumns when details) order and decodes it the way the old
-// row_to_json blob decoded.
-func scanExercise(rows rdbms.Rows, details bool) (Exercise, error) {
-	var item Exercise
-	var ignored int64
-	args := []any{
-		&item.ID, &item.CourseID, &item.CourseName, &item.ExerciseID,
-		&item.Title, &item.Link, &item.Deadline, &item.SubmissionStatus,
-		&item.Grade, &item.MaxGrade, &ignored, &item.FetchedAt,
-	}
-	if details {
-		args = append(args,
-			&item.Description, &item.WorkType, &item.StartDate,
-			&item.AssignmentFileName, &item.AssignmentFileURL,
-			&item.GradeComments, &item.SubmissionDate,
-		)
-	}
-	if err := rows.Scan(args...); err != nil {
-		return Exercise{}, err
-	}
-	item.Ignored = ignored
-	raw, err := json.Marshal(item)
-	if err != nil {
-		return Exercise{}, err
-	}
-	return decode(raw)
+	return result, nil
 }
 
 func (e *Exercise) annotate(now time.Time) {
@@ -148,43 +107,17 @@ func (e *Exercise) annotate(now time.Time) {
 }
 
 func (s Service) Get(ctx context.Context, course int64, id string) (Exercise, error) {
-	row := s.Pool.QueryRow(ctx, `SELECT `+summaryColumns+detailColumns+` FROM app.exercises e JOIN app.courses c ON c.id=e.course_id WHERE c.hidden=0 AND e.course_id=$1 AND e.exercise_id=$2`, course, identity.Encode(id))
-	return scanDetail(row)
-}
-
-// scanDetail reads the full detail row in summaryColumns+detailColumns order.
-func scanDetail(row rdbms.Row) (Exercise, error) {
-	var item Exercise
-	var ignored int64
-	if err := row.Scan(
-		&item.ID, &item.CourseID, &item.CourseName, &item.ExerciseID,
-		&item.Title, &item.Link, &item.Deadline, &item.SubmissionStatus,
-		&item.Grade, &item.MaxGrade, &ignored, &item.FetchedAt,
-		&item.Description, &item.WorkType, &item.StartDate,
-		&item.AssignmentFileName, &item.AssignmentFileURL,
-		&item.GradeComments, &item.SubmissionDate,
-	); err != nil {
-		return Exercise{}, err
-	}
-	item.Ignored = ignored
-	raw, err := json.Marshal(item)
+	row, err := s.Pool.Exercises().Get(ctx, course, identity.Encode(id))
 	if err != nil {
 		return Exercise{}, err
 	}
-	return decode(raw)
+	return exercise(row), nil
 }
 
 func (s Service) Ignore(ctx context.Context, course int64, id string, ignored bool) error {
-	flag := 0
+	flag := int64(0)
 	if ignored {
 		flag = 1
 	}
-	_, err := s.Pool.Exec(
-		ctx,
-		`UPDATE app.exercises SET ignored=$3 WHERE course_id=$1 AND exercise_id=$2`,
-		course,
-		identity.Encode(id),
-		flag,
-	)
-	return err
+	return s.Pool.Exercises().SetIgnored(ctx, course, identity.Encode(id), flag)
 }

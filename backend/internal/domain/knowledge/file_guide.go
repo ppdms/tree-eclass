@@ -3,9 +3,9 @@ package knowledge
 import (
 	"context"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type FileGuide struct {
@@ -17,13 +17,12 @@ type FileGuide struct {
 
 func (s Reader) FileGuide(ctx context.Context, course int64, document string) (FileGuide, error) {
 	result := FileGuide{DocumentID: document, Status: "not_queued"}
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return result, err
 	}
 	defer tx.Rollback(ctx)
-	err = tx.QueryRow(ctx, `SELECT d.source_hash FROM knowledge.documents d JOIN app.courses c ON c.id=d.course_id WHERE d.id=$1 AND d.course_id=$2 AND d.is_current=1 AND d.status='ready' AND c.hidden=0`, document, course).
-		Scan(&result.Hash)
+	result.Hash, err = tx.Documents().FileGuideHash(ctx, course, document)
 	if err != nil {
 		return result, err
 	}
@@ -54,24 +53,14 @@ func (s Reader) FileGuide(ctx context.Context, course int64, document string) (F
 	return result, tx.Commit(ctx)
 }
 
-func relatedMaterials(ctx context.Context, tx rdbms.Tx, course int64, paths []string) ([]map[string]string, error) {
+func relatedMaterials(ctx context.Context, tx database.Tx, course int64, paths []string) ([]map[string]string, error) {
 	result := []map[string]string{}
-	rows, err := tx.Query(
-		ctx,
-		`SELECT source_path,display_name FROM knowledge.documents WHERE course_id=$1 AND normalized_path=ANY($2::text[]) AND is_current=1 AND status='ready' ORDER BY array_position($2::text[],normalized_path)`,
-		course,
-		paths,
-	)
+	rows, err := tx.Documents().RelatedMaterials(ctx, course, paths)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var path, name string
-		if err = rows.Scan(&path, &name); err != nil {
-			return nil, err
-		}
-		result = append(result, map[string]string{"path": identity.Decode(path), "name": identity.Decode(name)})
+	for _, row := range rows {
+		result = append(result, map[string]string{"path": identity.Decode(row.Path), "name": identity.Decode(row.Name)})
 	}
-	return result, rows.Err()
+	return result, nil
 }

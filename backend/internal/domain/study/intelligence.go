@@ -7,30 +7,30 @@ import (
 	"strings"
 	"time"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func buildIntelligence(
 	ctx context.Context,
-	tx rdbms.Tx,
+	ops database.Operations,
 	selected *int64,
 	a settings.AI,
 	today time.Time,
 ) (map[string]any, error) {
-	return buildIntelligenceSet(ctx, tx, selected, nil, a, today)
+	return buildIntelligenceSet(ctx, ops, selected, nil, a, today)
 }
 
 func buildIntelligenceSet(
 	ctx context.Context,
-	tx rdbms.Tx,
+	ops database.Operations,
 	selected *int64,
 	included []int64,
 	a settings.AI,
 	today time.Time,
 ) (map[string]any, error) {
-	plans, err := settings.ReadExamPlans(ctx, tx)
+	plans, err := settings.ReadExamPlans(ctx, ops)
 	if err != nil {
 		return nil, err
 	}
@@ -41,69 +41,38 @@ func buildIntelligenceSet(
 		)
 	}
 	accumulator := newPriorities(plans, selected, today)
-	rows, err := tx.Query(
-		ctx,
-		intelligenceQuery,
-		a.Model,
-		settings.DocumentAnalysisVersion,
-		settings.PageSynthesisVersion,
-		included,
-	)
+	items, err := ops.Study().ListPriorityMaterials(ctx, database.StudyIntelligenceParams{
+		Model:           a.Model,
+		DocumentVersion: settings.DocumentAnalysisVersion,
+		PageVersion:     settings.PageSynthesisVersion,
+		Included:        included,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	if err := collectPriorities(rows, accumulator); err != nil {
+	defer items.Close()
+	for items.Next() {
+		accumulator.Add(priorityMaterial(items.Value()))
+	}
+	if err := items.Err(); err != nil {
 		return nil, err
 	}
 	return accumulator.result(), nil
 }
 
-func collectPriorities(rows rdbms.Rows, accumulator *priorities) error {
-	for rows.Next() {
-		m := &PriorityMaterial{AI: map[string]any{}}
-		var raw *string
-		if err := rows.Scan(
-			&m.ID,
-			&m.CourseID,
-			&m.CourseName,
-			&m.Name,
-			&m.Path,
-			&m.Origin,
-			&m.Kind,
-			&m.Complexity,
-			&m.Reading,
-			&m.Pages,
-			&m.Words,
-			&m.Level,
-			&raw,
-		); err != nil {
-			return err
-		}
-		for _, value := range []*string{&m.CourseName, &m.Name, &m.Path} {
-			*value = identity.Decode(*value)
-		}
-		if raw != nil {
-			m.AI, m.Enriched = priorityInsight(*raw)
-		}
-		accumulator.Add(m)
+func priorityMaterial(row database.StudyPriorityMaterial) *PriorityMaterial {
+	m := &PriorityMaterial{
+		ID: row.ID, CourseID: row.CourseID,
+		CourseName: identity.Decode(row.CourseName), Name: identity.Decode(row.Name),
+		Path: identity.Decode(row.Path), Origin: row.Origin, Kind: row.Kind,
+		Complexity: row.Complexity, Reading: row.Reading, Pages: row.Pages,
+		Words: row.Words, Level: row.Level, AI: map[string]any{},
 	}
-	return rows.Err()
+	if row.Enrichment != nil {
+		m.AI, m.Enriched = priorityInsight(*row.Enrichment)
+	}
+	return m
 }
-
-const intelligenceQuery = `SELECT d.id,d.course_id,coalesce(nullif(c.short_name,''),c.name),d.display_name,d.source_path,d.source_origin,d.document_kind,
- coalesce(d.complexity_score,0),d.reading_minutes,d.page_count,d.word_count,coalesce(l.level,0),
- CASE WHEN e.status='ready' AND octet_length(e.payload_json)<=4194304 THEN e.payload_json END
- FROM knowledge.documents d JOIN app.courses c ON c.id=d.course_id
- LEFT JOIN app.file_study l ON l.course_id=d.course_id AND l.file_path=d.source_path
- LEFT JOIN knowledge.document_enrichments e ON e.document_id=d.id AND e.source_hash=d.source_hash AND coalesce(e.requested_model,e.model)=$1
- AND e.analysis_version=CASE WHEN d.document_kind IN('pdf','image') THEN $3 ELSE $2 END
- WHERE (c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=c.id AND p.enabled=1))
- AND ($4::bigint[] IS NULL OR c.id=ANY($4::bigint[]))
- AND d.is_current=1 AND d.status='ready' AND d.content_hash_verified=1
- AND ((d.document_kind IN('pdf','image') AND coalesce(d.page_count,0)>0) OR EXISTS(SELECT 1 FROM knowledge.chunks chunk WHERE chunk.document_id=d.id AND length(trim(chunk.text))>0))
- AND EXISTS(SELECT 1 FROM app.document_revisions r JOIN app.objects o ON o.id=r.object_id WHERE r.document_id=d.id AND r.course_id=d.course_id AND r.deleted_at IS NULL AND r.logical_path=d.normalized_path AND o.sha256=d.source_hash)
- ORDER BY d.course_id,d.normalized_path`
 
 func priorityInsight(raw string) (map[string]any, bool) {
 	var payload map[string]any
@@ -115,7 +84,9 @@ func priorityInsight(raw string) (map[string]any, bool) {
 		return map[string]any{}, false
 	}
 	result := map[string]any{}
-	for _, key := range []string{"summary", "importance", "importance_reason", "difficulty", "assessment_relevance", "material_type", "recommended_action", "course_role"} {
+	keys := []string{"summary", "importance", "importance_reason", "difficulty",
+		"assessment_relevance", "material_type", "recommended_action", "course_role"}
+	for _, key := range keys {
 		if text, ok := payload[key].(string); ok {
 			// Priority cards contain an excerpt. The exact guide remains on its
 			// own document endpoint rather than being copied into every schedule.

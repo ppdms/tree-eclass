@@ -5,9 +5,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"tree-eclass/internal/infrastructure/notifications"
 	"tree-eclass/internal/integrations/eclass"
@@ -38,13 +35,9 @@ func TestNativeNotificationPublicationAndDelivery(t *testing.T) {
 	conn, _ := startTestStorage(t, c)
 	defer conn.Close(t.Context())
 	ctx := t.Context()
-	nativePool, err := pgxpool.New(ctx, c.databaseURL())
-	pool := rdbms.WrapPostgres(nativePool)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := newFixtureStore(t, ctx, c)
 	defer pool.Close()
-	if _, err = pool.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(101,'Αλγόριθμοι','/101');INSERT INTO app.webhook_config(id,webhook_url) VALUES(1,'https://example.test/private-token');INSERT INTO app.preferences(id,notification_enabled,notification_on_error) VALUES(1,1,0) ON CONFLICT(id) DO UPDATE SET notification_enabled=1,notification_on_error=0`); err != nil {
+	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(101,'Αλγόριθμοι','/101');INSERT INTO app.webhook_config(id,webhook_url) VALUES(1,'https://example.test/private-token');INSERT INTO app.preferences(id,notification_enabled,notification_on_error) VALUES(1,1,0) ON CONFLICT(id) DO UPDATE SET notification_enabled=1,notification_on_error=0`); err != nil {
 		t.Fatal(err)
 	}
 	sync := synchronization.Service{Pool: pool}
@@ -56,25 +49,25 @@ func TestNativeNotificationPublicationAndDelivery(t *testing.T) {
 			Link:        "https://example.test/announcement",
 		},
 	}
-	if err = sync.SaveAnnouncements(ctx, 101, items); err != nil {
+	if err := sync.SaveAnnouncements(ctx, 101, items); err != nil {
 		t.Fatal(err)
 	}
-	if err = sync.SaveAnnouncements(ctx, 101, items); err != nil {
+	if err := sync.SaveAnnouncements(ctx, 101, items); err != nil {
 		t.Fatal(err)
 	}
 	ex := []eclass.Exercise{{ID: "task", Title: "Εργασία", Link: "https://example.test/exercise"}}
-	if err = sync.SaveExercises(ctx, 101, ex); err != nil {
+	if err := sync.SaveExercises(ctx, 101, ex); err != nil {
 		t.Fatal(err)
 	}
 	ex[0].Grade = "9"
 	ex[0].MaxGrade = "10"
-	if err = sync.SaveExercises(ctx, 101, ex); err != nil {
+	if err := sync.SaveExercises(ctx, 101, ex); err != nil {
 		t.Fatal(err)
 	}
-	if err = sync.SaveExercises(ctx, 101, ex); err != nil {
+	if err := sync.SaveExercises(ctx, 101, ex); err != nil {
 		t.Fatal(err)
 	}
-	if err = sync.Finish(ctx, synchronization.Result{}, errors.New("must not notify")); err != nil {
+	if err := sync.Finish(ctx, synchronization.Result{}, errors.New("must not notify")); err != nil {
 		t.Fatal(err)
 	}
 	tx, err := pool.Begin(ctx)
@@ -86,14 +79,14 @@ func TestNativeNotificationPublicationAndDelivery(t *testing.T) {
 	}
 	tx.Rollback(ctx)
 	var count int64
-	if err = pool.QueryRow(ctx, `SELECT count(*) FROM app.notification_messages`).Scan(&count); err != nil ||
+	if err = pool.Native.QueryRow(ctx, `SELECT count(*) FROM app.notification_messages`).Scan(&count); err != nil ||
 		count != 3 {
 		t.Fatal("publication/repeat boundaries", count, err)
 	}
 	notificationDeliveryChecks(t, pool)
 }
 
-func notificationDeliveryChecks(t *testing.T, pool rdbms.Pool) {
+func notificationDeliveryChecks(t *testing.T, pool *fixtureStore) {
 	t.Helper()
 	ctx := t.Context()
 	var err error
@@ -103,7 +96,7 @@ func notificationDeliveryChecks(t *testing.T, pool rdbms.Pool) {
 		t.Fatal(err)
 	}
 	var attempts int
-	if err = pool.QueryRow(ctx, `SELECT attempts FROM app.notification_messages WHERE available_at>clock_timestamp()`).Scan(&attempts); err != nil ||
+	if err = pool.Native.QueryRow(ctx, `SELECT attempts FROM app.notification_messages WHERE available_at>clock_timestamp()`).Scan(&attempts); err != nil ||
 		attempts != 0 {
 		t.Fatal("quota spent retry budget", attempts, err)
 	}
@@ -111,7 +104,7 @@ func notificationDeliveryChecks(t *testing.T, pool rdbms.Pool) {
 		t.Fatal("destination cooldown was bypassed", sender.Calls, err)
 	}
 	sender.Quota = false
-	if _, err = pool.Exec(ctx, `UPDATE app.notification_messages SET available_at='epoch';UPDATE app.notification_limits SET next_at='epoch'`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `UPDATE app.notification_messages SET available_at='epoch';UPDATE app.notification_limits SET next_at='epoch'`); err != nil {
 		t.Fatal(err)
 	}
 	for range 3 {
@@ -126,7 +119,7 @@ func notificationDeliveryChecks(t *testing.T, pool rdbms.Pool) {
 	if err = service.Tick(ctx); err != nil || sender.Calls != 4 {
 		t.Fatal("completed messages resent", sender.Calls, err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE app.notification_messages SET status='pending';UPDATE app.webhook_config SET webhook_url='https://example.test/new-destination'`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `UPDATE app.notification_messages SET status='pending';UPDATE app.webhook_config SET webhook_url='https://example.test/new-destination'`); err != nil {
 		t.Fatal(err)
 	}
 	if err = service.Tick(ctx); err != nil || sender.Calls != 4 {
@@ -141,7 +134,7 @@ func notificationDeliveryChecks(t *testing.T, pool rdbms.Pool) {
 
 func notificationRetryChecks(
 	t *testing.T,
-	pool rdbms.Pool,
+	pool *fixtureStore,
 	service notifications.Service,
 	sender *fakeNotifications,
 ) {
@@ -162,7 +155,7 @@ func notificationRetryChecks(
 		if err = service.Tick(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = pool.Exec(ctx, `UPDATE app.notification_messages SET available_at='epoch' WHERE status='pending'`); err != nil {
+		if _, err = pool.Native.Exec(ctx, `UPDATE app.notification_messages SET available_at='epoch' WHERE status='pending'`); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -174,7 +167,7 @@ func notificationRetryChecks(
 	if err != nil || count != 1 {
 		t.Fatal("explicit retry", count, err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE app.notification_messages SET status='running',attempts=1 WHERE event_key='retry'`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `UPDATE app.notification_messages SET status='running',attempts=1 WHERE event_key='retry'`); err != nil {
 		t.Fatal(err)
 	}
 	if err = service.Recover(ctx); err != nil {

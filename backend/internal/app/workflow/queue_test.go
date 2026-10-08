@@ -3,12 +3,11 @@ package workflow
 import (
 	"sync"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/infrastructure/jobs"
 )
 
-func queueInvalidationChecks(t *testing.T, pool rdbms.Pool) {
+func queueInvalidationChecks(t *testing.T, pool *fixtureStore) {
 	t.Helper()
 	ctx := t.Context()
 	queue := jobs.Queue{Pool: pool}

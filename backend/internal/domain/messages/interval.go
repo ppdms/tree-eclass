@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 )
 
 // ImportInterval commits every partition and the exclusive cursor together.
@@ -18,7 +18,7 @@ func (s Importer) ImportInterval(
 	source Archive,
 	parts []string,
 	next time.Time,
-	validate func(rdbms.Tx) error,
+	validate func(database.Tx) error,
 ) error {
 	if source.Root <= 0 || source.Course <= 0 || source.Channel <= 0 || source.Before <= source.After ||
 		len(parts) > 64 {
@@ -43,25 +43,23 @@ func (s Importer) ImportInterval(
 	if err = s.importPartitions(ctx, tx, source, parts); err != nil {
 		return err
 	}
-	_, err = tx.Exec(
-		ctx,
-		`INSERT INTO messages.export_cursors(root_id,channel_id,after_id,next_at) VALUES($1,$2,$3,$4) ON CONFLICT(root_id,channel_id) DO UPDATE SET after_id=excluded.after_id,next_at=excluded.next_at,error=NULL`,
-		source.Root,
-		source.Channel,
-		source.Before-1,
-		next,
-	)
-	if err != nil {
+	if err = tx.DiscordImports().AdvanceExportCursor(ctx, database.DiscordExportCursor{
+		RootID:    source.Root,
+		ChannelID: source.Channel,
+		AfterID:   source.Before - 1,
+		NextAt:    next,
+	}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-func lockCursor(ctx context.Context, tx rdbms.Tx, source Archive) error {
-	var after int64
-	err := tx.QueryRow(ctx, `SELECT after_id FROM messages.export_cursors WHERE root_id=$1 AND channel_id=$2 FOR UPDATE`, source.Root, source.Channel).
-		Scan(&after)
-	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
+func lockCursor(ctx context.Context, tx database.Tx, source Archive) error {
+	after, err := tx.DiscordImports().ExportCursorForUpdate(ctx, source.Root, source.Channel)
+	if database.IsNoRows(err) {
+		after, err = 0, nil
+	}
+	if err != nil {
 		return err
 	}
 	if after != source.After {
@@ -70,7 +68,7 @@ func lockCursor(ctx context.Context, tx rdbms.Tx, source Archive) error {
 	return nil
 }
 
-func (s Importer) importPartitions(ctx context.Context, tx rdbms.Tx, source Archive, parts []string) error {
+func (s Importer) importPartitions(ctx context.Context, tx database.Tx, source Archive, parts []string) error {
 	var total int64
 	published := []string{}
 	for _, path := range parts {
@@ -95,7 +93,7 @@ func (s Importer) importPartitions(ctx context.Context, tx rdbms.Tx, source Arch
 
 func (s Importer) importPartition(
 	ctx context.Context,
-	tx rdbms.Tx,
+	tx database.Tx,
 	source Archive,
 	path string,
 	published []string,
@@ -112,8 +110,8 @@ func (s Importer) importPartition(
 	if slices.Contains(published, result.Path) {
 		return published, errors.New("duplicate Discord partition")
 	}
-	var overlap bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM messages.messages m JOIN tree_discord_stage staged ON staged.message_id=m.message_id WHERE m.source_path=ANY($1::text[]))`, published).Scan(&overlap); err != nil {
+	overlap, err := tx.DiscordImports().StagedOverlapsPublished(ctx, published)
+	if err != nil {
 		return published, err
 	}
 	if overlap {

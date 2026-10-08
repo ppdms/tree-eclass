@@ -9,16 +9,15 @@ import (
 	"time"
 
 	"tree-eclass/internal/domain/commands"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/extract"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/objects"
 	"tree-eclass/internal/domain/platform"
-	"tree-eclass/internal/domain/queries"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Indexer struct {
-	Pool    rdbms.Pool
+	Pool    database.Store
 	Objects objects.Store
 	Parser  extract.Extractor
 	Temp    string
@@ -42,20 +41,17 @@ func (i Indexer) Index(ctx context.Context, id string) (failure error) {
 			failure = errors.Join(failure, i.recordFailure(ctx, id, document.SourceHash, failure))
 		}
 	}()
-	row, err := documentQueries(i.Pool).DocumentObject(
-		ctx,
-		queries.DocumentObjectParams{DocumentID: id},
-	)
+	row, err := i.Pool.Objects().DocumentObject(ctx, database.DocumentObjectParams{DocumentID: id})
 	if err != nil {
 		return err
 	}
 	object := objects.Reference{
-		Bucket:    row.Bucket,
-		Key:       row.Key,
-		VersionID: row.VersionID,
-		SHA256:    row.Sha256,
-		Bytes:     row.Bytes,
-		MediaType: row.MediaType,
+		Bucket:    row.Object.Bucket,
+		Key:       row.Object.Key,
+		VersionID: row.Object.VersionID,
+		SHA256:    row.Object.SHA256,
+		Bytes:     row.Object.Bytes,
+		MediaType: row.Object.MediaType,
 	}
 	file, err := i.download(ctx, object)
 	if err != nil {
@@ -69,15 +65,11 @@ func (i Indexer) Index(ctx context.Context, id string) (failure error) {
 	return i.publish(ctx, document, result)
 }
 
-func documentQueries(pool rdbms.Pool) queries.Querier {
-	return queries.ForPool(pool)
-}
-
 func (i Indexer) admitDocument(
 	ctx context.Context,
 	id string,
-) (queries.KnowledgeDocument, error) {
-	var document queries.KnowledgeDocument
+) (database.KnowledgeDocument, error) {
+	var document database.KnowledgeDocument
 	free, err := platform.Available(i.Temp)
 	if err != nil {
 		return document, err
@@ -85,36 +77,30 @@ func (i Indexer) admitDocument(
 	if free < 5*1024*1024*1024 {
 		return document, errors.New("indexing paused: less than 5 GiB free disk space")
 	}
-	q := queries.ForPool(i.Pool)
-	document, err = q.IndexDocument(ctx, id)
+	document, err = i.Pool.Indexing().IndexDocument(ctx, id)
 	if err != nil {
 		return document, err
 	}
-	var admitted bool
-	if err = i.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM knowledge.documents d WHERE d.id=$1 AND `+CurrentSourcePredicate+`)`, id).Scan(&admitted); err != nil {
+	admitted, err := i.Pool.Documents().DocumentAdmitted(ctx, id)
+	if err != nil {
 		return document, err
 	}
 	if !admitted {
 		return document, ErrUnavailable
 	}
-	changed, err := i.Pool.Exec(
-		ctx,
-		`UPDATE knowledge.documents SET status='running',error=NULL,diagnostic_reason=NULL WHERE id=$1 AND source_hash=$2 AND is_current=1`,
-		id,
-		document.SourceHash,
-	)
-	if err != nil {
+	start := database.StartIndexRunParams{ID: id, Hash: document.SourceHash}
+	if err = i.Pool.Indexing().StartIndexRun(ctx, start); err != nil {
+		if database.IsNoRows(err) {
+			return document, errors.New("document changed before extraction")
+		}
 		return document, err
-	}
-	if changed.RowsAffected() != 1 {
-		return document, errors.New("document changed before extraction")
 	}
 	return document, nil
 }
 func (i Indexer) download(ctx context.Context, ref objects.Reference) (string, error) {
 	return i.Objects.Download(ctx, ref, i.Temp)
 }
-func (i Indexer) extract(ctx context.Context, file string, document queries.KnowledgeDocument) (extraction, error) {
+func (i Indexer) extract(ctx context.Context, file string, document database.KnowledgeDocument) (extraction, error) {
 	result := extraction{Warnings: []string{}, Archive: document.DocumentKind == "archive"}
 	if memberArchive(document) {
 		err := i.archive(ctx, file, document, &result)
@@ -161,34 +147,33 @@ func (i Indexer) extract(ctx context.Context, file string, document queries.Know
 	)
 	return result, err
 }
-func (i Indexer) publish(ctx context.Context, document queries.KnowledgeDocument, result extraction) error {
+func (i Indexer) publish(ctx context.Context, document database.KnowledgeDocument, result extraction) error {
 	tx, err := i.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err = tx.Exec(ctx, "SELECT id FROM app.courses WHERE id=$1 FOR UPDATE", document.CourseID); err != nil {
+	if err = tx.Indexing().LockCourseForIndex(ctx, document.CourseID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, "SELECT id FROM knowledge.documents WHERE id=$1 FOR UPDATE", document.ID); err != nil {
+	if err = tx.Indexing().LockDocumentForIndex(ctx, document.ID); err != nil {
 		return err
 	}
-	q := queries.ForTx(tx)
-	current, err := q.IndexDocument(ctx, document.ID)
+	current, err := tx.Indexing().IndexDocument(ctx, document.ID)
 	if err != nil {
 		return err
 	}
-	var admitted bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM knowledge.documents d WHERE d.id=$1 AND `+CurrentSourcePredicate+`)`, document.ID).Scan(&admitted); err != nil {
+	admitted, err := tx.Documents().DocumentAdmitted(ctx, document.ID)
+	if err != nil {
 		return err
 	}
 	if !admitted || current.SourceHash != document.SourceHash {
 		return errors.New("document changed while extracting; retry its new revision")
 	}
-	if err := publishChunks(ctx, q, document, result); err != nil {
+	if err := publishChunks(ctx, tx, document, result); err != nil {
 		return err
 	}
-	if err := markDocumentIndexed(ctx, q, document.ID, result); err != nil {
+	if err := markDocumentIndexed(ctx, tx, document.ID, result); err != nil {
 		return err
 	}
 	if result.Archive {
@@ -204,31 +189,31 @@ func (i Indexer) publish(ctx context.Context, document queries.KnowledgeDocument
 
 func publishChunks(
 	ctx context.Context,
-	q queries.Querier,
-	document queries.KnowledgeDocument,
+	tx database.Tx,
+	document database.KnowledgeDocument,
 	result extraction,
 ) error {
-	if err := q.ReplaceChunks(ctx, document.ID); err != nil {
+	if err := tx.Indexing().ReplaceChunks(ctx, document.ID); err != nil {
 		return err
 	}
 	for _, chunk := range result.Chunks {
-		if err := insertChunk(ctx, q, document, chunk); err != nil {
+		if err := insertChunk(ctx, tx, document, chunk); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func markDocumentIndexed(ctx context.Context, q queries.Querier, id string, result extraction) error {
+func markDocumentIndexed(ctx context.Context, tx database.Tx, id string, result extraction) error {
 	warnings, err := json.Marshal(result.Warnings)
 	if err != nil {
 		return err
 	}
 	metrics := result.Metrics.Result()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	err = q.MarkIndexed(
+	return tx.Indexing().MarkIndexed(
 		ctx,
-		queries.MarkIndexedParams{
+		database.MarkIndexedParams{
 			ID:              id,
 			PageCount:       &result.Pages,
 			CharacterCount:  &metrics.Characters,
@@ -237,20 +222,19 @@ func markDocumentIndexed(ctx context.Context, q queries.Querier, id string, resu
 			ComplexityScore: &metrics.ComplexityScore,
 			ComplexityLabel: &metrics.ComplexityLabel,
 			IndexedAt:       &now,
-			WarningsJson:    string(warnings),
+			WarningsJSON:    string(warnings),
 		},
 	)
-	return err
 }
-func insertChunk(ctx context.Context, q queries.Querier, doc queries.KnowledgeDocument, c Chunk) error {
+func insertChunk(ctx context.Context, tx database.Tx, doc database.KnowledgeDocument, c Chunk) error {
 	metadata, err := json.Marshal(c.Metadata)
 	if err != nil {
 		return err
 	}
 	text, normalized := identity.Encode(c.Text), identity.Encode(c.NormalizedText)
-	err = q.InsertChunk(
+	if err = tx.Indexing().InsertChunk(
 		ctx,
-		queries.InsertChunkParams{
+		database.InsertChunkParams{
 			ID:             c.ID,
 			DocumentID:     c.DocumentID,
 			Ordinal:        c.Ordinal,
@@ -261,15 +245,14 @@ func insertChunk(ctx context.Context, q queries.Querier, doc queries.KnowledgeDo
 			Text:           text,
 			NormalizedText: normalized,
 			ContentHash:    c.ContentHash,
-			MetadataJson:   string(metadata),
+			MetadataJSON:   string(metadata),
 		},
-	)
-	if err != nil {
+	); err != nil {
 		return err
 	}
-	if err = q.IndexChunkSearch(
+	if err = tx.Indexing().IndexChunkSearch(
 		ctx,
-		queries.IndexChunkSearchParams{
+		database.IndexChunkSearchParams{
 			ChunkID:        c.ID,
 			Text:           &text,
 			NormalizedText: &normalized,
@@ -281,9 +264,9 @@ func insertChunk(ctx context.Context, q queries.Querier, doc queries.KnowledgeDo
 	); err != nil {
 		return err
 	}
-	return q.IndexEmbedding(
+	return tx.Indexing().IndexEmbedding(
 		ctx,
-		queries.IndexEmbeddingParams{
+		database.IndexEmbeddingParams{
 			ChunkID:    c.ID,
 			Model:      LocalEmbeddingModel,
 			Vector:     Pack(Embed(c.Text)),

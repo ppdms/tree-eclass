@@ -5,10 +5,10 @@ import (
 
 	"tree-eclass/internal/domain/annotations"
 	"tree-eclass/internal/domain/courses"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/practice"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type ContextRequest struct {
@@ -38,7 +38,7 @@ func (s Service) Context(ctx context.Context, in ContextRequest) (ContextView, e
 		Annotations: []annotations.Annotation{},
 		Actions:     []map[string]any{},
 	}
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return view, err
 	}
@@ -65,7 +65,7 @@ func (s Service) Context(ctx context.Context, in ContextRequest) (ContextView, e
 
 func (s Service) documentContext(
 	ctx context.Context,
-	tx rdbms.Tx,
+	tx database.Tx,
 	in ContextRequest,
 	a settings.AI,
 	view *ContextView,
@@ -82,13 +82,14 @@ func (s Service) documentContext(
 	view.Reading, err = readingTotals(ctx, tx, in.CourseID, "", in.Document)
 	view.AnnotationDocument = in.Document
 	view.Practice = map[string]any{"units": []any{}}
-	view.Notice = "Opened from the file tree. Time and marks are recorded against the document; this sitting is not attached to a planned action."
+	view.Notice = "Opened from the file tree. Time and marks are recorded against the document; " +
+		"this sitting is not attached to a planned action."
 	return err
 }
 
 func (s Service) actionContext(
 	ctx context.Context,
-	tx rdbms.Tx,
+	tx database.Tx,
 	in ContextRequest,
 	a settings.AI,
 	view *ContextView,
@@ -118,7 +119,8 @@ func (s Service) actionContext(
 			view.Action = action
 		}
 		compact := map[string]any{}
-		for _, key := range []string{"action_id", "title", "unit_key", "unit_title", "action_type", "estimated_minutes", "status"} {
+		for _, key := range []string{"action_id", "title", "unit_key", "unit_title", "action_type",
+			"estimated_minutes", "status"} {
 			compact[key] = action[key]
 		}
 		view.Actions = append(view.Actions, compact)

@@ -2,10 +2,9 @@ package settings
 
 import (
 	"context"
-	"errors"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type CheckStatus struct {
@@ -27,48 +26,50 @@ type SyncStatus struct {
 }
 
 func (s Service) Check(ctx context.Context) (CheckStatus, error) {
-	var status CheckStatus
-	err := s.Pool.QueryRow(ctx, `SELECT cs.is_checking=1,cs.started_at,c.id,c.name,cs.last_check_at,cs.last_check_result,cs.last_error,cs.last_files_added,cs.last_files_changed FROM app.check_status cs LEFT JOIN app.courses c ON c.id=cs.current_course_id AND c.hidden=0 WHERE cs.id=1`).
-		Scan(
-			&status.IsChecking,
-			&status.StartedAt,
-			&status.CourseID,
-			&status.CourseName,
-			&status.LastCheckAt,
-			&status.LastResult,
-			&status.LastError,
-			&status.FilesAdded,
-			&status.FilesChanged,
-		)
-	if errors.Is(err, rdbms.ErrNoRows) {
-		err = nil
+	stored, err := s.Pool.Settings().LoadCheckStatus(ctx)
+	if database.IsNoRows(err) {
+		return CheckStatus{}, nil
+	}
+	if err != nil {
+		return CheckStatus{}, err
+	}
+	status := CheckStatus{
+		IsChecking:   stored.IsChecking,
+		StartedAt:    stored.StartedAt,
+		CourseID:     stored.CourseID,
+		CourseName:   stored.CourseName,
+		LastCheckAt:  stored.LastCheckAt,
+		LastResult:   stored.LastResult,
+		LastError:    stored.LastError,
+		FilesAdded:   stored.FilesAdded,
+		FilesChanged: stored.FilesChanged,
 	}
 	for _, text := range []*string{status.CourseName, status.LastError} {
 		if text != nil {
 			*text = identity.Decode(*text)
 		}
 	}
-	return status, err
+	return status, nil
 }
 func (s Service) Sync(ctx context.Context) (map[string]SyncStatus, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT job,last_run_at,last_result,last_error,last_message FROM app.sync_status`)
+	rows, err := s.Pool.Settings().ListSyncStatus(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	result := map[string]SyncStatus{}
-	for rows.Next() {
-		var name string
-		var status SyncStatus
-		if err = rows.Scan(&name, &status.LastRunAt, &status.LastResult, &status.LastError, &status.LastMessage); err != nil {
-			return nil, err
+	for _, row := range rows {
+		status := SyncStatus{
+			LastRunAt:   row.LastRunAt,
+			LastResult:  row.LastResult,
+			LastError:   row.LastError,
+			LastMessage: row.LastMessage,
 		}
 		for _, text := range []*string{status.LastError, status.LastMessage} {
 			if text != nil {
 				*text = identity.Decode(*text)
 			}
 		}
-		result[name] = status
+		result[row.Job] = status
 	}
-	return result, rows.Err()
+	return result, nil
 }

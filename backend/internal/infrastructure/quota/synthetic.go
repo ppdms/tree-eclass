@@ -48,12 +48,12 @@ func date(value any) *time.Time {
 func mapping(value any) map[string]any { m, _ := value.(map[string]any); return m }
 func truth(value any) bool             { v, _ := value.(bool); return v }
 
-func parseSynthetic(raw []byte) (Snapshot, error) {
+func parseSynthetic(raw []byte) (QuotaSnapshot, error) {
 	var payload map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	if !json.Valid(raw) || decoder.Decode(&payload) != nil {
-		return Snapshot{}, errors.New("quota response is not valid JSON")
+		return QuotaSnapshot{}, errors.New("quota response is not valid JSON")
 	}
 	rolling, weekly, subscription := mapping(
 		payload["rollingFiveHourLimit"],
@@ -78,14 +78,14 @@ func parseSynthetic(raw []byte) (Snapshot, error) {
 	}
 	requests, limit := numeric(subscription["requests"]), numeric(subscription["limit"])
 	if remaining == nil && weeklyRemaining == nil && requests == nil && limit == nil {
-		return Snapshot{}, errors.New("quota response has no recognizable usage data")
+		return QuotaSnapshot{}, errors.New("quota response has no recognizable usage data")
 	}
 	var subscriptionRemaining *float64
 	if requests != nil && limit != nil {
 		value := *limit - *requests
 		subscriptionRemaining = &value
 	}
-	return Snapshot{Windows: []Window{
+	return QuotaSnapshot{Windows: []QuotaWindow{
 		{Name: "rolling", Remaining: remaining, Limited: truth(rolling["limited"]), Reset: date(rolling["nextTickAt"])},
 		{Name: "weekly", Used: used, Limit: 100, Reset: date(weekly["nextRegenAt"])},
 		{

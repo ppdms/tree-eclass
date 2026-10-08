@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/identity"
@@ -13,14 +12,14 @@ import (
 	"tree-eclass/internal/domain/settings"
 )
 
-func navigationBuildChecks(t *testing.T, pool rdbms.Pool, base, document string) {
+func navigationBuildChecks(t *testing.T, pool *fixtureStore, base, document string) {
 	t.Helper()
 	ctx := t.Context()
 	a := settings.DefaultAI()
 	payload, packet := navigationBuildPacket(t, pool, document, a)
 	communityHash := blueprintCommunityFixture(t, pool)
 	defer func() {
-		if _, err := pool.Exec(ctx, `DELETE FROM messages.archive_sources WHERE path='blueprint-fixture'; DELETE FROM app.discord_course_channels WHERE root_channel_id='100001'`); err != nil {
+		if _, err := pool.Native.Exec(ctx, `DELETE FROM messages.archive_sources WHERE path='blueprint-fixture'; DELETE FROM app.discord_course_channels WHERE root_channel_id='100001'`); err != nil {
 			t.Error(err)
 		}
 	}()
@@ -28,7 +27,7 @@ func navigationBuildChecks(t *testing.T, pool rdbms.Pool, base, document string)
 		map[string]any{"conversation_id": "two", "content_hash": communityHash},
 	}
 	packetRaw, _ := json.Marshal(packet)
-	_, err := pool.Exec(
+	_, err := pool.Native.Exec(
 		ctx,
 		`INSERT INTO knowledge.course_blueprints(course_id,revision,revision_hash,evidence_hash,evidence_packet_json,analysis_version,status,requested_model,model,payload_json,available_at,created_at)
  VALUES(101,1,'build-r1','evidence-1',$1,$2,'ready',$3,'fallback-course-model',$4,'now','now')`,
@@ -58,7 +57,7 @@ func navigationBuildChecks(t *testing.T, pool rdbms.Pool, base, document string)
 	navigationBuildReaderChecks(t, pool, base, document, refresh)
 }
 
-func navigationBuildPacket(t *testing.T, pool rdbms.Pool, document string, a settings.AI) (string, map[string]any) {
+func navigationBuildPacket(t *testing.T, pool *fixtureStore, document string, a settings.AI) (string, map[string]any) {
 	t.Helper()
 	ctx := t.Context()
 	raw, err := os.ReadFile("../../domain/blueprints/testdata/validation.json")
@@ -78,7 +77,7 @@ func navigationBuildPacket(t *testing.T, pool rdbms.Pool, document string, a set
 		t.Fatal(err)
 	}
 	var hash, insight string
-	if err = pool.QueryRow(ctx, `SELECT d.source_hash,e.payload_json FROM knowledge.documents d JOIN knowledge.document_enrichments e ON e.document_id=d.id WHERE d.id=$1`, document).Scan(&hash, &insight); err != nil {
+	if err = pool.Native.QueryRow(ctx, `SELECT d.source_hash,e.payload_json FROM knowledge.documents d JOIN knowledge.document_enrichments e ON e.document_id=d.id WHERE d.id=$1`, document).Scan(&hash, &insight); err != nil {
 		t.Fatal(err)
 	}
 	payloadHash, err := blueprints.PayloadHash([]byte(insight))
@@ -101,7 +100,7 @@ func navigationBuildPacket(t *testing.T, pool rdbms.Pool, document string, a set
 	return payload, packet
 }
 
-func navigationBuildReaderChecks(t *testing.T, pool rdbms.Pool, base, document string, refresh func()) {
+func navigationBuildReaderChecks(t *testing.T, pool *fixtureStore, base, document string, refresh func()) {
 	t.Helper()
 	ctx := t.Context()
 	var err error
@@ -143,13 +142,13 @@ func navigationBuildReaderChecks(t *testing.T, pool rdbms.Pool, base, document s
 		t.Fatal("exact evidence resolution", links)
 	}
 	navigationSourceMutationChecks(t, pool, base, document, refresh)
-	if _, err = pool.Exec(ctx, `DELETE FROM knowledge.course_blueprints WHERE course_id=101;
+	if _, err = pool.Native.Exec(ctx, `DELETE FROM knowledge.course_blueprints WHERE course_id=101;
  DELETE FROM read_model.navigation WHERE course_id=101; DELETE FROM read_model.roadmap_actions WHERE course_id=101`); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func refreshNavigation(t *testing.T, pool rdbms.Pool) {
+func refreshNavigation(t *testing.T, pool *fixtureStore) {
 	t.Helper()
 	for range 100 {
 		changed, err := (navigation.Service{Pool: pool}).Refresh(t.Context())
@@ -163,11 +162,11 @@ func refreshNavigation(t *testing.T, pool rdbms.Pool) {
 	t.Fatal("navigation did not settle")
 }
 
-func navigationSourceMutationChecks(t *testing.T, pool rdbms.Pool, base, document string, refresh func()) {
+func navigationSourceMutationChecks(t *testing.T, pool *fixtureStore, base, document string, refresh func()) {
 	t.Helper()
 	ctx := t.Context()
 	name := "Δένδρα\x00\ue0000"
-	if _, err := pool.Exec(ctx, `UPDATE app.courses SET name=$1 WHERE id=101`, identity.Encode(name)); err != nil {
+	if _, err := pool.Native.Exec(ctx, `UPDATE app.courses SET name=$1 WHERE id=101`, identity.Encode(name)); err != nil {
 		t.Fatal(err)
 	}
 	refresh()
@@ -176,7 +175,7 @@ func navigationSourceMutationChecks(t *testing.T, pool rdbms.Pool, base, documen
 	if view.Course.Name != name || view.Blueprint["course_name"] != name {
 		t.Fatal("navigation text codec lost identity", view)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE knowledge.document_enrichments SET payload_json='{"summary":"Changed insight"}' WHERE document_id=$1`, document); err != nil {
+	if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.document_enrichments SET payload_json='{"summary":"Changed insight"}' WHERE document_id=$1`, document); err != nil {
 		t.Fatal(err)
 	}
 	apiJSON(t, "GET", base+"/api/v1/courses/101/overview", nil, 200, &view)
@@ -189,7 +188,7 @@ func navigationSourceMutationChecks(t *testing.T, pool rdbms.Pool, base, documen
 		t.Fatal("changed source insight accepted", view)
 	}
 	apiJSON(t, "GET", base+"/api/v1/courses/101/roadmap/units/unit_one?revision=build-r1", nil, 409, nil)
-	if _, err := pool.Exec(ctx, `UPDATE app.courses SET name='Συνθετικό μάθημα' WHERE id=101`); err != nil {
+	if _, err := pool.Native.Exec(ctx, `UPDATE app.courses SET name='Συνθετικό μάθημα' WHERE id=101`); err != nil {
 		t.Fatal(err)
 	}
 }

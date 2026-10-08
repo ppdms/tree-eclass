@@ -2,48 +2,75 @@ package quota
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"slices"
 
-	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 )
 
-type Postgres struct{ Pool rdbms.Pool }
+type Store struct{ Pool database.Store }
 
-func (s Postgres) Load(ctx context.Context, provider string) (State, error) {
-	var state State
-	if !slices.Contains(settings.Providers, provider) {
-		return state, errors.New("unknown quota provider")
+func toQuotaState(state database.QuotaState) QuotaState {
+	windows := make([]QuotaWindow, 0, len(state.QuotaSnapshot.Windows))
+	for _, window := range state.QuotaSnapshot.Windows {
+		windows = append(
+			windows,
+			QuotaWindow{
+				Name:      window.Name,
+				Used:      window.Used,
+				Remaining: window.Remaining,
+				Limit:     window.Limit,
+				Limited:   window.Limited,
+				Reset:     window.Reset,
+			},
+		)
 	}
-	var raw string
-	err := s.Pool.QueryRow(ctx, `SELECT CASE WHEN octet_length(value)<=65536 THEN value END FROM knowledge.knowledge_state WHERE key=$1`, provider+"_quota").
-		Scan(&raw)
-	if errors.Is(err, rdbms.ErrNoRows) {
-		return state, nil
+	return QuotaState{
+		Status:   state.Status,
+		Message:  state.Message,
+		Checked:  state.Checked,
+		Next:     state.Next,
+		Blocked:  state.Blocked,
+		Requests: state.Requests,
+		QuotaSnapshot: QuotaSnapshot{
+			Windows: windows,
+		},
 	}
-	if err != nil {
-		return state, err
-	}
-	if err = json.Unmarshal([]byte(raw), &state); err != nil {
-		return State{}, errors.New("invalid saved quota state")
-	}
-	return state, nil
 }
-func (s Postgres) Save(ctx context.Context, provider string, state State) error {
-	if !slices.Contains(settings.Providers, provider) {
-		return errors.New("unknown quota provider")
+
+func fromQuotaState(state QuotaState) database.QuotaState {
+	windows := make([]database.QuotaWindow, 0, len(state.Windows))
+	for _, window := range state.Windows {
+		windows = append(
+			windows,
+			database.QuotaWindow{
+				Name:      window.Name,
+				Used:      window.Used,
+				Remaining: window.Remaining,
+				Limit:     window.Limit,
+				Limited:   window.Limited,
+				Reset:     window.Reset,
+			},
+		)
 	}
-	raw, err := json.Marshal(state)
+	return database.QuotaState{
+		Status:   state.Status,
+		Message:  state.Message,
+		Checked:  state.Checked,
+		Next:     state.Next,
+		Blocked:  state.Blocked,
+		Requests: state.Requests,
+		QuotaSnapshot: database.QuotaSnapshot{
+			Windows: windows,
+		},
+	}
+}
+
+func (s Store) Load(ctx context.Context, provider string) (QuotaState, error) {
+	state, err := s.Pool.Quota().LoadState(ctx, provider)
 	if err != nil {
-		return err
+		return QuotaState{}, err
 	}
-	_, err = s.Pool.Exec(
-		ctx,
-		`INSERT INTO knowledge.knowledge_state(key,value,updated_at) VALUES($1,$2,to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`,
-		provider+"_quota",
-		string(raw),
-	)
-	return err
+	return toQuotaState(state), nil
+}
+func (s Store) Save(ctx context.Context, provider string, state QuotaState) error {
+	return s.Pool.Quota().SaveState(ctx, provider, fromQuotaState(state))
 }

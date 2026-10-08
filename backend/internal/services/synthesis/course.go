@@ -3,14 +3,13 @@ package synthesis
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/settings"
 )
 
-func prepareCourse(ctx context.Context, tx rdbms.Tx, p settings.ExamPlan, a settings.AI) error {
+func prepareCourse(ctx context.Context, tx database.Tx, p settings.ExamPlan, a settings.AI) error {
 	packet, err := buildCoursePacket(ctx, tx, p, a)
 	if err != nil || packet == nil {
 		return err
@@ -27,44 +26,20 @@ func prepareCourse(ctx context.Context, tx rdbms.Tx, p settings.ExamPlan, a sett
 	if err != nil {
 		return err
 	}
-	now := stamp(time.Now())
-	if _, err = tx.Exec(ctx, `UPDATE knowledge.course_blueprints SET status='stale',finished_at=$2,claimed_at=NULL WHERE course_id=$1 AND revision_hash<>$3 AND status IN('pending','running')`, p.CourseID, now, revisionHash); err != nil {
-		return err
-	}
-	var status string
-	err = tx.QueryRow(ctx, `SELECT status FROM knowledge.course_blueprints WHERE revision_hash=$1`, revisionHash).
-		Scan(&status)
-	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
-		return err
-	}
-	if err == nil {
-		if status != "stale" {
-			return nil
-		}
-		_, err = tx.Exec(
-			ctx,
-			`UPDATE knowledge.course_blueprints SET status='pending',revision=(SELECT max(revision)+1 FROM knowledge.course_blueprints WHERE course_id=$1),attempts=0,claimed_at=NULL,error=NULL,available_at=$3,created_at=$3,finished_at=NULL,payload_json=NULL,generated_at=NULL WHERE revision_hash=$2`,
-			p.CourseID,
-			revisionHash,
-			now,
-		)
-		return err
-	}
-	_, err = tx.Exec(
-		ctx,
-		`INSERT INTO knowledge.course_blueprints(course_id,revision,revision_hash,evidence_hash,evidence_packet_json,analysis_version,requested_model,model,available_at,created_at)
- SELECT $1,coalesce(max(revision),0)+1,$2,$3,$4,$5,$6,$6,$7,$7 FROM knowledge.course_blueprints WHERE course_id=$1`,
-		p.CourseID,
-		revisionHash,
-		evidenceHash,
-		string(raw),
-		settings.CourseAnalysisVersion,
-		a.CourseModel,
-		now,
-	)
-	return err
+	return tx.Synthesis().QueueCourseRevision(ctx, database.QueueCourseParams{
+		CourseID:     p.CourseID,
+		RevisionHash: revisionHash,
+		EvidenceHash: evidenceHash,
+		PacketJSON:   string(raw),
+		Version:      settings.CourseAnalysisVersion,
+		Model:        a.CourseModel,
+		AvailableAt:  stamp(time.Now()),
+	})
 }
-func buildCoursePacket(ctx context.Context, tx rdbms.Tx, p settings.ExamPlan, a settings.AI) (map[string]any, error) {
+
+func buildCoursePacket(
+	ctx context.Context, tx database.Tx, p settings.ExamPlan, a settings.AI,
+) (map[string]any, error) {
 	docs, total, ready, err := collectDocuments(ctx, tx, p.CourseID, a)
 	if err != nil || len(docs) == 0 {
 		return nil, err

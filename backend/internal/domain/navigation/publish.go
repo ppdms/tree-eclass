@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"unicode/utf8"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type immutableAction struct {
@@ -44,14 +44,8 @@ func (s Service) Publish(
 	if skip, err := publishGate(ctx, tx, course, generation, a); err != nil || skip {
 		return false, err
 	}
-	previous, err := upsertNavigation(ctx, tx, course, generation, a, content["revision_id"], contentID, encoded, overview)
-	if err != nil {
-		return false, err
-	}
-	if err = publishActions(ctx, tx, course, actions); err != nil {
-		return false, err
-	}
-	if err = pruneReplacedContent(ctx, tx, previous, contentID); err != nil {
+	if err = publishNavigation(ctx, tx, course, generation, a, content["revision_id"], contentID, encoded,
+		overview, actions); err != nil {
 		return false, err
 	}
 	return true, tx.Commit(ctx)
@@ -71,10 +65,9 @@ func encodeContent(content map[string]any) (encoded, overview []byte, contentID 
 	return encoded, overview, contentID, nil
 }
 
-func publishGate(ctx context.Context, tx rdbms.Tx, course, generation int64, a settings.AI) (bool, error) {
-	var current int64
-	err := tx.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=$1 FOR UPDATE`, course).Scan(&current)
-	if errors.Is(err, rdbms.ErrNoRows) {
+func publishGate(ctx context.Context, tx database.Tx, course, generation int64, a settings.AI) (bool, error) {
+	current, err := tx.Navigation().PublishGeneration(ctx, course)
+	if errors.Is(err, database.ErrNoRows) {
 		return true, nil
 	}
 	if err != nil {
@@ -87,61 +80,38 @@ func publishGate(ctx context.Context, tx rdbms.Tx, course, generation int64, a s
 	return current != generation || active.AnalysisGeneration() != a.AnalysisGeneration(), nil
 }
 
-func upsertNavigation(
+func publishNavigation(
 	ctx context.Context,
-	tx rdbms.Tx,
+	tx database.Tx,
 	course, generation int64,
 	a settings.AI,
 	revision any,
 	contentID string,
 	encoded, overview []byte,
-) (*string, error) {
-	if _, err := tx.Exec(ctx, `INSERT INTO read_model.roadmap_content(content_id,payload) VALUES($1,$2) ON CONFLICT DO NOTHING`, contentID, encoded); err != nil {
-		return nil, err
+	actions []immutableAction,
+) error {
+	var stored *string
+	if text, ok := revision.(string); ok {
+		stored = &text
 	}
-	var previous *string
-	if err := tx.QueryRow(ctx, `SELECT content_id FROM read_model.navigation WHERE course_id=$1`, course).Scan(&previous); err != nil &&
-		!errors.Is(err, rdbms.ErrNoRows) {
-		return nil, err
-	}
-	if _, err := tx.Exec(
-		ctx,
-		`INSERT INTO read_model.navigation(course_id,source_generation,config_generation,revision_id,overview,content_id)
- VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(course_id) DO UPDATE SET source_generation=excluded.source_generation,config_generation=excluded.config_generation,revision_id=excluded.revision_id,overview=excluded.overview,content_id=excluded.content_id,generated_at=now()`,
-		course,
-		generation,
-		a.AnalysisGeneration(),
-		revision,
-		overview,
-		contentID,
-	); err != nil {
-		return nil, err
-	}
-	return previous, nil
-}
-
-func pruneReplacedContent(ctx context.Context, tx rdbms.Tx, previous *string, contentID string) error {
-	if previous == nil || *previous == contentID {
-		return nil
-	}
-	_, err := tx.Exec(ctx, `DELETE FROM read_model.roadmap_content c WHERE content_id=$1 AND NOT EXISTS(SELECT 1 FROM read_model.navigation n WHERE n.content_id=c.content_id)`, *previous)
-	return err
-}
-
-func publishActions(ctx context.Context, tx rdbms.Tx, course int64, actions []immutableAction) error {
-	if _, err := tx.Exec(ctx, `DELETE FROM read_model.roadmap_actions WHERE course_id=$1`, course); err != nil {
-		return err
-	}
-	for ordinal, action := range actions {
+	rows := make([]database.NavigationAction, 0, len(actions))
+	for _, action := range actions {
 		payload, err := json.Marshal(identity.EncodeJSON(action.Payload))
 		if err != nil {
 			return err
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO read_model.roadmap_actions(course_id,action_id,ordinal,unit_key,payload) VALUES($1,$2,$3,$4,$5)`, course, action.ID, ordinal, action.Unit, payload); err != nil {
-			return err
-		}
+		rows = append(rows, database.NavigationAction{ID: action.ID, Unit: action.Unit, Payload: payload})
 	}
-	return nil
+	return tx.Navigation().PublishNavigation(ctx, database.NavigationPublishParams{
+		CourseID:   course,
+		Generation: generation,
+		Config:     a.AnalysisGeneration(),
+		Revision:   stored,
+		ContentID:  contentID,
+		Encoded:    encoded,
+		Overview:   overview,
+		Actions:    rows,
+	})
 }
 
 func splitContent(course int64, view map[string]any) (map[string]any, []immutableAction, error) {
@@ -220,7 +190,8 @@ func splitContent(course int64, view map[string]any) (map[string]any, []immutabl
 
 func compactOverview(content map[string]any) map[string]any {
 	result := map[string]any{}
-	for _, key := range []string{"course_id", "usable", "readiness", "revision_id", "revision_number", "validation_reason"} {
+	keys := []string{"course_id", "usable", "readiness", "revision_id", "revision_number", "validation_reason"}
+	for _, key := range keys {
 		result[key] = content[key]
 	}
 	blueprint, _ := content["blueprint"].(map[string]any)

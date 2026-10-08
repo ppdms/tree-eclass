@@ -6,21 +6,23 @@ import (
 	"errors"
 	"strings"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool rdbms.Pool }
+type Service struct{ Pool database.Store }
 
 var ErrIdempotencyConflict = errors.New("idempotency key belongs to another document")
 
-const visibleCourse = `SELECT c.id FROM app.courses c WHERE c.id=$1 AND (c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=c.id AND p.enabled=1))`
-
-// annotationColumns selects every study_annotations column in table order;
-// assembleAnnotation builds the decode() JSON blob from explicit columns.
-// rects_json/tags_json embed verbatim (stored JSON); chunk_id/body pass
-// through as stored (nullable TEXT decodes the way to_jsonb nulls did).
-const annotationColumns = `a.id,a.course_id,a.document_id,a.source_hash,a.page_number,a.kind,a.origin,a.status,a.color,a.quote,a.prefix,a.suffix,a.char_start,a.char_end,a.rects_json,a.chunk_id,a.body,a.tags_json,a.action_id,a.unit_key,a.plan_revision,a.session_id,a.created_at,a.updated_at`
+func annotationFromRow(row database.AnnotationRow) (Annotation, error) {
+	raw := assembleAnnotation(
+		row.ID, row.CourseID, row.PageNumber, row.DocumentID, row.SourceHash, row.Kind,
+		row.Origin, row.Status, row.Color, row.Quote, row.Prefix, row.Suffix,
+		row.CharStart, row.CharEnd, row.RectsJSON, row.ChunkID, row.Body, row.TagsJSON,
+		row.Action, row.Unit, row.Revision, row.Session, row.Created, row.Updated,
+	)
+	return decode(raw)
+}
 
 func assembleAnnotation(
 	id, courseID, page int64,
@@ -74,21 +76,8 @@ func orJSONArray(raw string) string {
 	return raw
 }
 
-// scanAnnotation reads one explicit-column single row.
-func scanAnnotation(row rdbms.Row) (Annotation, error) {
-	return scanColumns(row)
-}
-
 func (s Service) RequireCourse(ctx context.Context, id int64) error {
-	var found int64
-	return s.Pool.QueryRow(ctx, visibleCourse, id).Scan(&found)
-}
-
-func resolve(ctx context.Context, tx rdbms.Tx, course int64, document string) (string, error) {
-	var hash string
-	err := tx.QueryRow(ctx, `SELECT source_hash FROM knowledge.documents WHERE id=$1 AND course_id=$2 AND is_current=1 AND status='ready' FOR SHARE`, document, course).
-		Scan(&hash)
-	return hash, err
+	return s.Pool.Annotations().CheckVisibleCourse(ctx, id)
 }
 
 func (s Service) Create(ctx context.Context, c Create) (Annotation, error) {
@@ -101,28 +90,25 @@ func (s Service) Create(ctx context.Context, c Create) (Annotation, error) {
 	}
 	defer tx.Rollback(ctx)
 	// Serialize bookmark and idempotency decisions across concurrent requests.
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('annotation:'||$1,0))`, c.DocumentID); err != nil {
+	if err = tx.Annotations().LockAnnotationKey(ctx, c.DocumentID); err != nil {
 		return Annotation{}, err
 	}
-	c.SourceHash, err = resolve(ctx, tx, c.CourseID, c.DocumentID)
+	c.SourceHash, err = tx.Annotations().ReadyDocumentHash(ctx, c.CourseID, c.DocumentID)
 	if err != nil {
 		return Annotation{}, err
 	}
-	var id int64
-	err = tx.QueryRow(ctx, `SELECT id FROM app.study_annotations WHERE (idempotency_key=$1) OR ($2='bookmark' AND course_id=$3 AND document_id=$4 AND page_number=$5 AND kind='bookmark' AND status!='deleted') ORDER BY id LIMIT 1`, c.IdempotencyKey, c.Kind, c.CourseID, c.DocumentID, c.PageNumber).
-		Scan(&id)
-	if errors.Is(err, rdbms.ErrNoRows) {
+	id, err := tx.Annotations().FindExisting(ctx, c.IdempotencyKey, c.Kind, c.CourseID, c.DocumentID, c.PageNumber)
+	if errors.Is(err, database.ErrNoRows) {
 		id, err = insert(ctx, tx, c)
 	}
 	if err != nil {
 		return Annotation{}, err
 	}
-	var owner int64
-	var document string
-	if err = tx.QueryRow(ctx, `SELECT course_id,document_id FROM app.study_annotations WHERE id=$1`, id).Scan(&owner, &document); err != nil {
+	owner, err := tx.Annotations().AnnotationOwner(ctx, id)
+	if err != nil {
 		return Annotation{}, err
 	}
-	if owner != c.CourseID || document != c.DocumentID {
+	if owner.CourseID != c.CourseID || owner.Document != c.DocumentID {
 		return Annotation{}, ErrIdempotencyConflict
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -131,11 +117,12 @@ func (s Service) Create(ctx context.Context, c Create) (Annotation, error) {
 	return s.Get(ctx, id)
 }
 
-func insert(ctx context.Context, tx rdbms.Tx, c Create) (int64, error) {
-	var chunk *string
-	err := tx.QueryRow(ctx, `SELECT id FROM knowledge.chunks WHERE document_id=$1 AND locator_type='page' AND locator_start GLOB '[0-9]*' AND locator_start NOT GLOB '*[^0-9]*' AND coalesce(locator_end,locator_start) GLOB '[0-9]*' AND coalesce(locator_end,locator_start) NOT GLOB '*[^0-9]*' AND CAST(locator_start AS INTEGER) <= $2 AND CAST(coalesce(locator_end,locator_start) AS INTEGER) >= $2 ORDER BY ordinal LIMIT 1`, c.DocumentID, c.PageNumber).
-		Scan(&chunk)
-	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
+func insert(ctx context.Context, tx database.Tx, c Create) (int64, error) {
+	chunk, err := tx.Annotations().PageChunkID(ctx, c.DocumentID, c.PageNumber)
+	var chunkID *string
+	if err == nil {
+		chunkID = &chunk
+	} else if !errors.Is(err, database.ErrNoRows) {
 		return 0, err
 	}
 	rects, _ := json.Marshal(c.Rects)
@@ -145,68 +132,37 @@ func insert(ctx context.Context, tx rdbms.Tx, c Create) (int64, error) {
 		text := identity.Encode(*c.Body)
 		body = &text
 	}
-	var id int64
-	err = tx.QueryRow(
-		ctx,
-		`INSERT INTO app.study_annotations(course_id,document_id,source_hash,page_number,kind,origin,color,quote,prefix,suffix,char_start,char_end,rects_json,chunk_id,body,tags_json,action_id,unit_key,plan_revision,session_id,idempotency_key)
- VALUES($1,$2,$3,$4,$5,'learner',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
- ON CONFLICT(idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE SET idempotency_key=excluded.idempotency_key RETURNING id`,
-		c.CourseID,
-		c.DocumentID,
-		c.SourceHash,
-		c.PageNumber,
-		c.Kind,
-		identity.Encode(c.Color),
-		identity.Encode(c.Quote),
-		identity.Encode(c.Prefix),
-		identity.Encode(c.Suffix),
-		c.CharStart,
-		c.CharEnd,
-		string(rects),
-		chunk,
-		body,
-		identity.Encode(string(tags)),
-		identity.Encode(c.ActionID),
-		identity.Encode(c.UnitKey),
-		identity.Encode(c.PlanRevision),
-		c.SessionID,
-		c.IdempotencyKey,
-	).
-		Scan(&id)
-	return id, err
+	return tx.Annotations().InsertAnnotation(ctx, database.InsertAnnotationParams{
+		CourseID:   c.CourseID,
+		DocumentID: c.DocumentID,
+		SourceHash: c.SourceHash,
+		PageNumber: c.PageNumber,
+		Kind:       c.Kind,
+		Color:      identity.Encode(c.Color),
+		Quote:      identity.Encode(c.Quote),
+		Prefix:     identity.Encode(c.Prefix),
+		Suffix:     identity.Encode(c.Suffix),
+		CharStart:  c.CharStart,
+		CharEnd:    c.CharEnd,
+		RectsJSON:  string(rects),
+		ChunkID:    chunkID,
+		Body:       body,
+		TagsJSON:   identity.Encode(string(tags)),
+		Action:     identity.Encode(c.ActionID),
+		Unit:       identity.Encode(c.UnitKey),
+		Revision:   identity.Encode(c.PlanRevision),
+		Session:    c.SessionID,
+		Key:        c.IdempotencyKey,
+	})
 }
 
 // Get returns one annotation by id.
 func (s Service) Get(ctx context.Context, id int64) (Annotation, error) {
-	row := s.Pool.QueryRow(ctx, `SELECT `+annotationColumns+` FROM app.study_annotations a WHERE id=$1`, id)
-	return scanAnnotation(row)
-}
-
-// scanColumns scans the explicit annotation columns from any scanner.
-func scanColumns(scanner interface {
-	Scan(dest ...any) error
-},
-) (Annotation, error) {
-	var id, courseID, page int64
-	var document, hash, kind, origin, status, color string
-	var quote, prefix, suffix, action, unit, revision string
-	var start, end, session *int64
-	var rects, tags string
-	var chunk, body *string
-	var created, updated string
-	if err := scanner.Scan(
-		&id, &courseID, &document, &hash, &page, &kind, &origin, &status,
-		&color, &quote, &prefix, &suffix, &start, &end, &rects, &chunk,
-		&body, &tags, &action, &unit, &revision, &session, &created, &updated,
-	); err != nil {
+	row, err := s.Pool.Annotations().AnnotationByID(ctx, id)
+	if err != nil {
 		return Annotation{}, err
 	}
-	raw := assembleAnnotation(
-		id, courseID, page, document, hash, kind, origin, status, color,
-		quote, prefix, suffix, start, end, rects, chunk, body, tags,
-		action, unit, revision, session, created, updated,
-	)
-	return decode(raw)
+	return annotationFromRow(row)
 }
 
 type Listing struct {
@@ -223,46 +179,37 @@ func (s Service) List(ctx context.Context, course int64, document, action string
 	}
 	defer tx.Rollback(ctx)
 	if document != "" {
-		result.SourceHash, err = resolve(ctx, tx, course, document)
+		result.SourceHash, err = tx.Annotations().ReadyDocumentHash(ctx, course, document)
 		if err != nil {
 			return result, err
 		}
-		tag, err := tx.Exec(
-			ctx,
-			`UPDATE app.study_annotations SET status='orphaned',updated_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS') WHERE document_id=$1 AND source_hash!=$2 AND status='active'`,
-			document,
-			result.SourceHash,
-		)
+		result.NewlyOrphaned, err = tx.Annotations().MarkOrphaned(ctx, document, result.SourceHash)
 		if err != nil {
 			return result, err
 		}
-		result.NewlyOrphaned = tag.RowsAffected()
 		action = "" // Document reads intentionally include every action's marks.
 	}
-	rows, err := tx.Query(
-		ctx,
-		`SELECT `+annotationColumns+` FROM app.study_annotations a WHERE course_id=$1 AND ($2='' OR document_id=$2) AND ($3='' OR action_id=$3) AND ($4 OR status!='deleted') ORDER BY document_id,page_number,id LIMIT 1000`,
-		course,
-		document,
-		identity.Encode(action),
-		deleted,
-	)
+	rows, err := tx.Annotations().ListAnnotations(ctx, database.ListAnnotationsParams{
+		CourseID: course,
+		Document: document,
+		Action:   identity.Encode(action),
+		Deleted:  deleted,
+	})
 	if err != nil {
 		return result, err
 	}
-	if err := scanRows(rows, &result.Annotations); err != nil {
+	if err := collectRows(rows, &result.Annotations); err != nil {
 		return result, err
 	}
 	return result, tx.Commit(ctx)
 }
 
-// scanRows collects explicit-column rows with bookmark dedup.
-func scanRows(rows rdbms.Rows, annotations *[]Annotation) error {
+// collectRows decodes stored rows with bookmark dedup.
+func collectRows(rows []database.AnnotationRow, annotations *[]Annotation) error {
 	seen := map[string]map[int64]bool{}
-	for rows.Next() {
-		item, err := scanAnnotationRow(rows)
+	for _, row := range rows {
+		item, err := annotationFromRow(row)
 		if err != nil {
-			rows.Close()
 			return err
 		}
 		if item.Kind == "bookmark" && item.Status != "deleted" {
@@ -276,12 +223,7 @@ func scanRows(rows rdbms.Rows, annotations *[]Annotation) error {
 		}
 		*annotations = append(*annotations, item)
 	}
-	return rows.Err()
-}
-
-// scanAnnotationRow reads one explicit-column multi-row result.
-func scanAnnotationRow(rows rdbms.Rows) (Annotation, error) {
-	return scanColumns(rows)
+	return nil
 }
 
 func (s Service) Update(ctx context.Context, id int64, u Update) (Annotation, error) {
@@ -302,16 +244,13 @@ func (s Service) Update(ctx context.Context, id int64, u Update) (Annotation, er
 		value := identity.Encode(string(encoded))
 		tags = &value
 	}
-	_, err := s.Pool.Exec(
-		ctx,
-		`UPDATE app.study_annotations SET body=CASE WHEN $2::text IS NULL THEN body ELSE nullif($2,'') END,color=coalesce($3,color),tags_json=coalesce($4,tags_json),status=coalesce($5,status),updated_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS') WHERE id=$1`,
-		id,
-		body,
-		color,
-		tags,
-		u.Status,
-	)
-	if err != nil {
+	if err := s.Pool.Annotations().UpdateAnnotation(ctx, database.UpdateAnnotationParams{
+		ID:     id,
+		Body:   body,
+		Color:  color,
+		Tags:   tags,
+		Status: u.Status,
+	}); err != nil {
 		return Annotation{}, err
 	}
 	return s.Get(ctx, id)

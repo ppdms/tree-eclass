@@ -3,13 +3,11 @@ package synchronization
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/jobs"
-	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/integrations/mirror"
 )
 
@@ -20,7 +18,7 @@ func (s Service) Sync(ctx context.Context, id int64, source Source, rootURL stri
 	// must never hold the single sqlite writer slot (or a postgres row
 	// lock) across the crawl. The short publish transaction below admits
 	// the course while holding the lock.
-	course, err := queries.ForPool(s.Pool).Course(ctx, id)
+	course, err := s.Pool.Courses().Course(ctx, id)
 	if err != nil {
 		return Result{}, err
 	}
@@ -43,9 +41,7 @@ func (s Service) Sync(ctx context.Context, id int64, source Source, rootURL stri
 		return Result{}, err
 	}
 	defer tx.Rollback(ctx)
-	key := fmt.Sprintf("eclass-sync:%d", id)
-	var locked bool
-	err = tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))`, key).Scan(&locked)
+	locked, err := tx.Sync().TryLockCourse(ctx, id)
 	if err != nil {
 		return Result{}, err
 	}
@@ -64,7 +60,7 @@ func (s Service) Sync(ctx context.Context, id int64, source Source, rootURL stri
 	return synced, tx.Commit(ctx)
 }
 
-func (s Service) mirrorTree(ctx context.Context, course queries.AppCourse, tree Tree) (mirror.Result, error) {
+func (s Service) mirrorTree(ctx context.Context, course database.AppCourse, tree Tree) (mirror.Result, error) {
 	files := make([]mirror.File, 0, len(tree.Files))
 	for _, file := range tree.Files {
 		files = append(files, mirror.File{Path: file.Path, Object: file.Object, Redirect: file.Redirect})
@@ -98,22 +94,19 @@ func (s Service) mirrorTree(ctx context.Context, course queries.AppCourse, tree 
 
 func (s Service) publishLocked(
 	ctx context.Context,
-	tx rdbms.Tx,
-	course queries.AppCourse,
+	tx database.Tx,
+	course database.AppCourse,
 	tree Tree,
 	changes []Change,
 ) error {
-	var name, prefix string
-	var hidden int64
-	err := tx.QueryRow(ctx, `SELECT name,webdav_folder,hidden FROM app.courses WHERE id=$1 FOR UPDATE`, course.ID).
-		Scan(&name, &prefix, &hidden)
+	guard, err := tx.Sync().LockCourseForSync(ctx, course.ID)
 	if err != nil {
 		return err
 	}
-	if name != course.Name || prefix != course.WebdavFolder || hidden != course.Hidden {
+	if guard.Name != course.Name || guard.WebdavFolder != course.WebdavFolder || guard.Hidden != course.Hidden {
 		return errors.New("course changed during synchronization; retry the check")
 	}
-	if _, err = tx.Exec(ctx, `DELETE FROM app.nodes WHERE course_id=$1`, course.ID); err != nil {
+	if err = tx.Sync().DeleteTree(ctx, course.ID); err != nil {
 		return err
 	}
 	nodes, err := saveDirectories(ctx, tx, course.ID, tree.Directories)
@@ -133,7 +126,7 @@ func (s Service) publishLocked(
 			return err
 		}
 	}
-	if _, err = tx.Exec(ctx, `UPDATE knowledge.documents d SET is_current=0 WHERE d.course_id=$1 AND d.source_origin='eclass' AND NOT(d.id=ANY($2::text[])) AND NOT EXISTS(SELECT 1 FROM knowledge.archive_members m WHERE m.child_document_id=d.id)`, course.ID, current); err != nil {
+	if err = tx.Sync().RetireMissingEclassDocuments(ctx, course.ID, current); err != nil {
 		return err
 	}
 	if err = saveChanges(ctx, tx, course.ID, changes); err != nil {
@@ -145,7 +138,7 @@ func (s Service) publishLocked(
 	return nil
 }
 
-func saveDirectories(ctx context.Context, tx rdbms.Tx, courseID int64, dirs []Directory) (map[string]int64, error) {
+func saveDirectories(ctx context.Context, tx database.Tx, courseID int64, dirs []Directory) (map[string]int64, error) {
 	nodes := map[string]int64{}
 	for _, d := range dirs {
 		var parent *int64
@@ -156,9 +149,13 @@ func saveDirectories(ctx context.Context, tx rdbms.Tx, courseID int64, dirs []Di
 			}
 			parent = &id
 		}
-		var id int64
-		err := tx.QueryRow(ctx, `INSERT INTO app.nodes(course_id,parent_id,name,url,local_path) VALUES($1,$2,$3,$4,$5) RETURNING id`, courseID, parent, identity.Encode(d.Name), d.URL, identity.Encode(d.Path)).
-			Scan(&id)
+		id, err := tx.Sync().InsertDirectory(ctx, database.SyncDirectoryInput{
+			CourseID: courseID,
+			ParentID: parent,
+			Name:     identity.Encode(d.Name),
+			URL:      d.URL,
+			Path:     identity.Encode(d.Path),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -167,25 +164,22 @@ func saveDirectories(ctx context.Context, tx rdbms.Tx, courseID int64, dirs []Di
 	return nodes, nil
 }
 
-func saveFile(ctx context.Context, tx rdbms.Tx, nodeID int64, f File) error {
+func saveFile(ctx context.Context, tx database.Tx, nodeID int64, f File) error {
 	var object, revision *string
 	if f.Object != nil {
 		object = &f.Object.SHA256
 		revision = &f.Revision
 	}
-	_, err := tx.Exec(
-		ctx,
-		`INSERT INTO app.files(node_id,url,name,md5_hash,etag,redirect_url,last_updated,local_path,object_id,revision_id) VALUES($1,$2,$3,$4,$5,NULLIF($6,''),$7,$8,$9,$10)`,
-		nodeID,
-		f.URL,
-		identity.Encode(f.Name),
-		f.MD5,
-		f.ETag,
-		f.Redirect,
-		f.Updated,
-		identity.Encode(f.Path),
-		object,
-		revision,
-	)
-	return err
+	return tx.Sync().InsertFile(ctx, database.SyncFileInput{
+		NodeID:     nodeID,
+		URL:        f.URL,
+		Name:       identity.Encode(f.Name),
+		MD5:        f.MD5,
+		ETag:       f.ETag,
+		Redirect:   f.Redirect,
+		Updated:    f.Updated,
+		Path:       identity.Encode(f.Path),
+		ObjectID:   object,
+		RevisionID: revision,
+	})
 }

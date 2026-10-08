@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 )
 
 type Status struct {
@@ -14,30 +14,22 @@ type Status struct {
 
 func (s Service) Status(ctx context.Context) (Status, error) {
 	status := Status{Counts: map[string]int64{}}
-	rows, err := s.Pool.Query(ctx, `SELECT status,count(*) FROM app.notification_messages GROUP BY status`)
+	counts, err := s.Pool.Notifications().StatusCounts(ctx)
 	if err != nil {
 		return status, err
 	}
-	for rows.Next() {
-		var name string
-		var count int64
-		if err = rows.Scan(&name, &count); err != nil {
-			rows.Close()
-			return status, err
-		}
-		status.Counts[name] = count
+	for _, count := range counts {
+		status.Counts[count.Status] = count.Count
 	}
-	err = rows.Err()
-	rows.Close()
+	message, err := s.Pool.Notifications().LastFailure(ctx)
+	if errors.Is(err, database.ErrNoRows) {
+		return status, nil
+	}
 	if err != nil {
 		return status, err
 	}
-	err = s.Pool.QueryRow(ctx, `SELECT error FROM app.notification_messages WHERE status='failed' ORDER BY created_at DESC LIMIT 1`).
-		Scan(&status.LastError)
-	if errors.Is(err, rdbms.ErrNoRows) {
-		err = nil
-	}
-	return status, err
+	status.LastError = &message
+	return status, nil
 }
 func (s Service) Retry(ctx context.Context) (int64, error) {
 	tx, err := s.Pool.Begin(ctx)
@@ -55,13 +47,9 @@ func (s Service) Retry(ctx context.Context) (int64, error) {
 	if !cfg.Enabled || cfg.Target == "" {
 		return 0, nil
 	}
-	result, err := tx.Exec(
-		ctx,
-		`UPDATE app.notification_messages SET status='pending',attempts=0,available_at=clock_timestamp(),error=NULL WHERE status='failed' AND target_hash=$1`,
-		targetHash(cfg.Target),
-	)
+	count, err := tx.Notifications().RetryFailed(ctx, targetHash(cfg.Target))
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected(), tx.Commit(ctx)
+	return count, tx.Commit(ctx)
 }

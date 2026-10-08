@@ -7,9 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"tree-eclass/internal/domain/materials"
 	"tree-eclass/internal/domain/navigation"
@@ -26,19 +23,15 @@ func TestNativeSourceBoundSynthesis(t *testing.T) {
 	synthesisRunChecks(t, pool, service, doc, a, courseOutput, calls)
 }
 
-func newSynthesisFixture(t *testing.T) (rdbms.Pool, synthesis.Service, string, settings.AI, string, *int) {
+func newSynthesisFixture(t *testing.T) (*fixtureStore, synthesis.Service, string, settings.AI, string, *int) {
 	t.Helper()
 	c := nativeSharedController(t)
 	ctx := t.Context()
 	conn, objects := startTestStorage(t, c)
 	t.Cleanup(func() { conn.Close(ctx) })
-	nativePool, err := pgxpool.New(ctx, c.databaseURL())
-	pool := rdbms.WrapPostgres(nativePool)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
-	_, err = pool.Exec(
+	_, err := pool.Native.Exec(
 		ctx,
 		`INSERT INTO app.courses(id,name,webdav_folder) VALUES(781,'Synthetic synthesis','/Courses/781'); INSERT INTO app.course_exam_plans(course_id,enabled,exam_at) VALUES(781,1,'2026-09-20T10:00')`,
 	)
@@ -78,7 +71,7 @@ func newSynthesisFixture(t *testing.T) (rdbms.Pool, synthesis.Service, string, s
 func seedSynthesisSource(
 	t *testing.T,
 	ctx context.Context,
-	pool rdbms.Pool,
+	pool *fixtureStore,
 	objects *blob.Store,
 ) (settings.AI, string) {
 	t.Helper()
@@ -106,14 +99,14 @@ func seedSynthesisSource(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE knowledge.documents SET status='ready',content_hash_verified=1 WHERE id=$1`, doc.DocumentID); err != nil {
+	if _, err = pool.Native.Exec(ctx, `UPDATE knowledge.documents SET status='ready',content_hash_verified=1 WHERE id=$1`, doc.DocumentID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO knowledge.document_enrichments(document_id,source_hash,analysis_version,status,model,requested_model,payload_json,available_at)
+	if _, err = pool.Native.Exec(ctx, `INSERT INTO knowledge.document_enrichments(document_id,source_hash,analysis_version,status,model,requested_model,payload_json,available_at)
  SELECT id,source_hash,$2,'ready','served-fallback',$3,'{"summary":"Tree definitions grounded in the source","importance":"essential","topics":["Trees"]}','now' FROM knowledge.documents WHERE id=$1`, doc.DocumentID, settings.DocumentAnalysisVersion, a.Model); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO knowledge.chunks(id,document_id,ordinal,locator_type,locator_start,text,normalized_text,content_hash) VALUES('fixture-chunk',$1,0,'section','1','A tree is connected and acyclic.','a tree is connected and acyclic.','fixture')`, doc.DocumentID); err != nil {
+	if _, err = pool.Native.Exec(ctx, `INSERT INTO knowledge.chunks(id,document_id,ordinal,locator_type,locator_start,text,normalized_text,content_hash) VALUES('fixture-chunk',$1,0,'section','1','A tree is connected and acyclic.','a tree is connected and acyclic.','fixture')`, doc.DocumentID); err != nil {
 		t.Fatal(err)
 	}
 	return a, doc.DocumentID
@@ -121,7 +114,7 @@ func seedSynthesisSource(
 
 func synthesisRunChecks(
 	t *testing.T,
-	pool rdbms.Pool,
+	pool *fixtureStore,
 	service synthesis.Service,
 	doc string,
 	a settings.AI,
@@ -186,10 +179,10 @@ func synthesisFixture(t *testing.T, repo, kind string) string {
 	}
 	return strings.ReplaceAll(string(raw), "document:one", "E1")
 }
-func synthesisRecoveryChecks(t *testing.T, pool rdbms.Pool, service synthesis.Service, doc, output string) {
+func synthesisRecoveryChecks(t *testing.T, pool *fixtureStore, service synthesis.Service, doc, output string) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := pool.Exec(ctx, `UPDATE app.course_exam_plans SET planning_notes='Changed goal' WHERE course_id=781`); err != nil {
+	if _, err := pool.Native.Exec(ctx, `UPDATE app.course_exam_plans SET planning_notes='Changed goal' WHERE course_id=781`); err != nil {
 		t.Fatal(err)
 	}
 	service.Generator.Client = syntheticInference(
@@ -201,15 +194,15 @@ func synthesisRecoveryChecks(t *testing.T, pool rdbms.Pool, service synthesis.Se
 		t.Fatal("paused successor", worked, err)
 	}
 	var attempts, count int64
-	if err := pool.QueryRow(ctx, `SELECT attempts FROM knowledge.course_blueprints WHERE status='pending'`).Scan(&attempts); err != nil ||
+	if err := pool.Native.QueryRow(ctx, `SELECT attempts FROM knowledge.course_blueprints WHERE status='pending'`).Scan(&attempts); err != nil ||
 		attempts != 0 {
 		t.Fatal("quota spent attempts", attempts, err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM knowledge.course_blueprints WHERE status='ready'`).Scan(&count); err != nil ||
+	if err := pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.course_blueprints WHERE status='ready'`).Scan(&count); err != nil ||
 		count != 1 {
 		t.Fatal("lost usable prior plan", count, err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE knowledge.course_blueprints SET status='running',attempts=1 WHERE status='pending'`); err != nil {
+	if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.course_blueprints SET status='running',attempts=1 WHERE status='pending'`); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Recover(ctx); err != nil {
@@ -219,7 +212,7 @@ func synthesisRecoveryChecks(t *testing.T, pool rdbms.Pool, service synthesis.Se
 	service.Generator.Client = syntheticInference(
 		func(ctx context.Context, _ inference.Candidate, _ inference.Request, emit func(inference.Delta) error) error {
 			called = true
-			if _, err := pool.Exec(ctx, `UPDATE knowledge.document_enrichments SET payload_json='{"summary":"Source insight changed during generation"}' WHERE document_id=$1`, doc); err != nil {
+			if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.document_enrichments SET payload_json='{"summary":"Source insight changed during generation"}' WHERE document_id=$1`, doc); err != nil {
 				return err
 			}
 			if err := emit(inference.Delta{Text: output}); err != nil {
@@ -231,7 +224,7 @@ func synthesisRecoveryChecks(t *testing.T, pool rdbms.Pool, service synthesis.Se
 	if worked, err := service.RunOne(ctx, "course"); err != nil || !worked || !called {
 		t.Fatal("stale completion", worked, called, err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM knowledge.course_blueprints WHERE revision=(SELECT max(revision) FROM knowledge.course_blueprints) AND status='ready'`).Scan(&count); err != nil ||
+	if err := pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.course_blueprints WHERE revision=(SELECT max(revision) FROM knowledge.course_blueprints) AND status='ready'`).Scan(&count); err != nil ||
 		count != 0 {
 		t.Fatal("stale result published", count, err)
 	}

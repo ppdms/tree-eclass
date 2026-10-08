@@ -11,14 +11,14 @@ import * as stylex from '@stylexjs/stylex';
 
 const styles = stylex.create({
   container: {
-    display: 'flex',
-    alignItems: 'center',
     padding: 16,
+    alignItems: 'center',
+    display: 'flex',
   },
   title: {
+    color: 'navy',
     fontSize: 24,
     fontWeight: 'bold',
-    color: 'navy',
   },
 });
 ```
@@ -26,6 +26,8 @@ const styles = stylex.create({
 **IMPORTANT**
 
 - Use longhand properties and single-value shorthands over multi-value shorthands.
+- Sort keys by StyleX's default property priorities, then alphabetically within each priority—not plain alphabetical order.
+  Run `bun run lint` from `frontend/` to check `stylex/sort-keys`.
 - Use `null` to unset properties.
 - Length properties are in pixels by default.
 

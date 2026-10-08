@@ -2,8 +2,6 @@ package settings
 
 import (
 	"context"
-	"encoding/json"
-	"strings"
 
 	"tree-eclass/internal/domain/courses"
 )
@@ -41,30 +39,19 @@ func (s Service) PublicAI(ctx context.Context, keys map[string]string) (PublicAI
 		result.Credentials[provider] = present
 		result.Status[provider] = ProviderStatus{present, "unknown"}
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT key,value FROM knowledge.knowledge_state WHERE key LIKE '%\_quota'`)
+	statuses, err := s.Pool.Quota().LoadStatuses(ctx)
 	if err != nil {
 		return result, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var key, value string
-		if err = rows.Scan(&key, &value); err != nil {
-			return result, err
-		}
-		provider := strings.TrimSuffix(key, "_quota")
-		state, known := result.Status[provider]
+	for _, quota := range statuses {
+		state, known := result.Status[quota.Provider]
 		if !known {
 			continue
 		}
-		var data struct {
-			Status string `json:"status"`
-		}
-		if json.Unmarshal([]byte(value), &data) == nil && data.Status != "" {
-			state.Status = data.Status
-			result.Status[provider] = state
-		}
+		state.Status = quota.Status
+		result.Status[quota.Provider] = state
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func (s Service) Page(ctx context.Context, keys map[string]string) (Page, error) {

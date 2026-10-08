@@ -3,8 +3,8 @@ package workspace
 import (
 	"context"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type PageReading struct {
@@ -23,13 +23,12 @@ type Reading struct {
 }
 
 func (s Service) Reading(ctx context.Context, course int64, action, document string) (Reading, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return Reading{}, err
 	}
 	defer tx.Rollback(ctx)
-	var id int64
-	if err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND (hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=app.courses.id AND p.enabled=1))`, course).Scan(&id); err != nil {
+	if err = tx.Workspace().CheckVisibleCourse(ctx, course); err != nil {
 		return Reading{}, err
 	}
 	result, err := readingTotals(ctx, tx, course, action, document)
@@ -39,21 +38,17 @@ func (s Service) Reading(ctx context.Context, course int64, action, document str
 	return result, tx.Commit(ctx)
 }
 
-func readingTotals(ctx context.Context, tx rdbms.Tx, course int64, action, document string) (Reading, error) {
+func readingTotals(
+	ctx context.Context, tx database.Operations, course int64, action, document string,
+) (Reading, error) {
 	result := Reading{Pages: []PageReading{}}
-	rows, err := tx.Query(ctx, `SELECT document_id,page_number,sum(active_seconds)::bigint,sum(visible_seconds)::bigint
- FROM app.study_reading_spans WHERE course_id=$1 AND ($2='' OR action_id=$2) AND ($3='' OR document_id=$3)
- GROUP BY document_id,page_number ORDER BY document_id,page_number`, course, identity.Encode(action), document)
+	pages, err := tx.Workspace().ReadingTotals(ctx, course, identity.Encode(action), document)
 	if err != nil {
 		return result, err
 	}
-	defer rows.Close()
 	previous := ""
-	for rows.Next() {
-		var page PageReading
-		if err = rows.Scan(&page.Document, &page.Page, &page.Active, &page.Visible); err != nil {
-			return result, err
-		}
+	for _, row := range pages {
+		page := PageReading{Document: row.Document, Page: row.Page, Active: row.Active, Visible: row.Visible}
 		if previous != page.Document {
 			previous = page.Document
 			result.Documents++
@@ -64,5 +59,5 @@ func readingTotals(ctx context.Context, tx rdbms.Tx, course int64, action, docum
 	}
 	result.PagesRead = int64(len(result.Pages))
 	result.Minutes = result.Active / 60
-	return result, rows.Err()
+	return result, nil
 }

@@ -27,7 +27,8 @@ func (c *Create) UnmarshalJSON(data []byte) error {
 		name   string
 		target **int64
 	}{
-		{input.Start, "char_start", &c.CharStart}, {input.End, "char_end", &c.CharEnd}, {input.Session, "session_id", &c.SessionID},
+		{input.Start, "char_start", &c.CharStart}, {input.End, "char_end", &c.CharEnd},
+		{input.Session, "session_id", &c.SessionID},
 	} {
 		if len(field.raw) == 0 || bytes.Equal(field.raw, []byte("null")) {
 			continue

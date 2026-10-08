@@ -2,13 +2,12 @@ package workflow
 
 import (
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/infrastructure/jobs"
 )
 
-func knowledgeAdminChecks(t *testing.T, pool rdbms.Pool, base, document string, indexer knowledge.Indexer) {
+func knowledgeAdminChecks(t *testing.T, pool *fixtureStore, base, document string, indexer knowledge.Indexer) {
 	t.Helper()
 	ctx := t.Context()
 	service := knowledge.Reader{Pool: pool}
@@ -24,7 +23,7 @@ func knowledgeAdminChecks(t *testing.T, pool rdbms.Pool, base, document string, 
 	}
 	apiJSON(t, "GET", base+"/api/knowledge/status?course_id=999999", nil, 400, nil)
 	// Repair a derived-index hole using the real queued maintenance contract.
-	if _, err := pool.Exec(ctx, `DELETE FROM app.control_commands WHERE queue='index'; DELETE FROM knowledge.chunks_fts`); err != nil {
+	if _, err := pool.Native.Exec(ctx, `DELETE FROM app.control_commands WHERE queue='index'; DELETE FROM knowledge.chunks_fts`); err != nil {
 		t.Fatal(err)
 	}
 	var first, second map[string]any
@@ -49,7 +48,7 @@ func knowledgeAdminChecks(t *testing.T, pool rdbms.Pool, base, document string, 
 	}
 	assertIndexQueue(t, pool, document, 1)
 	var revisions, docs int64
-	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.document_revisions WHERE document_id=$1),(SELECT count(*) FROM knowledge.documents WHERE id=$1)`, document).Scan(&revisions, &docs); err != nil ||
+	if err = pool.Native.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.document_revisions WHERE document_id=$1),(SELECT count(*) FROM knowledge.documents WHERE id=$1)`, document).Scan(&revisions, &docs); err != nil ||
 		revisions != 1 ||
 		docs != 1 {
 		t.Fatal("rebuild replaced authoritative document identity", revisions, docs, err)
@@ -57,7 +56,7 @@ func knowledgeAdminChecks(t *testing.T, pool rdbms.Pool, base, document string, 
 	if err = indexer.Index(ctx, document); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `UPDATE app.control_commands SET status='failed',attempts=5,error='synthetic failure' WHERE queue='index' AND payload->>'document_id'=$1`, document); err != nil {
+	if _, err = pool.Native.Exec(ctx, `UPDATE app.control_commands SET status='failed',attempts=5,error='synthetic failure' WHERE queue='index' AND payload->>'document_id'=$1`, document); err != nil {
 		t.Fatal(err)
 	}
 	if err = service.Maintain(ctx, "retry_failed"); err != nil {
@@ -65,14 +64,14 @@ func knowledgeAdminChecks(t *testing.T, pool rdbms.Pool, base, document string, 
 	}
 	assertIndexQueue(t, pool, document, 1)
 	var attempts int
-	if err = pool.QueryRow(ctx, `SELECT attempts FROM app.control_commands WHERE queue='index' AND payload->>'document_id'=$1`, document).Scan(&attempts); err != nil ||
+	if err = pool.Native.QueryRow(ctx, `SELECT attempts FROM app.control_commands WHERE queue='index' AND payload->>'document_id'=$1`, document).Scan(&attempts); err != nil ||
 		attempts != 0 {
 		t.Fatal("manual retry retained exhausted attempt budget", attempts, err)
 	}
 	if err = indexer.Index(ctx, document); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `DELETE FROM app.control_commands WHERE queue='index'`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.control_commands WHERE queue='index'`); err != nil {
 		t.Fatal(err)
 	}
 	if err = service.Maintain(ctx, "reconcile"); err != nil {
@@ -81,10 +80,10 @@ func knowledgeAdminChecks(t *testing.T, pool rdbms.Pool, base, document string, 
 	assertIndexQueue(t, pool, document, 0)
 }
 
-func assertIndexQueue(t *testing.T, pool rdbms.Pool, document string, wanted int) {
+func assertIndexQueue(t *testing.T, pool *fixtureStore, document string, wanted int) {
 	t.Helper()
 	var count int
-	err := pool.QueryRow(t.Context(), `SELECT count(*) FROM app.control_commands WHERE queue='index' AND status='pending' AND payload->>'document_id'=$1`, document).
+	err := pool.Native.QueryRow(t.Context(), `SELECT count(*) FROM app.control_commands WHERE queue='index' AND status='pending' AND payload->>'document_id'=$1`, document).
 		Scan(&count)
 	if err != nil || count != wanted {
 		t.Fatal("index repair admission", count, wanted, err)

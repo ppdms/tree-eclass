@@ -6,14 +6,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/practice"
 	"tree-eclass/internal/domain/settings"
 )
 
-func practiceChecks(t *testing.T, pool rdbms.Pool, base, document string, refresh func()) {
+func practiceChecks(t *testing.T, pool *fixtureStore, base, document string, refresh func()) {
 	t.Helper()
 	ctx := t.Context()
 	raw, err := os.ReadFile("../../domain/blueprints/testdata/practice.json")
@@ -29,13 +28,13 @@ func practiceChecks(t *testing.T, pool rdbms.Pool, base, document string, refres
 	encoded, _ := json.Marshal(question)
 	a := settings.DefaultAI()
 	var setID int64
-	err = pool.QueryRow(ctx, `INSERT INTO knowledge.practice_question_sets(course_id,unit_key,set_hash,blueprint_revision_hash,evidence_hash,evidence_packet_json,analysis_version,status,requested_model,model,available_at,created_at)
+	err = pool.Native.QueryRow(ctx, `INSERT INTO knowledge.practice_question_sets(course_id,unit_key,set_hash,blueprint_revision_hash,evidence_hash,evidence_packet_json,analysis_version,status,requested_model,model,available_at,created_at)
  VALUES(101,'unit_one','practice-set-1','build-r1','evidence-1','{}',$1,'ready',$2,'fallback-practice-model','now','now') RETURNING id`, settings.PracticeAnalysisVersion, a.PracticeModel).
 		Scan(&setID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = pool.Exec(
+	_, err = pool.Native.Exec(
 		ctx,
 		`INSERT INTO knowledge.practice_questions(question_id,set_id,course_id,unit_key,ordinal,question_key,response_mode,difficulty,estimated_minutes,payload_json)
  VALUES($1,$2,101,'unit_one',1,$3,$4,$5,$6,$7)`,
@@ -68,7 +67,7 @@ func practiceChecks(t *testing.T, pool rdbms.Pool, base, document string, refres
 
 func practiceStaleChecks(
 	t *testing.T,
-	pool rdbms.Pool,
+	pool *fixtureStore,
 	base string,
 	refresh func(),
 	setID int64,
@@ -79,7 +78,7 @@ func practiceStaleChecks(
 	var view practice.View
 	url := base + "/api/study/practice?course_id=101"
 	var err error
-	if _, err = pool.Exec(ctx, `UPDATE knowledge.practice_question_sets SET requested_model='obsolete-model' WHERE id=$1`, setID); err != nil {
+	if _, err = pool.Native.Exec(ctx, `UPDATE knowledge.practice_question_sets SET requested_model='obsolete-model' WHERE id=$1`, setID); err != nil {
 		t.Fatal(err)
 	}
 	apiJSON(t, "GET", url, nil, 200, &view)
@@ -99,13 +98,13 @@ func practiceStaleChecks(
 		409,
 		nil,
 	)
-	if _, err = pool.Exec(ctx, `DELETE FROM knowledge.practice_question_sets WHERE id=$1;`, setID); err != nil {
+	if _, err = pool.Native.Exec(ctx, `DELETE FROM knowledge.practice_question_sets WHERE id=$1;`, setID); err != nil {
 		t.Fatal(err)
 	}
 	refresh()
 }
 
-func practiceAttemptChecks(t *testing.T, pool rdbms.Pool, base, question string) {
+func practiceAttemptChecks(t *testing.T, pool *fixtureStore, base, question string) {
 	t.Helper()
 	ctx := t.Context()
 	service := practice.Service{Pool: pool}
@@ -165,16 +164,16 @@ func practiceAttemptChecks(t *testing.T, pool rdbms.Pool, base, question string)
 	}
 	practiceAtomicityChecks(t, pool, service, in)
 	for _, query := range []string{`DELETE FROM app.practice_attempts WHERE question_id=$1`, `DELETE FROM app.study_unit_events WHERE action_id=$1`} {
-		if _, err := pool.Exec(ctx, query, question); err != nil {
+		if _, err := pool.Native.Exec(ctx, query, question); err != nil {
 			t.Fatal(err)
 		}
 	}
 }
 
-func practiceAtomicityChecks(t *testing.T, pool rdbms.Pool, service practice.Service, in practice.Attempt) {
+func practiceAtomicityChecks(t *testing.T, pool *fixtureStore, service practice.Service, in practice.Attempt) {
 	t.Helper()
 	ctx := t.Context()
-	_, err := pool.Exec(
+	_, err := pool.Native.Exec(
 		ctx,
 		`CREATE FUNCTION app.synthetic_attempt_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic disk failure'; END $$;
  CREATE TRIGGER synthetic_attempt_failure BEFORE INSERT ON app.practice_attempts FOR EACH ROW EXECUTE FUNCTION app.synthetic_attempt_failure()`,
@@ -187,12 +186,12 @@ func practiceAtomicityChecks(t *testing.T, pool rdbms.Pool, service practice.Ser
 		t.Fatal("injected attempt failure succeeded")
 	}
 	var attempts, events int64
-	err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.practice_attempts WHERE question_id=$1),(SELECT count(*) FROM app.study_unit_events WHERE action_id=$1)`, in.Question).
+	err = pool.Native.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.practice_attempts WHERE question_id=$1),(SELECT count(*) FROM app.study_unit_events WHERE action_id=$1)`, in.Question).
 		Scan(&attempts, &events)
 	if err != nil || attempts != 3 || events != 3 {
 		t.Fatal("failed attempt left an orphan event", attempts, events, err)
 	}
-	if _, err = pool.Exec(ctx, `DROP TRIGGER synthetic_attempt_failure ON app.practice_attempts; DROP FUNCTION app.synthetic_attempt_failure()`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `DROP TRIGGER synthetic_attempt_failure ON app.practice_attempts; DROP FUNCTION app.synthetic_attempt_failure()`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = service.Record(ctx, in); err != nil {

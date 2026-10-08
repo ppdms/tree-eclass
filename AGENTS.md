@@ -21,8 +21,9 @@ synthetic verification disposable and separate from the live dataset.
 Run services **natively on macOS**, with containers retained as an optional future
 server deployment using the same application contracts. Move document/blob storage
 to the **local content-addressed objects directory** of the active dataset;
-`active/objects` is the on-disk layout. PostgreSQL remains the relational database. These user choices
-supersede the earlier Colima/WebDAV replacement proposal.
+`active/objects` is the on-disk layout. Native macOS uses PostgreSQL; deployment
+configuration may select PostgreSQL or SQLite. These user choices supersede the
+earlier Colima/WebDAV replacement proposal.
 An idiomatic **Go backend and controller are required in this implementation**.
 Short-lived Python document parsers are allowed; a persistent Python API or worker
 is not the target architecture. Measure the complete process tree to verify memory
@@ -59,9 +60,9 @@ Native verification uses `go -C backend test ./cmd/... ./internal/...` (avoid `.
 also traverses Go files inside frontend dependencies). Opt-in native integration
 tests use `TREE_NATIVE_TESTS=1`; they create and remove private synthetic
 PostgreSQL clusters and disposable objects directories and never use
-`DATABASE_URL` or the authoritative dataset. SQL queries are generated with sqlc
-from `backend/internal/domain/queries/*.sql`; qualify schema names in migrations because
-sqlc does not interpret the legacy `SET search_path` statements as PostgreSQL does.
+`DATABASE_URL` or the authoritative dataset. SQL-free typed ports live in
+`backend/internal/domain/database/`; directly written PostgreSQL and SQLite
+queries live only in `backend/internal/infrastructure/rdbms/`.
 Applied migration bytes are immutable release data: never reformat or edit an
 applied migration; append a new migration for schema changes.
 The full `./tree check` gate also exercises the optimized API serving the production browser build
@@ -348,8 +349,8 @@ agent should not have to rediscover?**
 - Go follows the standard module layout under `backend/`: executables live in
   `backend/cmd/`, private implementation packages live in `backend/internal/`,
   and there is no `src/` or `pkg/` tree because the application exposes no public
-  Go library. Embedded PostgreSQL migrations and sqlc queries live in
-  `backend/internal/infrastructure/storage/`.
+  Go library. SQL-free database contracts live in `backend/internal/domain/database/`;
+  native adapters and embedded migrations live in `backend/internal/infrastructure/rdbms/`.
 - Frontend: React 19 + React Router under `frontend/`, built with Vite. Go serves its assets and API on one port; browser writes preserve their original page runtime session.
 - Document parsing is the pure Python boundary under `parser/`; stable artifacts contain only its explicitly inventoried parser sources. Application API, storage, workers and migrations are implemented in Go.
 - The design system is under `frontend/src/styles/`, assembled by `entry.css`. Navigation chrome is wired by `frontend/src/shell/navChrome.ts`.
@@ -361,6 +362,23 @@ agent should not have to rediscover?**
   workflow.
 
 ## Architecture
+
+Relational persistence must expose SQL-free operation contracts to application
+and domain code. Select the PostgreSQL or SQLite implementation at composition
+time from deployment configuration. Each adapter owns directly written,
+backend-native SQL and maps results and errors to backend-neutral Go types.
+Do not translate PostgreSQL SQL into SQLite SQL at runtime or emulate PostgreSQL
+syntax/functions to make application SQL run on SQLite. The contract must define
+observable results, ordering, null handling, errors, snapshot consistency and
+atomic cross-feature writes; verify those guarantees against both disposable
+backends. Raw SQL handles and driver types stay inside infrastructure adapters.
+
+The runtime owner lock must outlive all admitted transactions and iterators:
+`Store.Close` rejects new work and waits for consumers to finish before releasing
+ownership. SQLite file aliases use the canonical database path for that lock.
+Read-only repeatable snapshots use visibility checks without PostgreSQL row locks;
+writer/publication guards retain their locks. Verify the common contract with
+`TREE_NATIVE_TESTS=1 go -C backend test ./internal/infrastructure/rdbms`.
 
 ```text
 ./tree                  Installed Go lifecycle controller

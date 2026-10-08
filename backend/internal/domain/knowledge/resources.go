@@ -6,24 +6,17 @@ import (
 	"errors"
 	"strconv"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-func resourceDocument(ctx context.Context, tx rdbms.Tx, id string) (queries.KnowledgeDocument, error) {
-	var found string
-	err := tx.QueryRow(ctx, `SELECT d.id FROM knowledge.documents d JOIN app.courses c ON c.id=d.course_id AND c.hidden=0 WHERE d.id=$1 AND `+CurrentSourcePredicate, id).
-		Scan(&found)
-	if err != nil {
-		return queries.KnowledgeDocument{}, err
-	}
-	return queries.ForTx(tx).IndexDocument(ctx, id)
+func resourceDocument(ctx context.Context, tx database.Tx, id string) (database.KnowledgeDocument, error) {
+	return tx.Documents().GetReadableDocument(ctx, id)
 }
 
 func (s Reader) Document(ctx context.Context, id string) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +33,7 @@ func (s Reader) Document(ctx context.Context, id string) (map[string]any, error)
 	return result, tx.Commit(ctx)
 }
 
-func documentMetrics(doc queries.KnowledgeDocument) map[string]any {
+func documentMetrics(doc database.KnowledgeDocument) map[string]any {
 	return map[string]any{
 		"source_size_bytes": doc.SourceSizeBytes,
 		"page_count":        doc.PageCount,
@@ -53,7 +46,7 @@ func documentMetrics(doc queries.KnowledgeDocument) map[string]any {
 }
 
 func (s Reader) MaterialInsight(ctx context.Context, id string) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +106,7 @@ func (s Reader) MaterialInsight(ctx context.Context, id string) (map[string]any,
 }
 
 func (s Reader) PageInsight(ctx context.Context, id string, page int64) (map[string]any, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -137,17 +130,18 @@ func (s Reader) PageInsight(ctx context.Context, id string, page int64) (map[str
 		"derived_not_source_evidence": true,
 		"untrusted_content":           true,
 	}
-	var status, model string
-	var raw, generated *string
-	err = tx.QueryRow(ctx, `SELECT status,model,CASE WHEN octet_length(payload_json)<=4194304 THEN payload_json END,generated_at FROM knowledge.page_enrichments WHERE document_id=$1 AND page_number=$2 AND source_hash=$3 AND analysis_version=$4 AND requested_model=$5`, id, page, doc.SourceHash, settings.PageAnalysisVersion, a.Model).
-		Scan(&status, &model, &raw, &generated)
-	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
+	row, err := tx.Documents().PageAnalysis(ctx, database.PageAnalysisParams{
+		Document: id, Page: page, Hash: doc.SourceHash,
+		Version: settings.PageAnalysisVersion, Model: a.Model, MaxBytes: 4194304,
+	})
+	if err != nil && !errors.Is(err, database.ErrNoRows) {
 		return nil, err
 	}
 	if err == nil {
-		analysis["status"], analysis["model"], analysis["generated_at"], analysis["analysis_version"] = status, model, generated, settings.PageAnalysisVersion
-		if status == "ready" && raw != nil {
-			insight := pagePayload(*raw)
+		analysis["status"], analysis["model"], analysis["generated_at"], analysis["analysis_version"] =
+			row.Status, row.Model, row.GeneratedAt, settings.PageAnalysisVersion
+		if row.Status == "ready" && row.Payload != nil {
+			insight := pagePayload(*row.Payload)
 			analysis["insight"], analysis["ready"] = insight, insight["summary"] != nil
 		}
 	}
@@ -164,34 +158,23 @@ func (s Reader) PageInsight(ctx context.Context, id string, page int64) (map[str
 
 func visualCoverage(
 	ctx context.Context,
-	tx rdbms.Tx,
-	doc queries.KnowledgeDocument,
+	tx database.Tx,
+	doc database.KnowledgeDocument,
 	a settings.AI,
 ) (map[string]any, error) {
-	rows, err := tx.Query(
-		ctx,
-		`SELECT status,count(*),min(model) FROM knowledge.page_enrichments WHERE document_id=$1 AND source_hash=$2 AND analysis_version=$3 AND requested_model=$4 GROUP BY status`,
-		doc.ID,
-		doc.SourceHash,
-		settings.PageAnalysisVersion,
-		a.Model,
-	)
+	rows, err := tx.Documents().PageCoverage(ctx, database.PageCoverageParams{
+		Document: doc.ID, Hash: doc.SourceHash, Version: settings.PageAnalysisVersion, Model: a.Model,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	statuses := map[string]int64{}
 	var total int64
 	var model, version, uri any
-	for rows.Next() {
-		var status, name string
-		var count int64
-		if err = rows.Scan(&status, &count, &name); err != nil {
-			return nil, err
-		}
-		statuses[status] = count
-		total += count
-		model = name
+	for _, row := range rows {
+		statuses[row.Status] = row.Count
+		total += row.Count
+		model = row.Model
 	}
 	if total > 0 {
 		version = settings.PageAnalysisVersion
@@ -205,5 +188,5 @@ func visualCoverage(
 		"model":                     model,
 		"analysis_version":          version,
 		"page_insight_uri_template": uri,
-	}, rows.Err()
+	}, nil
 }

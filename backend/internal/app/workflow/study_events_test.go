@@ -3,13 +3,12 @@ package workflow
 import (
 	"sync"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/navigation"
 	"tree-eclass/internal/domain/study"
 )
 
-func studyEventChecks(t *testing.T, pool rdbms.Pool, base, action string) {
+func studyEventChecks(t *testing.T, pool *fixtureStore, base, action string) {
 	t.Helper()
 	ctx := t.Context()
 	minutes := int64(7)
@@ -48,7 +47,7 @@ func studyEventChecks(t *testing.T, pool rdbms.Pool, base, action string) {
 		}
 	}
 	var count, total int64
-	if err := pool.QueryRow(ctx, `SELECT count(*),sum(actual_minutes) FROM app.study_unit_events WHERE action_id=$1`, action).Scan(&count, &total); err != nil ||
+	if err := pool.Native.QueryRow(ctx, `SELECT count(*),sum(actual_minutes) FROM app.study_unit_events WHERE action_id=$1`, action).Scan(&count, &total); err != nil ||
 		count != 1 ||
 		total != 7 {
 		t.Fatal("retry duplicated learner time", count, total, err)
@@ -77,7 +76,7 @@ func studyEventChecks(t *testing.T, pool rdbms.Pool, base, action string) {
 	in.Type = "partial"
 	in.Minutes = nil
 	apiJSON(t, "POST", url, in, 422, nil)
-	if _, err = pool.Exec(ctx, `DELETE FROM app.study_unit_events WHERE action_id=$1`, action); err != nil {
+	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.study_unit_events WHERE action_id=$1`, action); err != nil {
 		t.Fatal(err)
 	}
 }

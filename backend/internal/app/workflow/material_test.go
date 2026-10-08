@@ -12,10 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"tree-eclass/internal/app/server"
 	"tree-eclass/internal/domain/knowledge"
@@ -27,7 +25,7 @@ type materialPublicationFixture struct {
 	c       *Controller
 	ctx     context.Context
 	conn    *pgx.Conn
-	pool    rdbms.Pool
+	pool    *fixtureStore
 	api     *server.Server
 	service materials.Service
 	indexer knowledge.Indexer
@@ -63,11 +61,7 @@ func newMaterialPublicationFixture(t *testing.T) *materialPublicationFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(api.Close)
-	nativePool, err := pgxpool.New(ctx, c.databaseURL())
-	pool := rdbms.WrapPostgres(nativePool)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
 	service := materials.Service{Pool: pool, Objects: objects, Temp: t.TempDir()}
 	result, err := service.Upload(ctx, materials.Upload{
@@ -104,7 +98,7 @@ func materialIndexChecks(t *testing.T, fixture *materialPublicationFixture) {
 		t.Fatal("missing parser succeeded")
 	}
 	var failedStatus, reason string
-	if err = fixture.pool.QueryRow(ctx, `SELECT status,diagnostic_reason FROM knowledge.documents WHERE id=$1`, result.DocumentID).Scan(&failedStatus, &reason); err != nil ||
+	if err = fixture.pool.Native.QueryRow(ctx, `SELECT status,diagnostic_reason FROM knowledge.documents WHERE id=$1`, result.DocumentID).Scan(&failedStatus, &reason); err != nil ||
 		failedStatus != "failed" || reason != "extraction_failed" {
 		t.Fatal("extraction failure remained pending", failedStatus, reason, err)
 	}
@@ -164,9 +158,9 @@ func materialReaderChecks(t *testing.T, fixture *materialPublicationFixture) {
 	materialUploadMirrorCheck(t, fixture.pool, httpServer.URL)
 }
 
-func materialUploadMirrorCheck(t *testing.T, pool rdbms.Pool, base string) {
+func materialUploadMirrorCheck(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
-	if _, err := pool.Exec(t.Context(), `UPDATE app.preferences SET download_base_path='/University' WHERE id=1`); err != nil {
+	if _, err := pool.Native.Exec(t.Context(), `UPDATE app.preferences SET download_base_path='/University' WHERE id=1`); err != nil {
 		t.Fatal(err)
 	}
 	var body bytes.Buffer

@@ -7,22 +7,17 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/courses"
 )
 
-func destructiveChecks(t *testing.T, pool rdbms.Pool, base string) {
+func destructiveChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
 	ctx := t.Context()
 	seedCourseMutation(t, pool)
 	mutationHTTP(t, base, "reset", "", "reset-1", 428)
 	mutationHTTP(t, base, "reset", "reset:201", "", 400)
-	native, ok := rdbms.UnwrapPostgres(pool)
-	if !ok {
-		t.Fatal("session lock probe requires postgres")
-	}
-	lock, err := native.Acquire(ctx)
+	lock, err := pool.Native.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,18 +39,18 @@ func destructiveChecks(t *testing.T, pool rdbms.Pool, base string) {
 		if table == "app.courses" {
 			column = "id"
 		}
-		if err = pool.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE "+column+"=201").Scan(&count); err != nil ||
+		if err = pool.Native.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE "+column+"=201").Scan(&count); err != nil ||
 			count != want {
 			t.Fatal("reset crossed learner boundary", table, count, err)
 		}
 	}
 	var eclass, external int64
-	if err = pool.QueryRow(ctx, `SELECT max(is_current) FILTER(WHERE source_origin='eclass'),max(is_current) FILTER(WHERE source_origin='external') FROM knowledge.documents WHERE course_id=201`).Scan(&eclass, &external); err != nil ||
+	if err = pool.Native.QueryRow(ctx, `SELECT max(is_current) FILTER(WHERE source_origin='eclass'),max(is_current) FILTER(WHERE source_origin='external') FROM knowledge.documents WHERE course_id=201`).Scan(&eclass, &external); err != nil ||
 		eclass != 0 ||
 		external != 1 {
 		t.Fatal("reset lost user uploads or kept upstream current", err)
 	}
-	if _, err = pool.Exec(ctx, `CREATE FUNCTION app.synthetic_delete_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic rollback check'; END $$;
+	if _, err = pool.Native.Exec(ctx, `CREATE FUNCTION app.synthetic_delete_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic rollback check'; END $$;
 CREATE TRIGGER synthetic_delete_failure BEFORE DELETE ON app.courses FOR EACH ROW EXECUTE FUNCTION app.synthetic_delete_failure()`); err != nil {
 		t.Fatal(err)
 	}
@@ -64,25 +59,25 @@ CREATE TRIGGER synthetic_delete_failure BEFORE DELETE ON app.courses FOR EACH RO
 		t.Fatal("injected deletion failure did not abort")
 	}
 	var count int64
-	if err = pool.QueryRow(ctx, `SELECT count(*) FROM knowledge.documents WHERE course_id=201`).Scan(&count); err != nil ||
+	if err = pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.documents WHERE course_id=201`).Scan(&count); err != nil ||
 		count != 2 {
 		t.Fatal("failed deletion lost evidence", err)
 	}
-	if _, err = pool.Exec(ctx, `DROP TRIGGER synthetic_delete_failure ON app.courses; DROP FUNCTION app.synthetic_delete_failure()`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `DROP TRIGGER synthetic_delete_failure ON app.courses; DROP FUNCTION app.synthetic_delete_failure()`); err != nil {
 		t.Fatal(err)
 	}
 	mutationHTTP(t, base, "delete", "delete:201", "delete-1", 200)
 	for _, table := range []string{"knowledge.documents", "app.study_annotations", "app.document_revisions"} {
-		if err = pool.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE course_id=201").Scan(&count); err != nil ||
+		if err = pool.Native.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE course_id=201").Scan(&count); err != nil ||
 			count != 0 {
 			t.Fatal("delete left scoped data", table, count, err)
 		}
 	}
-	if err = pool.QueryRow(ctx, `SELECT count(*) FROM app.document_revisions r JOIN app.objects o ON o.id=r.object_id WHERE r.course_id=202`).Scan(&count); err != nil ||
+	if err = pool.Native.QueryRow(ctx, `SELECT count(*) FROM app.document_revisions r JOIN app.objects o ON o.id=r.object_id WHERE r.course_id=202`).Scan(&count); err != nil ||
 		count != 1 {
 		t.Fatal("deletion damaged another course's shared object", err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(201,'Recreated','/Courses/201')`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(201,'Recreated','/Courses/201')`); err != nil {
 		t.Fatal(err)
 	}
 	mutationHTTP(t, base, "delete", "delete:201", "delete-1", 409)
@@ -110,9 +105,9 @@ func mutationHTTP(t *testing.T, base, action, confirmation, key string, status i
 	}
 }
 
-func seedCourseMutation(t *testing.T, pool rdbms.Pool) {
+func seedCourseMutation(t *testing.T, pool *fixtureStore) {
 	t.Helper()
-	_, err := pool.Exec(
+	_, err := pool.Native.Exec(
 		t.Context(),
 		`INSERT INTO app.courses(id,name,webdav_folder) VALUES(201,'Reset target','/Courses/201'),(202,'Preserved','/Courses/202');
 INSERT INTO app.nodes(course_id,name,url,local_path) VALUES(201,'root','url','/Courses/201/eclass');

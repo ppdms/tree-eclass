@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"mime/multipart"
 	"net/http"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 
 	"tree-eclass/internal/domain/materials"
 	"tree-eclass/internal/domain/settings"
@@ -51,7 +51,7 @@ func (s *Server) uploadMaterial(w http.ResponseWriter, r *http.Request) {
 			writeFailure(w, http.StatusConflict, err.Error())
 			return
 		}
-		if errors.Is(err, rdbms.ErrNoRows) {
+		if errors.Is(err, database.ErrNoRows) {
 			writeFailure(w, http.StatusNotFound, "Course not found")
 			return
 		}

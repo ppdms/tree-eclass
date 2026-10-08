@@ -12,10 +12,10 @@ import (
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/extract"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/objects"
-	"tree-eclass/internal/domain/queries"
 )
 
 type archiveMember struct {
@@ -28,14 +28,14 @@ func archivePath(parent, member string) string {
 	quote := func(s string) string { return strings.ReplaceAll(url.QueryEscape(norm.NFC.String(s)), "+", "%20") }
 	return "/.tree-eclass/archive-members/" + quote(parent) + "/" + quote(member)
 }
-func memberArchive(d queries.KnowledgeDocument) bool {
+func memberArchive(d database.KnowledgeDocument) bool {
 	ext := strings.ToLower(path.Ext(d.DisplayName))
 	return d.DocumentKind == "archive" && (ext == ".zip" || ext == ".rar")
 }
 
 // ZIP/RAR content belongs to admitted leaves. Running the legacy flattening
 // extractor first can mistake a ZIP nested inside a RAR for the outer archive.
-func (i Indexer) archive(ctx context.Context, file string, d queries.KnowledgeDocument, result *extraction) error {
+func (i Indexer) archive(ctx context.Context, file string, d database.KnowledgeDocument, result *extraction) error {
 	records := []extract.Record{}
 	seen := map[string]bool{}
 	var expanded int64
@@ -109,7 +109,7 @@ func validateMember(r extract.Record) error {
 func (i Indexer) archiveObject(
 	ctx context.Context,
 	file string,
-	d queries.KnowledgeDocument,
+	d database.KnowledgeDocument,
 	r extract.Record,
 ) (archiveMember, error) {
 	member := archiveMember{

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 )
 
 func questionState(attempts, streak int64, last *string) (string, int) {
@@ -20,7 +20,7 @@ func questionState(attempts, streak int64, last *string) (string, int) {
 	return "review", 2
 }
 
-func readAttempts(ctx context.Context, tx rdbms.Tx, course int64, units []*Unit) error {
+func readAttempts(ctx context.Context, tx database.Tx, course int64, units []*Unit) error {
 	ids := []string{}
 	byID := map[string]*Question{}
 	for _, unit := range units {
@@ -29,27 +29,17 @@ func readAttempts(ctx context.Context, tx rdbms.Tx, course int64, units []*Unit)
 			byID[q.ID] = q
 		}
 	}
-	rows, err := tx.Query(ctx, `WITH history AS (
- SELECT question_id,outcome,attempted_at,row_number() OVER(PARTITION BY question_id ORDER BY attempted_at DESC,id DESC) rn
- FROM app.practice_attempts WHERE course_id=$1 AND question_id=ANY($2::text[])
-) SELECT question_id,count(*),coalesce(min(rn) FILTER(WHERE outcome<>'correct'),count(*)+1)-1,
- max(outcome) FILTER(WHERE rn=1),max(attempted_at) FILTER(WHERE rn=1) FROM history GROUP BY question_id`, course, ids)
+	progress, err := tx.Practice().QuestionProgress(ctx, course, ids)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var id string
-		var attempts, streak int64
-		var last, at *string
-		if err = rows.Scan(&id, &attempts, &streak, &last, &at); err != nil {
-			return err
-		}
-		q := byID[id]
-		q.Attempts, q.Streak, q.Last, q.Attempted = attempts, streak, last, at
-		q.State, q.Rank = questionState(attempts, streak, last)
+	for i := range progress {
+		row := progress[i]
+		q := byID[row.Question]
+		q.Attempts, q.Streak, q.Last, q.Attempted = row.Attempts, row.Streak, row.Last, row.AttemptedAt
+		q.State, q.Rank = questionState(row.Attempts, row.Streak, row.Last)
 	}
-	return rows.Err()
+	return nil
 }
 
 func summarize(view *View) {

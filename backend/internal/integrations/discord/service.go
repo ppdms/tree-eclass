@@ -6,41 +6,30 @@ import (
 	"os"
 	"time"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/messages"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Service struct {
-	Pool    rdbms.Pool
+	Pool    database.Store
 	Objects *blob.Store
 	Runner  Runner
 	Temp    string
 }
 
-func checkSettings(ctx context.Context, tx rdbms.Tx, cfg settings.Discord) error {
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('settings:discord-export',0))`); err != nil {
-		return err
-	}
-	var matches bool
-	err := tx.QueryRow(ctx, `SELECT enabled=1 AND token=$1 AND interval_seconds=$2 AND include_threads=$3 AND media=$4 AND parallel=$5 FROM app.discord_export_settings WHERE id=1`, identity.Encode(cfg.Token), cfg.Interval, cfg.Threads, boolInt(cfg.Media), cfg.Parallel).
-		Scan(&matches)
-	if err != nil {
-		return err
-	}
-	if !matches {
-		return errors.New("Discord settings changed during export")
-	}
-	return nil
+func checkSettings(ctx context.Context, tx database.Tx, cfg settings.Discord) error {
+	return tx.Settings().VerifyDiscordExport(ctx, database.DiscordExportExpectation{
+		Token:    identity.Encode(cfg.Token),
+		Interval: cfg.Interval,
+		Threads:  cfg.Threads,
+		Media:    cfg.Media,
+		Parallel: cfg.Parallel,
+	})
 }
-func boolInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
-}
+
 func (s Service) Tick(ctx context.Context, now time.Time, forceDiscovery bool) error {
 	cfg, err := (settings.Service{Pool: s.Pool}).Discord(ctx)
 	if err != nil {
@@ -60,9 +49,7 @@ func (s Service) Tick(ctx context.Context, now time.Time, forceDiscovery bool) e
 	if err = checkDirectory(dir); err != nil {
 		return err
 	}
-	var discover bool
-	err = s.Pool.QueryRow(ctx, `SELECT NOT EXISTS(SELECT 1 FROM messages.message_state WHERE key='native_discovery' AND updated_at::timestamptz>clock_timestamp()-interval '6 hours')`).
-		Scan(&discover)
+	discover, err := s.Pool.Discord().DiscoveryDue(ctx)
 	if err != nil {
 		return err
 	}
@@ -72,7 +59,7 @@ func (s Service) Tick(ctx context.Context, now time.Time, forceDiscovery bool) e
 		}
 	}
 	source, err := s.next(ctx, now)
-	if errors.Is(err, rdbms.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
@@ -83,27 +70,25 @@ func (s Service) Tick(ctx context.Context, now time.Time, forceDiscovery bool) e
 			return ctx.Err()
 		}
 		// A failed interval retains its old cursor. Never log exporter output or token.
-		_, saved := s.Pool.Exec(
-			ctx,
-			`INSERT INTO messages.export_cursors(root_id,channel_id,after_id,next_at,error) VALUES($1,$2,$3,$4,$5) ON CONFLICT(root_id,channel_id) DO UPDATE SET next_at=excluded.next_at,error=excluded.error`,
-			source.Root,
-			source.Channel,
-			source.After,
-			now.Add(5*time.Minute),
-			"Discord interval failed; retry scheduled",
-		)
+		saved := s.Pool.Discord().RecordExportFailure(ctx, database.DiscordExportFailure{
+			Root:    source.Root,
+			Channel: source.Channel,
+			After:   source.After,
+			NextAt:  now.Add(5 * time.Minute),
+			Error:   "Discord interval failed; retry scheduled",
+		})
 		return errors.Join(err, saved)
 	}
 	return nil
 }
 func (s Service) next(ctx context.Context, now time.Time) (messages.Archive, error) {
 	var source messages.Archive
-	err := s.Pool.QueryRow(ctx, `SELECT d.root_id,d.channel_id,m.course_id,coalesce(c.after_id,0) FROM app.discord_discovered_channels d
- JOIN app.discord_course_channels m ON m.root_channel_id=d.root_id::text
- LEFT JOIN messages.export_cursors c ON c.root_id=d.root_id AND c.channel_id=d.channel_id
- WHERE c.next_at IS NULL OR c.next_at<=$1 ORDER BY coalesce(c.next_at,'epoch'::timestamptz),d.channel_id LIMIT 1`, now).
-		Scan(&source.Root, &source.Channel, &source.Course, &source.After)
-	return source, err
+	found, err := s.Pool.Discord().NextExportSource(ctx, now)
+	if err != nil {
+		return source, err
+	}
+	source.Root, source.Channel, source.Course, source.After = found.Root, found.Channel, found.Course, found.After
+	return source, nil
 }
 func boundary(source messages.Archive, now time.Time) int64 {
 	// Backfill at most one month per turn. Idle/old channels cannot produce an

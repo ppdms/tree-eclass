@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/integrations/inference"
 )
@@ -38,7 +39,7 @@ func fixtureJob(t *testing.T) (job, map[string]any) {
 	a := settings.DefaultAI()
 	a.CourseModel = "syn:fixture"
 	a.CourseFallbacks = []string{"fixture-cloud"}
-	return job{Lane: "course", Course: 101, Packet: packet, AI: a}, cases[0].Payload
+	return job{Lane: database.SynthesisCourse, Course: 101, Packet: packet, AI: a}, cases[0].Payload
 }
 func TestPromptIdentityBoundary(t *testing.T) {
 	j, p := fixtureJob(t)

@@ -7,9 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/materials"
 	"tree-eclass/internal/domain/settings"
@@ -21,7 +19,7 @@ import (
 type sourceBoundAnalysisFixture struct {
 	c        *Controller
 	ctx      context.Context
-	pool     rdbms.Pool
+	pool     *fixtureStore
 	material materials.Service
 	indexer  knowledge.Indexer
 	service  analysis.Service
@@ -46,13 +44,9 @@ func newSourceBoundAnalysisFixture(t *testing.T) *sourceBoundAnalysisFixture {
 	ctx := t.Context()
 	conn, objects := startTestStorage(t, c)
 	t.Cleanup(func() { conn.Close(ctx) })
-	nativePool, err := pgxpool.New(ctx, c.databaseURL())
-	pool := rdbms.WrapPostgres(nativePool)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
-	if _, err = pool.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(771,'Synthetic analysis','/Courses/771')`); err != nil {
+	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(771,'Synthetic analysis','/Courses/771')`); err != nil {
 		t.Fatal(err)
 	}
 	temp := t.TempDir()
@@ -169,10 +163,10 @@ func visualAnalysisChecks(t *testing.T, fixture *sourceBoundAnalysisFixture) {
 		t.Fatal("visual document guide", insight, err)
 	}
 }
-func analysisRecoveryChecks(t *testing.T, pool rdbms.Pool, service analysis.Service, document string) {
+func analysisRecoveryChecks(t *testing.T, pool *fixtureStore, service analysis.Service, document string) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := pool.Exec(ctx, `UPDATE knowledge.document_enrichments SET status='pending',available_at='now',attempts=0 WHERE document_id=$1`, document); err != nil {
+	if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.document_enrichments SET status='pending',available_at='now',attempts=0 WHERE document_id=$1`, document); err != nil {
 		t.Fatal(err)
 	}
 	service.Generator.Client = syntheticInference(
@@ -185,12 +179,12 @@ func analysisRecoveryChecks(t *testing.T, pool rdbms.Pool, service analysis.Serv
 	}
 	var attempts int64
 	var status string
-	if err := pool.QueryRow(ctx, `SELECT attempts,status FROM knowledge.document_enrichments WHERE document_id=$1`, document).Scan(&attempts, &status); err != nil ||
+	if err := pool.Native.QueryRow(ctx, `SELECT attempts,status FROM knowledge.document_enrichments WHERE document_id=$1`, document).Scan(&attempts, &status); err != nil ||
 		attempts != 0 ||
 		status != "pending" {
 		t.Fatal("quota pause exhausted retry budget", attempts, status, err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE knowledge.document_enrichments SET status='running',attempts=1 WHERE document_id=$1`, document); err != nil {
+	if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.document_enrichments SET status='running',attempts=1 WHERE document_id=$1`, document); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Recover(ctx); err != nil {
@@ -200,7 +194,7 @@ func analysisRecoveryChecks(t *testing.T, pool rdbms.Pool, service analysis.Serv
 	service.Generator.Client = syntheticInference(
 		func(ctx context.Context, _ inference.Candidate, _ inference.Request, emit func(inference.Delta) error) error {
 			called = true
-			if _, err := pool.Exec(ctx, `UPDATE knowledge.documents SET source_hash='changed' WHERE id=$1`, document); err != nil {
+			if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.documents SET source_hash='changed' WHERE id=$1`, document); err != nil {
 				return err
 			}
 			if err := emit(inference.Delta{Text: `{"summary":"must never publish"}`}); err != nil {
@@ -213,7 +207,7 @@ func analysisRecoveryChecks(t *testing.T, pool rdbms.Pool, service analysis.Serv
 		t.Fatal("stale completion", worked, called, err)
 	}
 	var payload *string
-	if err := pool.QueryRow(ctx, `SELECT status,payload_json FROM knowledge.document_enrichments WHERE document_id=$1`, document).Scan(&status, &payload); err != nil ||
+	if err := pool.Native.QueryRow(ctx, `SELECT status,payload_json FROM knowledge.document_enrichments WHERE document_id=$1`, document).Scan(&status, &payload); err != nil ||
 		status == "ready" ||
 		(payload != nil && strings.Contains(*payload, "must never publish")) {
 		t.Fatal("stale source analysis published", status, err)

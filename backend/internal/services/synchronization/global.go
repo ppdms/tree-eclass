@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/jobs"
@@ -21,7 +22,7 @@ func (s Service) SaveGlobalAnnouncements(ctx context.Context, key string, items 
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('global-feed:'||$1,0))`, key); err != nil {
+	if err = tx.Sync().LockGlobalFeed(ctx, key); err != nil {
 		return err
 	}
 	lines := []string{}
@@ -30,26 +31,22 @@ func (s Service) SaveGlobalAnnouncements(ctx context.Context, key string, items 
 		if a.ID == "" {
 			return errors.New("global announcement identity is required")
 		}
-		var exists bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app.global_announcements WHERE feed_key=$1 AND announcement_id=$2)`, key, identity.Encode(a.ID)).Scan(&exists); err != nil {
+		exists, err := tx.Sync().GlobalAnnouncementExists(ctx, key, identity.Encode(a.ID))
+		if err != nil {
 			return err
 		}
 		if !exists {
 			lines = append(lines, announcementLine(a))
 			ids = append(ids, a.ID)
 		}
-		_, err = tx.Exec(
-			ctx,
-			`INSERT INTO app.global_announcements(feed_key,announcement_id,title,link,description,pub_date) VALUES($1,$2,$3,$4,$5,$6)
-ON CONFLICT(feed_key,announcement_id) DO UPDATE SET title=excluded.title,link=excluded.link,description=excluded.description,pub_date=excluded.pub_date,fetched_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')`,
-			key,
-			identity.Encode(a.ID),
-			identity.Encode(a.Title),
-			a.Link,
-			identity.Encode(a.Description),
-			a.Published,
-		)
-		if err != nil {
+		if err := tx.Sync().UpsertGlobalAnnouncement(ctx, database.SyncGlobalAnnouncementInput{
+			FeedKey:     key,
+			ID:          identity.Encode(a.ID),
+			Title:       identity.Encode(a.Title),
+			Link:        a.Link,
+			Description: identity.Encode(a.Description),
+			Published:   a.Published,
+		}); err != nil {
 			return err
 		}
 	}

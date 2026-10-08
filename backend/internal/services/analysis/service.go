@@ -4,17 +4,17 @@ import (
 	"context"
 	"errors"
 	"time"
-	"tree-eclass/internal/integrations/inference"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/integrations/inference"
 	"tree-eclass/internal/integrations/parser"
 )
 
 type Service struct {
-	Pool      rdbms.Pool
+	Pool      database.Store
 	Objects   *blob.Store
 	Parser    *parser.Runner
 	Temp      string
@@ -45,22 +45,45 @@ func (d document) metadata() map[string]any {
 		"source_hash":   d.Hash,
 	}
 }
+
+// contextHash renders the canonical identity hash for the stored tuple so
+// staleness checks compare equal on both backends without SQL-side hashing.
+func (d document) contextHash() string {
+	return database.AnalysisContextHash(d.ID, d.Course, d.Hash, d.Kind, d.Name, d.CourseName, d.Path, d.Origin)
+}
+
+func fromAnalysisDocument(d database.AnalysisDocument) document {
+	out := document{
+		ID: d.ID, Hash: d.SourceHash, Kind: d.Kind, Name: d.Name,
+		CourseName: d.CourseName, Path: d.Path, Origin: d.Origin,
+		Course: d.CourseID, Pages: d.Pages,
+	}
+	out.Context = out.contextHash()
+	return out
+}
+
+func analysisVersions() database.AnalysisVersions {
+	return database.AnalysisVersions{
+		Document:  settings.DocumentAnalysisVersion,
+		Synthesis: settings.PageSynthesisVersion,
+		Page:      settings.PageAnalysisVersion,
+	}
+}
+
 func (s Service) Recover(ctx context.Context) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	for _, table := range []string{"document_enrichments", "page_enrichments"} {
-		if _, err = tx.Exec(ctx, `UPDATE knowledge.`+table+` SET status='pending',claimed_at=NULL,attempts=greatest(0,attempts-1),available_at=$1 WHERE status='running'`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-			return err
-		}
+	if err = tx.Analysis().RecoverLane(ctx, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }
 func (s Service) RunOne(ctx context.Context) (bool, error) {
 	selected, err := s.claim(ctx)
-	if errors.Is(err, rdbms.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {

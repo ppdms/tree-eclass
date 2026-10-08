@@ -8,12 +8,11 @@ import (
 	"strings"
 
 	"tree-eclass/internal/domain/commands"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/domain/queries"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool rdbms.Pool }
+type Service struct{ Pool database.Store }
 type Course struct {
 	ID            int64   `json:"id"`
 	Name          string  `json:"name"`
@@ -23,7 +22,7 @@ type Course struct {
 	SortOrder     *int64  `json:"sort_order"`
 }
 
-func course(row queries.AppCourse) Course {
+func course(row database.AppCourse) Course {
 	if row.ShortName != nil {
 		text := identity.Decode(*row.ShortName)
 		row.ShortName = &text
@@ -38,7 +37,7 @@ func course(row queries.AppCourse) Course {
 	}
 }
 func (s Service) List(ctx context.Context, hidden bool) ([]Course, error) {
-	rows, err := queries.ForPool(s.Pool).ListCourses(ctx, hidden)
+	rows, err := s.Pool.Courses().ListCourses(ctx, hidden)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +48,7 @@ func (s Service) List(ctx context.Context, hidden bool) ([]Course, error) {
 	return result, nil
 }
 func (s Service) Get(ctx context.Context, id int64) (Course, error) {
-	row, err := queries.ForPool(s.Pool).Course(ctx, id)
+	row, err := s.Pool.Courses().Course(ctx, id)
 	return course(row), err
 }
 
@@ -63,10 +62,10 @@ func (s Service) Add(ctx context.Context, id int64, name string, short ...string
 		text := identity.Encode(strings.TrimSpace(short[0]))
 		shortName = &text
 	}
-	return s.mutate(ctx, func(q queries.Querier) error {
-		return q.AddCourse(
+	return s.mutate(ctx, func(tx database.Tx) error {
+		return tx.Courses().AddCourse(
 			ctx,
-			queries.AddCourseParams{
+			database.AddCourseParams{
 				ID: id, Name: identity.Encode(name), WebdavFolder: fmt.Sprintf("/Courses/%d", id),
 				ShortName: shortName,
 			},
@@ -78,10 +77,10 @@ func (s Service) Rename(ctx context.Context, id int64, name string) error {
 	if name == "" {
 		return errors.New("course name is required")
 	}
-	return s.mutate(ctx, func(q queries.Querier) error {
-		n, err := q.RenameCourse(ctx, queries.RenameCourseParams{ID: id, Name: identity.Encode(name)})
+	return s.mutate(ctx, func(tx database.Tx) error {
+		n, err := tx.Courses().RenameCourse(ctx, database.RenameCourseParams{ID: id, Name: identity.Encode(name)})
 		if err == nil && n == 0 {
-			return rdbms.ErrNoRows
+			return database.ErrNoRows
 		}
 		return err
 	})
@@ -91,21 +90,21 @@ func (s Service) Hide(ctx context.Context, id int64, hidden bool) error {
 	if hidden {
 		flag = 1
 	}
-	return s.mutate(ctx, func(q queries.Querier) error {
-		n, err := q.HideCourse(ctx, queries.HideCourseParams{ID: id, Hidden: flag})
+	return s.mutate(ctx, func(tx database.Tx) error {
+		n, err := tx.Courses().HideCourse(ctx, database.HideCourseParams{ID: id, Hidden: flag})
 		if err == nil && n == 0 {
-			return rdbms.ErrNoRows
+			return database.ErrNoRows
 		}
 		return err
 	})
 }
-func (s Service) mutate(ctx context.Context, fn func(queries.Querier) error) error {
+func (s Service) mutate(ctx context.Context, fn func(database.Tx) error) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err = fn(queries.ForTx(tx)); err != nil {
+	if err = fn(tx); err != nil {
 		return err
 	}
 	if _, err = commands.EnqueueTx(ctx, tx, "projection", "refresh_read_model", map[string]any{}, true); err != nil {
@@ -120,11 +119,10 @@ func (s Service) Reorder(ctx context.Context, ids []int64) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err = tx.Exec(ctx, "LOCK TABLE app.courses IN SHARE ROW EXCLUSIVE MODE"); err != nil {
+	if err = tx.Courses().LockCoursesForReorder(ctx); err != nil {
 		return err
 	}
-	q := queries.ForTx(tx)
-	visible, err := q.ListCourses(ctx, false)
+	visible, err := tx.Courses().ListCourses(ctx, false)
 	if err != nil {
 		return err
 	}
@@ -140,7 +138,7 @@ func (s Service) Reorder(ctx context.Context, ids []int64) error {
 			return errors.New("order must contain each visible course exactly once")
 		}
 		delete(expected, id)
-		if err = q.OrderCourse(ctx, queries.OrderCourseParams{ID: id, SortOrder: new(int64(index))}); err != nil {
+		if err = tx.Courses().OrderCourse(ctx, database.OrderCourseParams{ID: id, SortOrder: new(int64(index))}); err != nil {
 			return err
 		}
 	}

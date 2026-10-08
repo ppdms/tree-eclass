@@ -9,9 +9,9 @@ import (
 	"io"
 	"os"
 	"strings"
-	"tree-eclass/internal/infrastructure/rdbms"
 	"unicode/utf8"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
@@ -25,28 +25,21 @@ func (s Service) excerpt(ctx context.Context, j job) (string, error) {
 		return "", err
 	}
 	defer tx.Rollback(ctx)
-	query := `WITH ranked AS(SELECT *,row_number() OVER(ORDER BY ordinal) n,count(*) OVER() total FROM knowledge.chunks WHERE document_id=$1)
- SELECT locator_type,coalesce(locator_start,''),left(text,2500) FROM ranked WHERE n IN(SELECT round(column1*(total-1)::numeric/11)+1 FROM (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11))) ORDER BY ordinal`
-	args := []any{j.Document.ID}
+	var rows []database.ExcerptRow
 	maximum := 30000
 	if j.Page > 0 {
-		query = `SELECT locator_type,coalesce(locator_start,''),left(text,12000) FROM knowledge.chunks WHERE document_id=$1 AND locator_type='page' AND locator_start=$2 ORDER BY ordinal`
-		args = append(args, fmt.Sprint(j.Page))
+		rows, err = tx.Analysis().PageExcerpts(ctx, j.Document.ID, fmt.Sprint(j.Page))
 		maximum = 12000
+	} else {
+		rows, err = tx.Analysis().SampleExcerpts(ctx, j.Document.ID)
 	}
-	rows, err := tx.Query(ctx, query, args...)
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
 	var builder strings.Builder
 	remaining := maximum
-	for rows.Next() {
-		var kind, start, body string
-		if err = rows.Scan(&kind, &start, &body); err != nil {
-			return "", err
-		}
-		value := "[" + kind + " " + start + "]\n" + identity.Decode(body) + "\n\n"
+	for _, row := range rows {
+		value := "[" + row.LocatorType + " " + row.LocatorStart + "]\n" + identity.Decode(row.Text) + "\n\n"
 		chars := []rune(value)
 		chars = chars[:min(remaining, len(chars))]
 		builder.WriteString(string(chars))
@@ -55,16 +48,17 @@ func (s Service) excerpt(ctx context.Context, j job) (string, error) {
 			break
 		}
 	}
-	return builder.String(), rows.Err()
+	return builder.String(), nil
 }
 func (s Service) pageImage(ctx context.Context, j job) (inference.Image, error) {
-	var ref blob.Reference
-	err := s.Pool.QueryRow(ctx, `SELECT o.bucket,o.key,o.version_id,o.sha256,o.bytes,o.media_type FROM app.document_revisions r JOIN app.objects o ON o.id=r.object_id WHERE r.document_id=$1 AND r.course_id=$2 AND r.logical_path=$3 AND r.deleted_at IS NULL AND o.sha256=$4 ORDER BY r.created_at DESC LIMIT 1`, j.Document.ID, j.Document.Course, j.Document.Path, j.Document.Hash).
-		Scan(&ref.Bucket, &ref.Key, &ref.VersionID, &ref.SHA256, &ref.Bytes, &ref.MediaType)
+	ref, err := s.Pool.Analysis().PageImageObject(ctx, j.Document.ID, j.Document.Course, j.Document.Path, j.Document.Hash)
 	if err != nil {
 		return inference.Image{}, err
 	}
-	file, err := s.Objects.Download(ctx, ref, s.Temp)
+	file, err := s.Objects.Download(ctx, blob.Reference{
+		Bucket: ref.Bucket, Key: ref.Key, VersionID: ref.VersionID,
+		SHA256: ref.SHA256, Bytes: ref.Bytes, MediaType: ref.MediaType,
+	}, s.Temp)
 	if err != nil {
 		return inference.Image{}, err
 	}
@@ -117,36 +111,23 @@ func (s Service) pageEvidence(ctx context.Context, j job) (string, error) {
 	if perPage < 100 {
 		return "", errors.New("complete page synthesis exceeds its 300000-character evidence limit")
 	}
-	rows, err := tx.Query(
-		ctx,
-		`SELECT page_number,CASE WHEN octet_length(payload_json)<=262144 THEN payload_json END FROM knowledge.page_enrichments WHERE document_id=$1 AND source_hash=$2 AND analysis_version=$3 AND requested_model=$4 AND status='ready' AND page_number BETWEEN 1 AND $5 ORDER BY page_number`,
-		j.Document.ID,
-		j.Document.Hash,
-		settings.PageAnalysisVersion,
-		j.Requested,
-		j.Document.Pages,
-	)
+	rows, err := tx.Analysis().PageEvidence(ctx, j.Document.ID, j.Document.Hash,
+		settings.PageAnalysisVersion, j.Requested, j.Document.Pages)
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
 	var builder strings.Builder
 	builder.WriteByte('[')
 	count := int64(0)
-	for rows.Next() {
-		var page int64
-		var raw *string
-		if err = rows.Scan(&page, &raw); err != nil {
-			return "", err
-		}
-		if raw == nil || page != count+1 {
+	for _, row := range rows {
+		if row.Payload == nil || row.PageNumber != count+1 {
 			return "", errors.New("page analysis coverage is incomplete")
 		}
-		p, err := inference.ParseObject(*raw)
+		p, err := inference.ParseObject(*row.Payload)
 		if err != nil {
 			return "", err
 		}
-		compact, err := compactPage(p, page, perPage)
+		compact, err := compactPage(p, row.PageNumber, perPage)
 		if err != nil {
 			return "", err
 		}
@@ -156,11 +137,8 @@ func (s Service) pageEvidence(ctx context.Context, j job) (string, error) {
 		builder.WriteString(compact)
 		count++
 	}
-	if err = rows.Err(); err != nil {
-		return "", err
-	}
 	if count != j.Document.Pages {
-		return "", rdbms.ErrNoRows
+		return "", database.ErrNoRows
 	}
 	builder.WriteByte(']')
 	return builder.String(), nil

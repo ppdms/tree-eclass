@@ -59,13 +59,9 @@ func Load(path string) (Config, error) {
 	return cfg, err
 }
 
-// StorageConfig resolves the database driver from Config: SQLitePath selects
-// the sqlite backend, otherwise the postgres DatabaseURL is used.
+// StorageConfig preserves deployment selection; admission rejects both or neither.
 func (c Config) StorageConfig() storage.Config {
-	if c.SQLitePath != "" {
-		return storage.Config{SQLitePath: c.SQLitePath}
-	}
-	return storage.ConfigForURL(c.DatabaseURL)
+	return storage.Config{PostgresURL: c.DatabaseURL, SQLitePath: c.SQLitePath}
 }
 
 type Server struct {
@@ -97,15 +93,7 @@ func New(ctx context.Context, cfg Config, options ...Option) (*Server, error) {
 		return nil, err
 	}
 	if cfg.Code != "" {
-		// Scalar to_jsonb($1) is covered by the sqlite shim (text→JSON
-		// string); row/table forms need rewrites, this one does not.
-		_, err = db.Pool.Exec(
-			ctx,
-			`INSERT INTO app.native_settings(key,value) VALUES('_runtime_code',to_jsonb($1::text))
-			ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=now() WHERE app.native_settings.value IS DISTINCT FROM excluded.value`,
-			cfg.Code,
-		)
-		if err != nil {
+		if err = db.Pool.Runtime().SetRuntimeCode(ctx, cfg.Code); err != nil {
 			db.Close()
 			return nil, err
 		}
@@ -129,7 +117,7 @@ func New(ctx context.Context, cfg Config, options ...Option) (*Server, error) {
 		s.inference = &quota.Guard{
 			Client: client,
 			Probe:  quota.HTTPProbe{Client: client.HTTP, OllamaCookie: cfg.ProviderKeys["OLLAMA_COOKIE_HEADER"]},
-			Store:  quota.Postgres{Pool: db.Pool},
+			Store:  quota.Store{Pool: db.Pool},
 		}
 		s.inferenceClose = client.Close
 	}

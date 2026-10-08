@@ -3,19 +3,18 @@ package settings
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strconv"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type exportWriter struct {
 	out io.Writer
 	err error
 	ctx context.Context
-	tx  rdbms.Tx
+	ops database.Operations
 }
 
 func (w *exportWriter) text(value string) {
@@ -29,116 +28,48 @@ func (w *exportWriter) value(value any) {
 	}
 }
 
-// decodeExportRow converts one scanned export row to its JSON shape. Columns
-// arrive via columnNames so the query stays portable: the legacy
-// SELECT to_jsonb(export_row) wrapper has no sqlite form and fails at prepare
-// time. Numbers surface as json.Number and booleans as bool so the export
-// text matches the old to_jsonb output on both backends.
-func decodeExportRow(names []string, raw []any) (map[string]any, error) {
-	row := make(map[string]any, len(names))
-	for i, name := range names {
-		value, err := exportValue(name, raw[i])
-		if err != nil {
-			return nil, err
-		}
-		row[name] = value
-	}
+// decodeExportRow converts one normalized export row to its JSON shape.
+// Strings arrive stored-encoded and are decoded here; the *_json columns
+// become parsed arrays under their public names.
+func decodeExportRow(row database.SettingsExportRow) (map[string]any, error) {
+	out := make(map[string]any, len(row))
 	for key, value := range row {
 		if text, ok := value.(string); ok {
-			row[key] = identity.Decode(text)
+			out[key] = identity.Decode(text)
+		} else {
+			out[key] = value
 		}
 	}
-	for field, name := range map[string]string{"rects_json": "rects", "tags_json": "tags", "consulted_json": "consulted"} {
-		if value, exists := row[field]; exists {
+	fields := map[string]string{"rects_json": "rects", "tags_json": "tags", "consulted_json": "consulted"}
+	for field, name := range fields {
+		if value, exists := out[field]; exists {
 			var decoded any = []any{}
 			if text, ok := value.(string); ok && text != "" {
 				if json.Unmarshal([]byte(text), &decoded) != nil {
 					decoded = []any{}
 				}
 			}
-			delete(row, field)
-			row[name] = decoded
+			delete(out, field)
+			out[name] = decoded
 		}
 	}
-	return row, nil
+	return out, nil
 }
 
-// exportValue renders one scanned column the way to_jsonb did: NULL stays
-// nil, integers/floats become json.Number, booleans stay bool, and everything
-// else stays text for identity decoding by the caller.
-func exportValue(name string, value any) (any, error) {
-	// The exam-plan enabled flag is a boolean expression: pgx scans it as
-	// bool, modernc as int64 0/1. Normalize both to bool so the export
-	// text matches on both backends.
-	if name == "enabled" {
-		switch v := value.(type) {
-		case nil:
-			return nil, nil
-		case bool:
-			return v, nil
-		case int64:
-			return v != 0, nil
-		case int32:
-			return v != 0, nil
-		case int:
-			return v != 0, nil
-		case []byte:
-			text := string(v)
-			return text == "t" || text == "true" || text == "1", nil
-		case string:
-			return v == "t" || v == "true" || v == "1", nil
-		default:
-			return nil, fmt.Errorf("settings: unexpected %s type %T", name, value)
-		}
-	}
-	switch v := value.(type) {
-	case nil:
-		return nil, nil
-	case bool:
-		return v, nil
-	case int64:
-		return json.Number(strconv.FormatInt(v, 10)), nil
-	case int32:
-		return json.Number(strconv.FormatInt(int64(v), 10)), nil
-	case int:
-		return json.Number(strconv.Itoa(v)), nil
-	case float64:
-		return json.Number(strconv.FormatFloat(v, 'g', -1, 64)), nil
-	case []byte:
-		return string(v), nil
-	case string:
-		return v, nil
-	default:
-		return nil, fmt.Errorf("settings: unexpected %s type %T", name, value)
-	}
-}
-
-func (w *exportWriter) table(query string, columns []string, args ...any) {
-	w.rows(query, columns, args...)
-}
-
-func (w *exportWriter) rows(query string, columns []string, args ...any) {
+func (w *exportWriter) table(name string) {
 	if w.err != nil {
 		return
 	}
-	rows, err := w.tx.Query(w.ctx, query, args...)
+	iterator, err := w.ops.Settings().ExportRows(w.ctx, name)
 	if err != nil {
 		w.err = err
 		return
 	}
-	defer rows.Close()
+	defer iterator.Close()
 	w.text("[")
 	separator := ""
-	for w.err == nil && rows.Next() {
-		raw := make([]any, len(columns))
-		pointers := make([]any, len(columns))
-		for i := range raw {
-			pointers[i] = &raw[i]
-		}
-		if w.err = rows.Scan(pointers...); w.err != nil {
-			return
-		}
-		row, err := decodeExportRow(columns, raw)
+	for w.err == nil && iterator.Next() {
+		row, err := decodeExportRow(iterator.Value())
 		if err != nil {
 			w.err = err
 			return
@@ -151,7 +82,7 @@ func (w *exportWriter) rows(query string, columns []string, args ...any) {
 		}
 	}
 	if w.err == nil {
-		w.err = rows.Err()
+		w.err = iterator.Err()
 	}
 	w.text("]")
 }
@@ -185,33 +116,22 @@ type exportConversation struct {
 }
 
 func (w *exportWriter) conversationPage(last int64) ([]exportConversation, int64, bool) {
-	// Fetch a bounded page, then close its cursor before reading messages on
-	// the same snapshot connection. Message bodies stream one row at a time.
-	rows, err := w.tx.Query(
-		w.ctx,
-		`SELECT id,title,created_at,updated_at FROM app.chat_conversations WHERE id>$1 ORDER BY id LIMIT 64`,
-		last,
-	)
+	// Fetch a bounded page, then read messages on the same snapshot
+	// connection. Message bodies stream one conversation at a time.
+	headers, err := w.ops.Chat().ConversationPage(w.ctx, last, 64)
 	if err != nil {
 		w.err = err
 		return nil, last, false
 	}
-	var items []exportConversation
-	for rows.Next() {
-		var c exportConversation
-		if err := rows.Scan(&c.ID, &c.Title, &c.Created, &c.Updated); err != nil {
-			rows.Close()
-			w.err = err
-			return nil, last, false
-		}
-		items = append(items, c)
+	items := make([]exportConversation, 0, len(headers))
+	for _, header := range headers {
+		items = append(items, exportConversation{
+			ID:      header.ID,
+			Title:   header.Title,
+			Created: header.CreatedAt,
+			Updated: header.UpdatedAt,
+		})
 	}
-	if err := rows.Err(); err != nil {
-		w.err = err
-		rows.Close()
-		return nil, last, false
-	}
-	rows.Close()
 	if len(items) == 0 {
 		return nil, last, true
 	}
@@ -228,10 +148,49 @@ func (w *exportWriter) conversationEntry(item exportConversation, separator stri
 	w.text(separator)
 	w.text(string(data[:len(data)-1]))
 	w.text(`,"messages":`)
-	w.rows(
-		`SELECT id,conversation_id,role,content,consulted_json,model,created_at FROM app.chat_messages WHERE conversation_id=$1 ORDER BY id`,
-		[]string{"id", "conversation_id", "role", "content", "consulted_json", "model", "created_at"},
-		item.ID,
-	)
+	stream, err := w.ops.Chat().StreamMessages(w.ctx, item.ID)
+	if err != nil {
+		w.err = err
+		return
+	}
+	defer stream.Close()
+	w.text("[")
+	index := 0
+	for w.err == nil && stream.Next() {
+		message := stream.Value()
+		row, err := decodeExportRow(database.SettingsExportRow{
+			"id":              json.Number(jsonInt(message.ID)),
+			"conversation_id": json.Number(jsonInt(message.ConversationID)),
+			"role":            message.Role,
+			"content":         message.Content,
+			"consulted_json":  nullableString(message.ConsultedJSON),
+			"model":           nullableString(message.Model),
+			"created_at":      message.CreatedAt,
+		})
+		if err != nil {
+			w.err = err
+			return
+		}
+		if index > 0 {
+			w.text(",")
+		}
+		w.value(row)
+		index++
+	}
+	if w.err == nil {
+		w.err = stream.Err()
+	}
+	w.text("]")
 	w.text("}")
+}
+
+func jsonInt(value int64) string {
+	return strconv.FormatInt(value, 10)
+}
+
+func nullableString(value *string) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }

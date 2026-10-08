@@ -6,8 +6,8 @@ import (
 	"unicode/utf8"
 
 	"tree-eclass/internal/domain/commands"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Study levels retain the exact logical catalog path, including deleted-file
@@ -16,15 +16,12 @@ func (s Service) StudyLevel(ctx context.Context, id int64, path string, level in
 	if path == "" || utf8.RuneCountInString(path) > 4096 || level < 0 || level > 5 {
 		return errors.New("file_path and a level between 0 and 5 are required")
 	}
-	return s.studyMutation(ctx, id, func(tx rdbms.Tx) error {
-		_, err := tx.Exec(
-			ctx,
-			`INSERT INTO app.file_study(course_id,file_path,level,last_updated) VALUES($1,$2,$3,to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'))
-ON CONFLICT(course_id,file_path) DO UPDATE SET level=excluded.level,last_updated=excluded.last_updated`,
-			id,
-			identity.Encode(path),
-			level,
-		)
+	return s.studyMutation(ctx, id, func(tx database.Tx) error {
+		err := tx.Courses().SetStudyLevel(ctx, database.SetStudyLevelParams{
+			CourseID: id,
+			FilePath: identity.Encode(path),
+			Level:    level,
+		})
 		if err != nil {
 			return err
 		}
@@ -37,35 +34,25 @@ func (s Service) FolderCollapsed(ctx context.Context, id int64, key string, coll
 	if key == "" || utf8.RuneCountInString(key) > 4096 {
 		return errors.New("a valid folder_key is required")
 	}
-	return s.studyMutation(ctx, id, func(tx rdbms.Tx) error {
-		var node int64
-		if err := tx.QueryRow(ctx, `SELECT id FROM app.nodes WHERE course_id=$1 AND (url=$2 OR local_path=$2) LIMIT 1 FOR SHARE`, id, identity.Encode(key)).Scan(&node); err != nil {
+	return s.studyMutation(ctx, id, func(tx database.Tx) error {
+		if err := tx.Courses().NodeForFolder(ctx, id, identity.Encode(key)); err != nil {
 			return err
 		}
-		flag := 0
+		flag := int64(0)
 		if collapsed {
 			flag = 1
 		}
-		_, err := tx.Exec(
-			ctx,
-			`INSERT INTO app.collapsed_course_folders(course_id,folder_key,collapsed) VALUES($1,$2,$3)
-ON CONFLICT(course_id,folder_key) DO UPDATE SET collapsed=$3,updated_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')`,
-			id,
-			identity.Encode(key),
-			flag,
-		)
-		return err
+		return tx.Courses().SetFolderCollapsed(ctx, id, identity.Encode(key), flag)
 	})
 }
 
-func (s Service) studyMutation(ctx context.Context, id int64, fn func(rdbms.Tx) error) error {
+func (s Service) studyMutation(ctx context.Context, id int64, fn func(database.Tx) error) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	var found int64
-	if err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0 FOR SHARE`, id).Scan(&found); err != nil {
+	if _, err = tx.Courses().LockCourseForWrite(ctx, id); err != nil {
 		return err
 	}
 	if err = fn(tx); err != nil {

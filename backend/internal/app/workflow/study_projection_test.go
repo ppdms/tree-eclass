@@ -4,18 +4,17 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/study"
 )
 
-func studyProjectionChecks(t *testing.T, pool rdbms.Pool, base, action string) {
+func studyProjectionChecks(t *testing.T, pool *fixtureStore, base, action string) {
 	t.Helper()
 	ctx := t.Context()
 	now := time.Now()
 	service := study.Service{Pool: pool}
 	exam := now.AddDate(0, 0, 10).Format(time.DateOnly)
-	if _, err := pool.Exec(ctx, `INSERT INTO app.course_exam_plans(course_id,enabled,exam_at) VALUES(101,1,$1)`, exam); err != nil {
+	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.course_exam_plans(course_id,enabled,exam_at) VALUES(101,1,$1)`, exam); err != nil {
 		t.Fatal(err)
 	}
 	// The exam-plan mutation invalidates the navigation as well as the schedule.
@@ -63,14 +62,14 @@ func studyProjectionChecks(t *testing.T, pool rdbms.Pool, base, action string) {
 		t.Fatal("calendar rollover reused yesterday's schedule", nextDay, err)
 	}
 	for _, query := range []string{`DELETE FROM app.study_unit_events WHERE idempotency_key='study-projection-complete'`, `DELETE FROM app.course_exam_plans WHERE course_id=101`, `DELETE FROM read_model.study_metrics`} {
-		if _, err := pool.Exec(ctx, query); err != nil {
+		if _, err := pool.Native.Exec(ctx, query); err != nil {
 			t.Fatal(err)
 		}
 	}
 	refreshNavigation(t, pool)
 }
 
-func studyProjectionProgress(t *testing.T, pool rdbms.Pool, base, action string, refresh func()) {
+func studyProjectionProgress(t *testing.T, pool *fixtureStore, base, action string, refresh func()) {
 	t.Helper()
 	var response map[string]any
 	event := study.Event{

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"tree-eclass/internal/domain/database"
+	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/infrastructure/storage"
 	"tree-eclass/internal/integrations/eclass"
@@ -28,10 +30,12 @@ func TestSQLiteSyncPublishesDocuments(t *testing.T) {
 	}
 	defer db.Close()
 	pool := db.Pool
-	if _, err = pool.Exec(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(161,'x','/Courses/161')`); err != nil {
+	if err = pool.Courses().AddCourse(ctx, database.AddCourseParams{
+		ID: 161, Name: "x", WebdavFolder: "/Courses/161",
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO credentials(id,username,password) VALUES(1,'u','p')`); err != nil {
+	if err = (settings.Service{Pool: pool}).SaveCredentials(ctx, "u", "p", false); err != nil {
 		t.Fatal(err)
 	}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +45,8 @@ func TestSQLiteSyncPublishesDocuments(t *testing.T) {
 			return
 		}
 		if r.URL.Path == "/modules/document/index.php" {
-			fmt.Fprint(w, "<title>Έγγραφα</title>"+`<a href="/modules/document/file.php?course=INF161&amp;download=/notes.txt">notes</a>`)
+			fmt.Fprint(w, "<title>Έγγραφα</title>"+
+				`<a href="/modules/document/file.php?course=INF161&amp;download=/notes.txt">notes</a>`)
 			return
 		}
 		if r.URL.Path == "/modules/document/file.php" {

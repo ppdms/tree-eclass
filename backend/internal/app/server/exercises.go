@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 
 	"tree-eclass/internal/domain/exercises"
 )
@@ -67,7 +67,7 @@ func (s *Server) exerciseDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := (exercises.Service{Pool: s.db.Pool}).Get(r.Context(), id, r.PathValue("exercise_id"))
-	if errors.Is(err, rdbms.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Exercise not found")
 		return
 	}

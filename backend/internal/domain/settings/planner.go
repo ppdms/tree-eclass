@@ -3,10 +3,9 @@ package settings
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strconv"
 
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 )
 
 type Planner struct {
@@ -17,7 +16,7 @@ type Planner struct {
 	MaxCourses   int64            `json:"max_courses_per_day"`
 }
 
-func ReadPlanner(ctx context.Context, db queryer) (Planner, error) {
+func defaultPlanner() Planner {
 	p := Planner{DailyBlocks: 6, BlockMinutes: 50, Weekly: map[string]int64{}, Blackouts: []string{}, MaxCourses: 2}
 	for i := range 7 {
 		minutes := int64(150)
@@ -26,22 +25,30 @@ func ReadPlanner(ctx context.Context, db queryer) (Planner, error) {
 		}
 		p.Weekly[strconv.Itoa(i)] = minutes
 	}
-	var weekly, blackouts string
-	err := db.QueryRow(ctx, `SELECT daily_blocks,block_minutes,weekly_minutes_json,blackout_dates_json,max_courses_per_day FROM app.study_planner_settings WHERE id=1`).
-		Scan(&p.DailyBlocks, &p.BlockMinutes, &weekly, &blackouts, &p.MaxCourses)
-	if errors.Is(err, rdbms.ErrNoRows) {
+	return p
+}
+
+// ReadPlanner accepts store or transaction operations so derived reads
+// share their source snapshot.
+func ReadPlanner(ctx context.Context, db database.Operations) (Planner, error) {
+	p := defaultPlanner()
+	stored, err := db.Settings().LoadPlannerSettings(ctx)
+	if database.IsNoRows(err) {
 		return p, nil
 	}
 	if err != nil {
 		return p, err
 	}
+	p.DailyBlocks = stored.DailyBlocks
+	p.BlockMinutes = stored.BlockMinutes
+	p.MaxCourses = stored.MaxCourses
 	values := map[string]int64{}
-	_ = json.Unmarshal([]byte(weekly), &values)
+	_ = json.Unmarshal([]byte(stored.WeeklyJSON), &values)
 	for i := range 7 {
 		key := strconv.Itoa(i)
 		p.Weekly[key] = max(0, values[key])
 	}
-	if json.Unmarshal([]byte(blackouts), &p.Blackouts) != nil || p.Blackouts == nil {
+	if json.Unmarshal([]byte(stored.BlackoutsJSON), &p.Blackouts) != nil || p.Blackouts == nil {
 		p.Blackouts = []string{}
 	}
 	p.MaxCourses = max(1, p.MaxCourses)

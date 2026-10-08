@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/knowledge"
-	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/jobs"
 )
 
@@ -59,7 +59,7 @@ func (s *Server) indexOnce(ctx context.Context, indexer knowledge.Indexer, queue
 func (s *Server) runIndexCommand(
 	ctx context.Context,
 	indexer knowledge.Indexer,
-	command queries.AppControlCommand,
+	command database.AppControlCommand,
 ) error {
 	if command.Action == "pdf_diff" {
 		return s.runPDFDifference(ctx, command.Payload)

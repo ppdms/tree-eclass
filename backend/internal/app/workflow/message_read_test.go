@@ -4,10 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/messages"
@@ -19,13 +17,9 @@ func TestNativeMessageEvidenceScope(t *testing.T) {
 	ctx := t.Context()
 	conn, _ := startTestStorage(t, c)
 	defer conn.Close(ctx)
-	nativePool, err := pgxpool.New(ctx, c.databaseURL())
-	pool := rdbms.WrapPostgres(nativePool)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := newFixtureStore(t, ctx, c)
 	defer pool.Close()
-	_, err = pool.Exec(
+	_, err := pool.Native.Exec(
 		ctx,
 		`INSERT INTO app.courses(id,name,webdav_folder) VALUES(901,'Community course','/Courses/901'),(902,'Other course','/Courses/902');
  INSERT INTO app.discord_course_channels(root_channel_id,course_id) VALUES('90001',901),('90002',902);
@@ -47,7 +41,7 @@ func TestNativeMessageEvidenceScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := "Δένδρα\x00\ue000"
-	if _, err = pool.Exec(ctx, `UPDATE messages.messages SET content=$1 WHERE message_id=101`, identity.Encode(text)); err != nil {
+	if _, err = pool.Native.Exec(ctx, `UPDATE messages.messages SET content=$1 WHERE message_id=101`, identity.Encode(text)); err != nil {
 		t.Fatal(err)
 	}
 	service := messages.Reader{Pool: pool}
@@ -74,10 +68,10 @@ func TestNativeMessageEvidenceScope(t *testing.T) {
 	}
 	messageSearchChecks(t, pool, service)
 	communityFreshnessChecks(t, pool)
-	if _, err = pool.Exec(ctx, `DELETE FROM app.discord_course_channels WHERE root_channel_id='90001'`); err != nil {
+	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.discord_course_channels WHERE root_channel_id='90001'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.Read(ctx, "conversation", 1, 1); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err = service.Read(ctx, "conversation", 1, 1); !errors.Is(err, database.ErrNoRows) {
 		t.Fatal("removed mapping still readable", err)
 	}
 	status, err = service.Status(ctx, []int64{901})
@@ -90,14 +84,14 @@ func TestNativeMessageEvidenceScope(t *testing.T) {
 	}
 }
 
-func messageSearchChecks(t *testing.T, pool rdbms.Pool, service messages.Reader) {
+func messageSearchChecks(t *testing.T, pool *fixtureStore, service messages.Reader) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := pool.Exec(ctx, `UPDATE messages.conversations SET text='Τα δένδρα και οι βαθμοί',normalized_text='τα δενδρα και οι βαθμοι' WHERE conversation_id='conversation';
+	if _, err := pool.Native.Exec(ctx, `UPDATE messages.conversations SET text='Τα δένδρα και οι βαθμοί',normalized_text='τα δενδρα και οι βαθμοι' WHERE conversation_id='conversation';
  INSERT INTO messages.conversations_fts(conversation_id,text,normalized_text,channel_name) VALUES('conversation','Τα δένδρα και οι βαθμοί','τα δενδρα και οι βαθμοι','ανακοινώσεις')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO messages.conversation_embeddings(conversation_id,model,vector,dimensions) VALUES('conversation',$1,$2,384)`, knowledge.LocalEmbeddingModel, knowledge.Pack(knowledge.Embed("Τα δένδρα και οι βαθμοί"))); err != nil {
+	if _, err := pool.Native.Exec(ctx, `INSERT INTO messages.conversation_embeddings(conversation_id,model,vector,dimensions) VALUES('conversation',$1,$2,384)`, knowledge.LocalEmbeddingModel, knowledge.Pack(knowledge.Embed("Τα δένδρα και οι βαθμοί"))); err != nil {
 		t.Fatal(err)
 	}
 	for _, mode := range []string{"lexical", "semantic", "hybrid"} {

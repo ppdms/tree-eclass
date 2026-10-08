@@ -11,13 +11,11 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/materials"
-	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/integrations/eclass"
 	"tree-eclass/internal/services/synchronization"
@@ -27,7 +25,7 @@ type syncFixture struct {
 	ctx         context.Context
 	c           *Controller
 	conn        *pgx.Conn
-	pool        rdbms.Pool
+	pool        *fixtureStore
 	objects     *blob.Store
 	generation  *atomic.Int32
 	downloads   *atomic.Int32
@@ -36,7 +34,7 @@ type syncFixture struct {
 	root        string
 	upstreamURL string
 	document    string
-	firstObject queries.DocumentObjectRow
+	firstObject database.DocumentObject
 }
 
 func TestNativeSynchronizationRevisionAndFailure(t *testing.T) {
@@ -62,11 +60,7 @@ func newSyncFixture(t *testing.T) *syncFixture {
 	if _, err := conn.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(101,'Συνθετικό','/Courses/101')`); err != nil {
 		t.Fatal(err)
 	}
-	nativePool, err := pgxpool.New(ctx, c.databaseURL())
-	pool := rdbms.WrapPostgres(nativePool)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
 	var generation, downloads atomic.Int32
 	upstreamURL := newSyncUpstream(t, &generation, &downloads)
@@ -104,17 +98,13 @@ func newSyncFixture(t *testing.T) *syncFixture {
 		t.Fatalf("course check did not refresh external mirror: %q %v", external, err)
 	}
 	var document string
-	if err = pool.QueryRow(
+	if err = pool.Native.QueryRow(
 		ctx,
 		`SELECT id FROM knowledge.documents WHERE course_id=101 AND source_origin='eclass'`,
 	).Scan(&document); err != nil {
 		t.Fatal(err)
 	}
-	native, ok := rdbms.UnwrapPostgres(pool)
-	if !ok {
-		t.Fatal("sqlc queries require postgres")
-	}
-	firstObject, err := queries.New(native).DocumentObject(ctx, queries.DocumentObjectParams{DocumentID: document})
+	firstObject, err := pool.Objects().DocumentObject(ctx, database.DocumentObjectParams{DocumentID: document})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,29 +200,26 @@ func syncRevisionChecks(t *testing.T, fixture *syncFixture) {
 	if err != nil || changed.Modified != 1 {
 		t.Fatalf("modified: %#v %v", changed, err)
 	}
-	nativeSync, ok := rdbms.UnwrapPostgres(fixture.pool)
-	if !ok {
-		t.Fatal("sqlc queries require postgres")
-	}
-	q := queries.New(nativeSync)
-	b, err := q.DocumentObject(ctx, queries.DocumentObjectParams{DocumentID: fixture.document})
-	if err != nil || b.Sha256 == fixture.firstObject.Sha256 {
+	objects := fixture.pool.Objects()
+	b, err := objects.DocumentObject(ctx, database.DocumentObjectParams{DocumentID: fixture.document})
+	if err != nil || b.Object.SHA256 == fixture.firstObject.Object.SHA256 {
 		t.Fatalf("new revision: %#v %v", b, err)
 	}
 	fixture.generation.Store(2)
 	if _, err = service.Sync(ctx, 101, fixture.source, fixture.root); err != nil {
 		t.Fatal(err)
 	}
-	returned, err := q.DocumentObject(ctx, queries.DocumentObjectParams{DocumentID: fixture.document})
-	if err != nil || returned.Sha256 != fixture.firstObject.Sha256 || returned.VersionID != fixture.firstObject.VersionID {
+	returned, err := objects.DocumentObject(ctx, database.DocumentObjectParams{DocumentID: fixture.document})
+	if err != nil || returned.Object.SHA256 != fixture.firstObject.Object.SHA256 ||
+		returned.Object.VersionID != fixture.firstObject.Object.VersionID {
 		t.Fatalf("A→B→A served wrong revision: %#v %v", returned, err)
 	}
 	fixture.generation.Store(3)
 	if _, err = service.Sync(ctx, 101, fixture.source, fixture.root); err == nil {
 		t.Fatal("incomplete crawl was committed")
 	}
-	retained, err := q.DocumentObject(ctx, queries.DocumentObjectParams{DocumentID: fixture.document})
-	if err != nil || retained.Sha256 != fixture.firstObject.Sha256 {
+	retained, err := objects.DocumentObject(ctx, database.DocumentObjectParams{DocumentID: fixture.document})
+	if err != nil || retained.Object.SHA256 != fixture.firstObject.Object.SHA256 {
 		t.Fatal("failed crawl changed active catalog", err)
 	}
 	fixture.generation.Store(4)
@@ -240,7 +227,7 @@ func syncRevisionChecks(t *testing.T, fixture *syncFixture) {
 	if err != nil || deleted.Deleted != 1 {
 		t.Fatalf("delete: %#v %v", deleted, err)
 	}
-	if _, err = q.DocumentObject(ctx, queries.DocumentObjectParams{DocumentID: fixture.document}); err == nil {
+	if _, err = objects.DocumentObject(ctx, database.DocumentObjectParams{DocumentID: fixture.document}); err == nil {
 		t.Fatal("deleted source remained current")
 	}
 }
@@ -253,7 +240,7 @@ func syncArchiveChecks(t *testing.T, fixture *syncFixture) {
 		t.Fatal(err)
 	}
 	archive, err := (knowledge.Reader{Pool: fixture.pool}).LogicalContent(ctx, alias)
-	if err != nil || archive.Object.VersionID != fixture.firstObject.VersionID {
+	if err != nil || archive.Object.VersionID != fixture.firstObject.Object.VersionID {
 		t.Fatal("deleted archive lost original version", err)
 	}
 	content, err := fixture.objects.Open(ctx, archive.Object)

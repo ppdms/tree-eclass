@@ -15,13 +15,23 @@ import (
 
 // migrateSQLite applies the sqlite schema chain with the same ledger contract
 // as postgres: goose ordering plus a per-source sha256 ledger written in the
-// same transaction as the DDL. SQLite has no advisory locks; the controller
-// guarantees writers are stopped during migration, and Open serializes on a
-// single connection.
+// same transaction as the DDL. Runtime and migration admission hold the same
+// exclusive kernel ownership lock; schema changes never race an application.
 func migrateSQLite(ctx context.Context, path string) error {
-	if err := ensureParentDir(path); err != nil {
+	path, err := canonicalSQLitePath(path)
+	if err != nil {
 		return err
 	}
+	owner, err := acquireSQLiteOwner(path)
+	if err != nil {
+		return err
+	}
+	defer owner.Close()
+	return migrateSQLiteOwned(ctx, path)
+}
+
+// migrateSQLiteOwned runs only after the runtime ownership lock is acquired.
+func migrateSQLiteOwned(ctx context.Context, path string) error {
 	dsn := "file:" + path + "?_pragma=busy_timeout%3D30000&_pragma=journal_mode%3DWAL&_pragma=foreign_keys%3D1"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -327,6 +337,10 @@ func validateSQLiteLedger(ctx context.Context, db *sql.DB, ms []migration, exact
 }
 
 func requireSQLite(ctx context.Context, path string) error {
+	path, err := canonicalSQLitePath(path)
+	if err != nil {
+		return err
+	}
 	dsn := "file:" + path + "?_pragma=busy_timeout%3D30000&_pragma=journal_mode%3DWAL&_pragma=foreign_keys%3D1"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {

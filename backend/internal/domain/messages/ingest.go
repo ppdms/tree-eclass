@@ -7,11 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/objects"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // objectStore is the importer's object-storage contract: spool new archive
@@ -22,7 +21,7 @@ type objectStore interface {
 }
 
 type Importer struct {
-	Pool  rdbms.Pool
+	Pool  database.Store
 	Blobs objectStore
 	Temp  string
 }
@@ -36,6 +35,51 @@ type ImportResult struct {
 	Path                    string
 	Object                  objects.Reference
 	Messages, Conversations int64
+}
+
+func fromObjectReference(ref database.ObjectReference) objects.Reference {
+	return objects.Reference{
+		Bucket:    ref.Bucket,
+		Key:       ref.Key,
+		VersionID: ref.VersionID,
+		SHA256:    ref.SHA256,
+		Bytes:     ref.Bytes,
+		MediaType: ref.MediaType,
+	}
+}
+
+func toStagedMessage(m stagedMessage) database.DiscordStagedMessage {
+	return database.DiscordStagedMessage{
+		ID:          m.ID,
+		Timestamp:   m.Timestamp,
+		Epoch:       m.Epoch,
+		AuthorKey:   m.AuthorKey,
+		AuthorName:  m.Author,
+		Content:     m.Content,
+		SearchText:  m.Search,
+		ReplyTo:     m.Reply,
+		MessageType: m.Type,
+		Pinned:      m.Pinned,
+		Reactions:   m.Reactions,
+		Attachments: m.Attachments,
+	}
+}
+
+func fromStagedMessage(m database.DiscordStagedMessage) stagedMessage {
+	return stagedMessage{
+		ID:          m.ID,
+		Timestamp:   m.Timestamp,
+		Epoch:       m.Epoch,
+		AuthorKey:   m.AuthorKey,
+		Author:      m.AuthorName,
+		Content:     m.Content,
+		Search:      m.SearchText,
+		Reply:       m.ReplyTo,
+		Type:        m.MessageType,
+		Pinned:      m.Pinned,
+		Reactions:   m.Reactions,
+		Attachments: m.Attachments,
+	}
 }
 
 // Import never trusts an exporter path or retains the parsed archive in memory.
@@ -59,7 +103,7 @@ func (s Importer) Import(ctx context.Context, source Archive, input io.Reader) (
 	}
 	return result, tx.Commit(ctx)
 }
-func (s Importer) importTx(ctx context.Context, tx rdbms.Tx, source Archive, input io.Reader) (ImportResult, error) {
+func (s Importer) importTx(ctx context.Context, tx database.Tx, source Archive, input io.Reader) (ImportResult, error) {
 	var result ImportResult
 	file, err := os.CreateTemp(s.Temp, "discord-import-*")
 	if err != nil {
@@ -80,7 +124,9 @@ func (s Importer) importTx(ctx context.Context, tx rdbms.Tx, source Archive, inp
 	return s.publishImport(ctx, tx, source, file)
 }
 
-func (s Importer) publishImport(ctx context.Context, tx rdbms.Tx, source Archive, file *os.File) (ImportResult, error) {
+func (s Importer) publishImport(
+	ctx context.Context, tx database.Tx, source Archive, file *os.File,
+) (ImportResult, error) {
 	var result ImportResult
 	h, count, err := stageArchive(ctx, tx, source, file)
 	if err != nil {
@@ -104,16 +150,19 @@ func (s Importer) publishImport(ctx context.Context, tx rdbms.Tx, source Archive
 	if err = lockArchive(ctx, tx, source, result.Path); err != nil {
 		return result, err
 	}
-	var current bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM messages.archive_sources WHERE path=$1 AND course_id=$2 AND fingerprint=$3 AND object_id=$3 AND status='ready')`, result.Path, source.Course, object.SHA256).Scan(&current); err != nil {
+	current, err := tx.DiscordImports().ArchiveReady(ctx, database.DiscordArchiveIdentity{
+		Path:     result.Path,
+		CourseID: source.Course,
+		SHA256:   object.SHA256,
+	})
+	if err != nil {
 		return result, err
 	}
 	if current {
 		if err = sameMedia(ctx, tx, result.Path, source.Media); err != nil {
 			return result, err
 		}
-		err = tx.QueryRow(ctx, `SELECT count(*) FROM messages.conversations WHERE source_path=$1`, result.Path).
-			Scan(&result.Conversations)
+		result.Conversations, err = tx.DiscordImports().ArchiveConversationCount(ctx, result.Path)
 		return result, err
 	}
 	return s.registerArchive(ctx, tx, source, h, result)
@@ -121,7 +170,7 @@ func (s Importer) publishImport(ctx context.Context, tx rdbms.Tx, source Archive
 
 func (s Importer) registerArchive(
 	ctx context.Context,
-	tx rdbms.Tx,
+	tx database.Tx,
 	source Archive,
 	h exportHeader,
 	result ImportResult,
@@ -140,28 +189,23 @@ func (s Importer) registerArchive(
 	return result, err
 }
 
-var stageColumns = []string{
-	"message_id",
-	"timestamp",
-	"timestamp_epoch",
-	"author_key",
-	"author_name",
-	"content",
-	"searchable_text",
-	"reply_to_message_id",
-	"message_type",
-	"is_pinned",
-	"reaction_count",
-	"attachment_metadata_json",
-}
-
-func stageArchive(ctx context.Context, tx rdbms.Tx, source Archive, input io.Reader) (exportHeader, int64, error) {
-	if err := createStageTable(ctx, tx); err != nil {
+func stageArchive(
+	ctx context.Context, tx database.Tx, source Archive, input io.Reader,
+) (exportHeader, int64, error) {
+	if err := tx.DiscordImports().BeginStage(ctx); err != nil {
 		return exportHeader{}, 0, err
 	}
 	stream := newExportStream(input)
 	var count int64
-	var rows [][]any
+	var batch []database.DiscordStagedMessage
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		err := tx.DiscordImports().AppendStagedMessages(ctx, batch)
+		batch = batch[:0]
+		return err
+	}
 	for {
 		row, err := stageNext(source, stream, &count)
 		if err == io.EOF || (err == nil && row == nil) {
@@ -170,69 +214,23 @@ func stageArchive(ctx context.Context, tx rdbms.Tx, source Archive, input io.Rea
 		if err != nil {
 			return exportHeader{}, 0, err
 		}
-		rows = append(rows, row)
+		batch = append(batch, *row)
+		// Stream bounded batches so neither driver holds the whole export.
+		if len(batch) >= 500 {
+			if err = flush(); err != nil {
+				return exportHeader{}, 0, err
+			}
+		}
 	}
-	copied, err := insertStageRows(ctx, tx, rows)
-	if err != nil {
+	if err := flush(); err != nil {
 		return exportHeader{}, 0, err
 	}
-	return validateStage(source, stream, copied)
+	return validateStage(source, stream, count)
 }
 
-// insertStageRows loads staged messages with multi-row INSERTs so both
-// drivers share one path: 500 rows per statement ($N placeholders per row).
-func insertStageRows(ctx context.Context, tx rdbms.Tx, rows [][]any) (int64, error) {
-	const chunk = 500
-	cols := strings.Join(stageColumns, ",")
-	var stmts []string
-	var args [][]any
-	for start := 0; start < len(rows); start += chunk {
-		end := start + chunk
-		if end > len(rows) {
-			end = len(rows)
-		}
-		batch := rows[start:end]
-		var sb strings.Builder
-		sb.WriteString(`INSERT INTO tree_discord_stage(`)
-		sb.WriteString(cols)
-		sb.WriteString(`) VALUES `)
-		flat := make([]any, 0, len(batch)*len(stageColumns))
-		for i, row := range batch {
-			if i > 0 {
-				sb.WriteString(",")
-			}
-			sb.WriteString("(")
-			for j := range stageColumns {
-				if j > 0 {
-					sb.WriteString(",")
-				}
-				fmt.Fprintf(&sb, "$%d", i*len(stageColumns)+j+1)
-			}
-			sb.WriteString(")")
-			flat = append(flat, row...)
-		}
-		stmts = append(stmts, sb.String())
-		args = append(args, flat)
-	}
-	if err := rdbms.Batch(ctx, tx, stmts, args); err != nil {
-		return 0, err
-	}
-	return int64(len(rows)), nil
-}
-
-func createStageTable(ctx context.Context, tx rdbms.Tx) error {
-	_, err := tx.Exec(ctx, `DROP TABLE IF EXISTS tree_discord_stage`)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(
-		ctx,
-		`CREATE TEMP TABLE tree_discord_stage(message_id BIGINT PRIMARY KEY,timestamp TEXT NOT NULL,timestamp_epoch DOUBLE PRECISION NOT NULL,author_key TEXT,author_name TEXT NOT NULL,content TEXT NOT NULL,searchable_text TEXT NOT NULL,reply_to_message_id BIGINT,message_type TEXT NOT NULL,is_pinned BIGINT NOT NULL,reaction_count BIGINT NOT NULL,attachment_metadata_json TEXT NOT NULL)`,
-	)
-	return err
-}
-
-func stageNext(source Archive, stream *exportStream, count *int64) ([]any, error) {
+func stageNext(
+	source Archive, stream *exportStream, count *int64,
+) (*database.DiscordStagedMessage, error) {
 	raw, err := stream.next()
 	if err == io.EOF {
 		if !stream.done {
@@ -257,20 +255,8 @@ func stageNext(source Archive, stream *exportStream, count *int64) ([]any, error
 	if m.ID <= source.After || (source.Before > 0 && m.ID >= source.Before) {
 		return nil, errors.New("Discord message lies outside requested export interval")
 	}
-	return []any{
-		m.ID,
-		m.Timestamp,
-		m.Epoch,
-		m.AuthorKey,
-		m.Author,
-		m.Content,
-		m.Search,
-		m.Reply,
-		m.Type,
-		m.Pinned,
-		m.Reactions,
-		m.Attachments,
-	}, nil
+	staged := toStagedMessage(m)
+	return &staged, nil
 }
 
 func validateStage(source Archive, stream *exportStream, copied int64) (exportHeader, int64, error) {

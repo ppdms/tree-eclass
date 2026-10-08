@@ -3,17 +3,18 @@ package navigation
 import (
 	"context"
 	"errors"
+
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/courses"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 // Refresh publishes at most one dirty course per tick. Model calls and document
 // extraction are separate jobs; this processor only reads local, saved evidence.
 func (s Service) Refresh(ctx context.Context) (bool, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return false, err
 	}
@@ -22,19 +23,14 @@ func (s Service) Refresh(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	var course, generation int64
-	err = tx.QueryRow(ctx, `SELECT c.id,g.generation FROM app.courses c JOIN read_model.course_generation g ON g.course_id=c.id
- LEFT JOIN read_model.navigation n ON n.course_id=c.id
- WHERE (c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans p WHERE p.course_id=c.id AND p.enabled=1))
- AND (n.course_id IS NULL OR n.source_generation<>g.generation OR n.config_generation<>$1) ORDER BY n.generated_at NULLS FIRST,c.id LIMIT 1`, a.AnalysisGeneration()).
-		Scan(&course, &generation)
-	if errors.Is(err, rdbms.ErrNoRows) {
+	target, err := tx.Navigation().StaleTarget(ctx, a.AnalysisGeneration())
+	if errors.Is(err, database.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	_, selected, err := courses.SnapshotCourses(ctx, tx, &course)
+	_, selected, err := courses.SnapshotCourses(ctx, tx, &target.CourseID)
 	if err != nil {
 		return false, err
 	}
@@ -45,7 +41,7 @@ func (s Service) Refresh(ctx context.Context) (bool, error) {
 	if err = tx.Commit(ctx); err != nil {
 		return false, err
 	}
-	return s.Publish(ctx, course, generation, a, view)
+	return s.Publish(ctx, target.CourseID, target.Generation, a, view)
 }
 
 type revision struct {
@@ -54,40 +50,22 @@ type revision struct {
 	Generated                    *string
 }
 
-func history(ctx context.Context, tx rdbms.Tx, course int64, a settings.AI) ([]revision, error) {
-	rows, err := tx.Query(
-		ctx,
-		`SELECT id,revision,revision_hash,status,model,attempts,created_at,generated_at FROM knowledge.course_blueprints
- WHERE course_id=$1 AND analysis_version=$2 AND requested_model=$3 ORDER BY revision DESC LIMIT 500`,
-		course,
-		settings.CourseAnalysisVersion,
-		a.CourseModel,
-	)
+func history(ctx context.Context, ops database.Operations, course int64, a settings.AI) ([]revision, error) {
+	rows, err := ops.Navigation().BlueprintHistory(ctx, course, settings.CourseAnalysisVersion, a.CourseModel)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	result := []revision{}
-	for rows.Next() {
-		var r revision
-		if err = rows.Scan(
-			&r.ID,
-			&r.Number,
-			&r.Hash,
-			&r.Status,
-			&r.Model,
-			&r.Attempts,
-			&r.Created,
-			&r.Generated,
-		); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
+	for _, row := range rows {
+		result = append(result, revision{
+			ID: row.ID, Number: row.Number, Hash: row.Hash, Status: row.Status,
+			Model: row.Model, Attempts: row.Attempts, Created: row.Created, Generated: row.Generated,
+		})
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
-func buildView(ctx context.Context, tx rdbms.Tx, c courses.Course, a settings.AI) (map[string]any, error) {
+func buildView(ctx context.Context, tx database.Tx, c courses.Course, a settings.AI) (map[string]any, error) {
 	rows, err := history(ctx, tx, c.ID, a)
 	if err != nil {
 		return nil, err
@@ -132,8 +110,10 @@ func buildView(ctx context.Context, tx rdbms.Tx, c courses.Course, a settings.AI
 	if err != nil {
 		return nil, err
 	}
-	view["usable"], view["revision_id"], view["revision_hash"], view["revision_number"] = true, ready.Hash, ready.Hash, ready.Number
-	view["blueprint"], view["evidence_links"], view["model"], view["generated_at"] = decorated, links, ready.Model, ready.Generated
+	view["usable"], view["revision_id"] = true, ready.Hash
+	view["revision_hash"], view["revision_number"] = ready.Hash, ready.Number
+	view["blueprint"], view["evidence_links"] = decorated, links
+	view["model"], view["generated_at"] = ready.Model, ready.Generated
 	state, reason := "ready", "A validated blueprint is ready."
 	if rows[0].Number > ready.Number && a.CourseEnabled && a.EnrichmentEnabled {
 		if rows[0].Status == "pending" || rows[0].Status == "running" {
@@ -172,24 +152,23 @@ func buildView(ctx context.Context, tx rdbms.Tx, c courses.Course, a settings.AI
 
 func readyBlueprint(
 	ctx context.Context,
-	tx rdbms.Tx,
+	tx database.Tx,
 	c courses.Course,
 	a settings.AI,
 	ready *revision,
 ) (blueprints.Blueprint, map[string]map[string]any, map[string]any, string, error) {
-	var raw, packetRaw *string
-	if err := tx.QueryRow(ctx, `SELECT CASE WHEN octet_length(payload_json)<=8388608 THEN payload_json END,
- CASE WHEN octet_length(evidence_packet_json)<=8388608 THEN evidence_packet_json END FROM knowledge.course_blueprints WHERE id=$1`, ready.ID).Scan(&raw, &packetRaw); err != nil {
+	stored, err := tx.Navigation().BlueprintPayload(ctx, ready.ID)
+	if err != nil {
 		return blueprints.Blueprint{}, nil, nil, "", err
 	}
-	if raw == nil || packetRaw == nil || len(*packetRaw) > 8*1024*1024 {
+	if stored.Payload == nil || stored.Packet == nil || len(*stored.Packet) > 8*1024*1024 {
 		return blueprints.Blueprint{}, nil, nil, "cached_blueprint_payload_missing", nil
 	}
 	var packet map[string]any
-	if err := decodeJSON([]byte(*packetRaw), &packet); err != nil || packet == nil {
+	if err := decodeJSON([]byte(*stored.Packet), &packet); err != nil || packet == nil {
 		return blueprints.Blueprint{}, nil, nil, "cached_evidence_packet_invalid", nil
 	}
-	validated, err := blueprints.Validate([]byte(*raw), packet)
+	validated, err := blueprints.Validate([]byte(*stored.Payload), packet)
 	if err != nil {
 		return blueprints.Blueprint{}, nil, nil, "cached_blueprint_invalid", nil
 	}

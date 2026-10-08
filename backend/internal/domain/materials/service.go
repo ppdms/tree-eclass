@@ -12,10 +12,9 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 	"tree-eclass/internal/domain/commands"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/objects"
-	"tree-eclass/internal/domain/queries"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 var ErrDuplicate = errors.New("a file with this name already exists")
@@ -34,7 +33,7 @@ type ObjectWriter interface {
 	Put(context.Context, io.Reader, string, string) (objects.Reference, error)
 }
 type Service struct {
-	Pool    rdbms.Pool
+	Pool    database.Store
 	Objects ObjectWriter
 	Temp    string
 }
@@ -62,7 +61,14 @@ func Filename(raw string) (string, error) {
 }
 func Kind(name, mediaType string) string {
 	extension := strings.ToLower(path.Ext(name))
-	for kind, extensions := range map[string]string{"pdf": ".pdf", "image": ".jpg .jpeg .png", "presentation": ".pptx", "document": ".docx", "spreadsheet": ".xlsx", "html": ".html .htm", "notebook": ".ipynb", "archive": ".zip .rar .tar .tgz .gz", "source": ".py .js .ts .java .c .h .cpp .hpp .go .rs .sql .sh .css .tex", "text": ".txt .md .rst .csv .tsv .json .xml .yaml .yml"} {
+	extensionsByKind := map[string]string{
+		"pdf": ".pdf", "image": ".jpg .jpeg .png", "presentation": ".pptx", "document": ".docx",
+		"spreadsheet": ".xlsx", "html": ".html .htm", "notebook": ".ipynb",
+		"archive": ".zip .rar .tar .tgz .gz",
+		"source":  ".py .js .ts .java .c .h .cpp .hpp .go .rs .sql .sh .css .tex",
+		"text":    ".txt .md .rst .csv .tsv .json .xml .yaml .yml",
+	}
+	for kind, extensions := range extensionsByKind {
 		for _, candidate := range strings.Fields(extensions) {
 			if extension == candidate {
 				return kind
@@ -93,12 +99,12 @@ func (s Service) Upload(ctx context.Context, upload Upload) (Result, error) {
 			return result, errors.New("choose a valid document type")
 		}
 	}
-	course, err := queries.ForPool(s.Pool).Course(ctx, upload.CourseID)
+	course, err := s.Pool.Courses().Course(ctx, upload.CourseID)
 	if err != nil {
 		return result, err
 	}
 	if course.Hidden != 0 {
-		return result, rdbms.ErrNoRows
+		return result, database.ErrNoRows
 	}
 	logical := identity.Path(path.Join(course.WebdavFolder, "external", folder, name))
 	document := identity.Document(upload.CourseID, logical)
@@ -121,7 +127,7 @@ func (s Service) Upload(ctx context.Context, upload Upload) (Result, error) {
 
 func (s Service) publish(
 	ctx context.Context,
-	course queries.AppCourse,
+	course database.AppCourse,
 	upload Upload,
 	result Result,
 	name string,
@@ -131,23 +137,25 @@ func (s Service) publish(
 		return "", err
 	}
 	defer tx.Rollback(ctx)
-	var current int64
-	if err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0 AND name=$2 AND webdav_folder=$3 FOR SHARE`, course.ID, course.Name, course.WebdavFolder).Scan(&current); err != nil {
+	locked, err := tx.Courses().LockCourseForWrite(ctx, course.ID)
+	if err != nil {
 		return "", err
 	}
-	q := queries.ForTx(tx)
-	if err = q.QueueLock(ctx, "document:"+result.DocumentID); err != nil {
+	if locked.Name != course.Name || locked.WebdavFolder != course.WebdavFolder {
+		return "", database.ErrNoRows
+	}
+	if err = tx.Jobs().QueueLock(ctx, "document:"+result.DocumentID); err != nil {
 		return "", err
 	}
-	if _, err = q.IndexDocument(ctx, result.DocumentID); err == nil {
+	if _, err = tx.Indexing().IndexDocument(ctx, result.DocumentID); err == nil {
 		return "", ErrDuplicate
-	} else if !rdbms.IsNoRows(err) {
+	} else if !database.IsNoRows(err) {
 		return "", err
 	}
-	if err = result.stage(ctx, tx, q, course); err != nil {
+	if err = result.stage(ctx, tx, course); err != nil {
 		return "", err
 	}
-	if err = observeUpload(ctx, q, course, upload, result, name); err != nil {
+	if err = observeUpload(ctx, tx, course, upload, result, name); err != nil {
 		return "", err
 	}
 	command, err := commands.EnqueueTx(
@@ -164,13 +172,13 @@ func (s Service) publish(
 	return command, tx.Commit(ctx)
 }
 
-func (result Result) stage(ctx context.Context, tx rdbms.Tx, q queries.Querier, course queries.AppCourse) error {
+func (result Result) stage(ctx context.Context, tx database.Tx, course database.AppCourse) error {
 	if err := objects.RegisterObject(ctx, tx, result.Object); err != nil {
 		return err
 	}
-	return q.RegisterRevision(
+	return tx.Objects().RegisterRevision(
 		ctx,
-		queries.RegisterRevisionParams{
+		database.RegisterRevisionParams{
 			ID:          result.RevisionID,
 			DocumentID:  result.DocumentID,
 			CourseID:    course.ID,
@@ -182,15 +190,15 @@ func (result Result) stage(ctx context.Context, tx rdbms.Tx, q queries.Querier, 
 
 func observeUpload(
 	ctx context.Context,
-	q queries.Querier,
-	course queries.AppCourse,
+	tx database.Tx,
+	course database.AppCourse,
 	upload Upload,
 	result Result,
 	name string,
 ) error {
-	err := q.ObserveDocument(
+	err := tx.Indexing().ObserveDocument(
 		ctx,
-		queries.ObserveDocumentParams{
+		database.ObserveDocumentParams{
 			ID:              result.DocumentID,
 			CourseID:        course.ID,
 			CourseName:      course.Name,
@@ -210,13 +218,12 @@ func observeUpload(
 	if upload.Type == "" {
 		return nil
 	}
-	err = q.MaterialMetadata(
+	return tx.Materials().SetMaterialMetadata(
 		ctx,
-		queries.MaterialMetadataParams{
+		database.MaterialMetadataParams{
 			CourseID:     course.ID,
 			SourcePath:   identity.Encode(result.Path),
 			MaterialType: upload.Type,
 		},
 	)
-	return err
 }

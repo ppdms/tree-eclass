@@ -3,47 +3,53 @@ package rdbms
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"tree-eclass/internal/domain/database"
 )
 
-// postgresPool adapts pgxpool.Pool to the Pool interface. It is the default
-// driver: identical behavior to the pre-abstraction storage.Database pool.
 type postgresPool struct {
-	pool  *pgxpool.Pool
-	owner *pgxpool.Conn
+	pool       *pgxpool.Pool
+	owner      *pgxpool.Conn
+	ownerProbe sync.Mutex
+	life       storeLifetime
 }
 
 type postgresTx struct {
-	tx pgx.Tx
+	tx     pgx.Tx
+	pool   *postgresPool
+	done   bool
+	failed bool
 }
-
 type postgresRows struct {
-	rows pgx.Rows
+	rows    pgx.Rows
+	release func()
+	onError func(error)
+	once    sync.Once
 }
-
 type postgresRow struct {
-	row pgx.Row
+	row     pgx.Row
+	err     error
+	release func()
+	onError func(error)
 }
+type postgresResult struct{ tag pgconn.CommandTag }
 
-type postgresResult struct {
-	tag pgconn.CommandTag
-}
-
-func openPostgres(ctx context.Context, cfg Config) (Pool, error) {
+func openPostgres(ctx context.Context, cfg Config) (database.Store, error) {
 	parsed, err := pgxpool.ParseConfig(cfg.PostgresURL)
 	if err != nil {
 		return nil, err
 	}
-	maxConns := cfg.MaxConns
-	if maxConns <= 0 {
-		maxConns = 6
-	}
 	parsed.MinConns = 0
-	parsed.MaxConns = maxConns
+	parsed.MaxConns = cfg.MaxConns
+	if parsed.MaxConns <= 0 {
+		parsed.MaxConns = 6
+	}
 	parsed.MaxConnIdleTime = 30 * time.Second
 	parsed.ConnConfig.RuntimeParams["search_path"] = "public"
 	parsed.ConnConfig.RuntimeParams["application_name"] = "tree-eclass"
@@ -51,186 +57,231 @@ func openPostgres(ctx context.Context, cfg Config) (Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	owner, err := pool.Acquire(ctx)
-	if err != nil {
-		pool.Close()
-		return nil, err
-	}
-	var ok bool
-	if err = owner.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", runtimeLock).Scan(&ok); err != nil || !ok {
-		owner.Release()
-		pool.Close()
-		if err == nil {
-			err = errors.New("another application owns this database")
-		}
-		return nil, err
-	}
 	p := &postgresPool{pool: pool}
-	p.owner = owner
-	// Validate under the same ownership lock used by migrations, closing the
-	// check-then-acquire race between application admission and schema changes.
-	if err = requirePostgres(ctx, cfg.PostgresURL); err != nil {
+	if err = p.admit(ctx, cfg); err != nil {
 		p.Close()
 		return nil, err
 	}
 	return p, nil
 }
 
-// owner is the dedicated physical connection holding the session advisory
-// lock. Pool queries could succeed after that connection (and its exclusive
-// session lock) is lost, so ownership probes MUST stay on owner.
-func (p *postgresPool) checkOwner(ctx context.Context) error {
-	return p.owner.Ping(ctx)
-}
-
-func (p *postgresPool) Exec(ctx context.Context, query string, args ...any) (Result, error) {
-	tag, err := p.pool.Exec(ctx, query, args...)
+func (p *postgresPool) admit(ctx context.Context, cfg Config) error {
+	owner, err := p.pool.Acquire(ctx)
 	if err != nil {
-		return nil, mapPostgresError(err)
+		return err
 	}
-	return postgresResult{tag: tag}, nil
+	p.owner = owner
+	var locked bool
+	if err = owner.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", runtimeLock).Scan(&locked); err != nil {
+		return err
+	}
+	if !locked {
+		return errors.New("another application owns this database")
+	}
+	return requirePostgres(ctx, cfg.PostgresURL)
 }
 
-func (p *postgresPool) Query(ctx context.Context, query string, args ...any) (Rows, error) {
+func (p *postgresPool) Exec(ctx context.Context, query string, args ...any) (nativeResult, error) {
+	if err := p.life.enter(); err != nil {
+		return nil, err
+	}
+	defer p.life.leave()
+	tag, err := p.pool.Exec(ctx, query, args...)
+	return postgresResult{tag: tag}, mapPostgresError(err)
+}
+
+func (p *postgresPool) Query(ctx context.Context, query string, args ...any) (nativeRows, error) {
+	if err := p.life.enter(); err != nil {
+		return nil, err
+	}
 	rows, err := p.pool.Query(ctx, query, args...)
 	if err != nil {
+		p.life.leave()
 		return nil, mapPostgresError(err)
 	}
-	return &postgresRows{rows: rows}, nil
+	return &postgresRows{rows: rows, release: p.life.leave}, nil
 }
 
-func (p *postgresPool) QueryRow(ctx context.Context, query string, args ...any) Row {
-	return &postgresRow{row: p.pool.QueryRow(ctx, query, args...)}
-}
-
-func (p *postgresPool) Begin(ctx context.Context) (Tx, error) {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return nil, mapPostgresError(err)
+func (p *postgresPool) QueryRow(ctx context.Context, query string, args ...any) nativeRow {
+	if err := p.life.enter(); err != nil {
+		return &postgresRow{err: err}
 	}
-	return &postgresTx{tx: tx}, nil
+	return &postgresRow{row: p.pool.QueryRow(ctx, query, args...), release: p.life.leave}
 }
 
-func (p *postgresPool) BeginTx(ctx context.Context, opts Options) (Tx, error) {
+func (p *postgresPool) Begin(ctx context.Context) (database.Tx, error) {
+	return p.BeginTx(ctx, database.Options{})
+}
+
+func (p *postgresPool) BeginTx(ctx context.Context, opts database.Options) (database.Tx, error) {
+	if err := p.life.enter(); err != nil {
+		return nil, err
+	}
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{
-		IsoLevel:   pgxIso(opts.Isolation),
-		AccessMode: pgxAccess(opts.AccessMode),
+		IsoLevel: pgxIso(opts.Isolation), AccessMode: pgxAccess(opts.AccessMode),
 	})
 	if err != nil {
+		p.life.leave()
 		return nil, mapPostgresError(err)
 	}
-	return &postgresTx{tx: tx}, nil
+	return &postgresTx{tx: tx, pool: p}, nil
 }
 
 func (p *postgresPool) Ping(ctx context.Context) error {
-	return mapPostgresError(p.checkOwner(ctx))
+	if err := p.life.enter(); err != nil {
+		return err
+	}
+	defer p.life.leave()
+	if p.owner != nil {
+		// Health requests and the ownership monitor share this non-concurrent connection.
+		p.ownerProbe.Lock()
+		defer p.ownerProbe.Unlock()
+		return mapPostgresError(p.owner.Ping(ctx))
+	}
+	return mapPostgresError(p.pool.Ping(ctx))
 }
 
 func (p *postgresPool) Close() {
-	// Closing this physical connection releases its session lock even on
-	// cancellation.
-	_ = p.owner.Conn().Close(context.Background())
-	p.owner.Release()
-	p.pool.Close()
+	p.life.close(func() {
+		if p.owner != nil {
+			_ = p.owner.Conn().Close(context.Background())
+			p.owner.Release()
+		}
+		p.pool.Close()
+	})
 }
 
-func pgxIso(level Isolation) pgx.TxIsoLevel {
+func pgxIso(level database.Isolation) pgx.TxIsoLevel {
 	switch level {
-	case RepeatableRead, Serializable:
+	case database.RepeatableRead:
 		return pgx.RepeatableRead
+	case database.Serializable:
+		return pgx.Serializable
 	default:
 		return pgx.ReadCommitted
 	}
 }
 
-func pgxAccess(mode AccessMode) pgx.TxAccessMode {
-	if mode == ReadOnly {
+func pgxAccess(mode database.AccessMode) pgx.TxAccessMode {
+	if mode == database.ReadOnly {
 		return pgx.ReadOnly
 	}
 	return pgx.ReadWrite
 }
 
-func (t *postgresTx) Exec(ctx context.Context, query string, args ...any) (Result, error) {
-	tag, err := t.tx.Exec(ctx, query, args...)
-	if err != nil {
-		return nil, mapPostgresError(err)
+func (t *postgresTx) Exec(ctx context.Context, query string, args ...any) (nativeResult, error) {
+	if err := t.status(); err != nil {
+		return nil, err
 	}
-	return postgresResult{tag: tag}, nil
+	tag, err := t.tx.Exec(ctx, query, args...)
+	t.markFailure(err)
+	return postgresResult{tag: tag}, mapPostgresError(err)
 }
 
-func (t *postgresTx) Query(ctx context.Context, query string, args ...any) (Rows, error) {
+func (t *postgresTx) Query(ctx context.Context, query string, args ...any) (nativeRows, error) {
+	if err := t.status(); err != nil {
+		return nil, err
+	}
 	rows, err := t.tx.Query(ctx, query, args...)
 	if err != nil {
+		t.markFailure(err)
 		return nil, mapPostgresError(err)
 	}
-	return &postgresRows{rows: rows}, nil
+	return &postgresRows{rows: rows, onError: t.markFailure}, nil
 }
 
-func (t *postgresTx) QueryRow(ctx context.Context, query string, args ...any) Row {
-	return &postgresRow{row: t.tx.QueryRow(ctx, query, args...)}
+func (t *postgresTx) QueryRow(ctx context.Context, query string, args ...any) nativeRow {
+	if err := t.status(); err != nil {
+		return &postgresRow{err: err}
+	}
+	return &postgresRow{row: t.tx.QueryRow(ctx, query, args...), onError: t.markFailure}
 }
 
 func (t *postgresTx) Commit(ctx context.Context) error {
+	if t.done {
+		return database.ErrFinished
+	}
+	t.done = true
+	defer t.pool.life.leave()
+	if t.failed {
+		_ = t.tx.Rollback(context.WithoutCancel(ctx))
+		return database.ErrFailed
+	}
 	return mapPostgresError(t.tx.Commit(ctx))
 }
-
 func (t *postgresTx) Rollback(ctx context.Context) error {
-	return mapPostgresError(t.tx.Rollback(ctx))
+	if t.done {
+		return nil
+	}
+	t.done = true
+	defer t.pool.life.leave()
+	err := t.tx.Rollback(context.WithoutCancel(ctx))
+	if errors.Is(err, pgx.ErrTxClosed) {
+		return nil
+	}
+	return mapPostgresError(err)
 }
-
-func (r *postgresRows) Next() bool { return r.rows.Next() }
-
+func (r *postgresRows) Next() bool {
+	if !r.rows.Next() {
+		r.Close()
+		return false
+	}
+	return true
+}
 func (r *postgresRows) Scan(dest ...any) error {
-	return mapPostgresError(r.rows.Scan(dest...))
+	err := r.rows.Scan(dest...)
+	if r.onError != nil {
+		r.onError(err)
+	}
+	return mapPostgresError(err)
 }
-
-func (r *postgresRows) Err() error { return mapPostgresError(r.rows.Err()) }
-
-func (r *postgresRows) Close() { r.rows.Close() }
-
+func (r *postgresRows) Err() error {
+	err := r.rows.Err()
+	if r.onError != nil {
+		r.onError(err)
+	}
+	return mapPostgresError(err)
+}
+func (r *postgresRows) Close() {
+	r.once.Do(func() {
+		r.rows.Close()
+		if r.onError != nil {
+			r.onError(r.rows.Err())
+		}
+		if r.release != nil {
+			r.release()
+		}
+	})
+}
 func (r *postgresRow) Scan(dest ...any) error {
-	return mapPostgresError(r.row.Scan(dest...))
+	if r.release != nil {
+		defer r.release()
+		r.release = nil
+	}
+	if r.err != nil {
+		return r.err
+	}
+	err := r.row.Scan(dest...)
+	if r.onError != nil {
+		r.onError(err)
+	}
+	return mapPostgresError(err)
 }
-
 func (r postgresResult) RowsAffected() int64 { return r.tag.RowsAffected() }
 
-// UnwrapPostgres exposes the underlying pool for code that has not migrated
-// yet (sqlc-generated queries, CopyFrom/Batch call sites). New code MUST NOT
-// use it; migrate the call site to Pool/Tx instead.
-func UnwrapPostgres(p Pool) (*pgxpool.Pool, bool) {
-	if pp, ok := p.(*postgresPool); ok {
-		return pp.pool, true
+func (t *postgresTx) status() error {
+	if t.done {
+		return database.ErrFinished
 	}
-	return nil, false
-}
-
-// UnwrapPostgresTx exposes the underlying transaction for unmigrated code.
-// New code MUST NOT use it.
-func UnwrapPostgresTx(t Tx) (pgx.Tx, bool) {
-	if pt, ok := t.(*postgresTx); ok {
-		return pt.tx, true
+	if t.failed {
+		return database.ErrFailed
 	}
-	return nil, false
+	return nil
 }
 
-// NativeDBTX is the pgx-native query surface the sqlc-generated code runs
-// on. UnwrapDBTX exposes it for the queries package only; all other code
-// MUST use Pool/Tx and never unwrap.
-type NativeDBTX interface {
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-	QueryRow(context.Context, string, ...any) pgx.Row
-}
-
-// UnwrapDBTX exposes the native handle behind an rdbms handle: the raw pool
-// or tx for postgres handles, ok=false for sqlite handles.
-func UnwrapDBTX(db DBTX) (NativeDBTX, bool) {
-	switch h := db.(type) {
-	case *postgresPool:
-		return h.pool, true
-	case *postgresTx:
-		return h.tx, true
-	default:
-		return nil, false
+func (t *postgresTx) markFailure(err error) {
+	var failure *pgconn.PgError
+	if errors.As(err, &failure) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		t.failed = true
 	}
 }

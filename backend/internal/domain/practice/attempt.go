@@ -9,8 +9,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 var ErrInvalid = errors.New("invalid practice attempt")
@@ -97,53 +97,43 @@ func (s Service) Record(ctx context.Context, in Attempt) (Attempt, error) {
 	return in, tx.Commit(ctx)
 }
 
-// existingAttempt carries the stored idempotent row with the question
-// fingerprints that detect a conflicting retry.
-type existingAttempt struct {
-	Attempt
-	Set      string `json:"set_hash"`
-	Revision string `json:"blueprint_revision_hash"`
-}
-
-// attemptColumns selects the idempotent row for conflict comparison.
-// Explicit columns replace the old to_jsonb(row), which has no sqlite form
-// and fails at prepare time.
-const attemptColumns = `SELECT id,course_id,unit_key,question_id,outcome,idempotency_key,confidence,seconds,answer,note,study_event_id,question_key,set_hash,blueprint_revision_hash FROM app.practice_attempts a WHERE idempotency_key=$1`
-
 // loadExistingAttempt fills in.ID/in.EventID from the stored idempotent row
 // and reports whether one exists. A stored row whose fields disagree with the
 // request is a conflicting retry.
-func loadExistingAttempt(ctx context.Context, tx rdbms.Tx, in *Attempt, q currentQuestion) (bool, error) {
-	var existing existingAttempt
-	var questionKey string
-	err := tx.QueryRow(ctx, attemptColumns, in.Key).
-		Scan(
-			&existing.ID, &existing.CourseID, &existing.Unit, &existing.Question,
-			&existing.Outcome, &existing.Key, &existing.Confidence, &existing.Seconds,
-			&existing.Answer, &existing.Note, &existing.EventID,
-			&questionKey, &existing.Set, &existing.Revision,
-		)
-	if errors.Is(err, rdbms.ErrNoRows) {
+func loadExistingAttempt(ctx context.Context, tx database.Tx, in *Attempt, q currentQuestion) (bool, error) {
+	stored, err := tx.Practice().AttemptByKey(ctx, in.Key)
+	if database.IsNoRows(err) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	decodeAttemptText(&existing.Attempt)
-	if attemptConflict(existing, *in, q) {
+	existing := storedAttempt(stored)
+	decodeAttemptText(&existing)
+	if attemptConflict(existing, *in, q, stored.Set, stored.Revision) {
 		return false, ErrConflict
 	}
-	in.ID, in.EventID = existing.ID, existing.EventID
+	in.ID, in.EventID = stored.ID, stored.EventID
 	return true, nil
+}
+
+// storedAttempt projects the neutral attempt row onto the domain shape for
+// conflict comparison. Answer/Note stay encoded until decodeAttemptText.
+func storedAttempt(stored database.PracticeAttemptRow) Attempt {
+	return Attempt{
+		ID: stored.ID, CourseID: stored.CourseID, Unit: stored.Unit, Question: stored.Question,
+		Outcome: stored.Outcome, Key: stored.Key, Confidence: stored.Confidence,
+		Seconds: stored.Seconds, Answer: stored.Answer, Note: stored.Note, EventID: stored.EventID,
+	}
 }
 
 // attemptConflict reports whether the stored idempotent row disagrees with
 // the incoming request on identity, outcome, fingerprints, or payload.
-func attemptConflict(existing existingAttempt, in Attempt, q currentQuestion) bool {
+func attemptConflict(existing, in Attempt, q currentQuestion, set, revision string) bool {
 	return existing.CourseID != in.CourseID || existing.Question != in.Question || existing.Outcome != in.Outcome ||
 		existing.Unit != in.Unit ||
-		existing.Set != q.Set ||
-		existing.Revision != q.Revision ||
+		set != q.Set ||
+		revision != q.Revision ||
 		!same(existing.Answer, in.Answer) ||
 		!same(existing.Note, in.Note) ||
 		!same(existing.Confidence, in.Confidence) ||
@@ -159,34 +149,22 @@ func decodeAttemptText(in *Attempt) {
 	}
 }
 
-func insertAttempt(ctx context.Context, tx rdbms.Tx, in *Attempt, q currentQuestion) error {
+func insertAttempt(ctx context.Context, tx database.Tx, in *Attempt, q currentQuestion) error {
 	// Hashing the complete key avoids the legacy truncation collision for keys
 	// sharing their first 119 characters.
 	digest := sha256.Sum256([]byte(in.Key))
 	eventKey := fmt.Sprintf("practice:%x", digest)
-	err := tx.QueryRow(ctx, `INSERT INTO app.study_unit_events(course_id,plan_revision,action_id,unit_key,event_type,idempotency_key,confidence,score,note)
- VALUES($1,$2,$3,$4,'recall_answered',$5,$6,$7,$8) RETURNING id`, in.CourseID, q.Revision, in.Question, in.Unit, eventKey, in.Confidence, scores[in.Outcome], in.Note).
-		Scan(&in.EventID)
+	attemptID, eventID, err := tx.Practice().InsertAttempt(ctx, database.PracticeAttemptParams{
+		CourseID: in.CourseID, Unit: in.Unit, Question: in.Question,
+		Key: q.Key, Set: q.Set, Revision: q.Revision, Outcome: in.Outcome,
+		Confidence: in.Confidence, Seconds: in.Seconds, Score: scores[in.Outcome],
+		Answer: in.Answer, Note: in.Note, IdemKey: in.Key, EventKey: eventKey,
+	})
 	if err != nil {
 		return err
 	}
-	return tx.QueryRow(ctx, `INSERT INTO app.practice_attempts(course_id,unit_key,question_id,question_key,set_hash,blueprint_revision_hash,outcome,grading_mode,confidence,seconds,answer,note,idempotency_key,study_event_id)
-		VALUES($1,$2,$3,$4,$5,$6,$7,'self',$8,$9,$10,$11,$12,$13) RETURNING id`,
-		in.CourseID,
-		in.Unit,
-		in.Question,
-		q.Key,
-		q.Set,
-		q.Revision,
-		in.Outcome,
-		in.Confidence,
-		in.Seconds,
-		in.Answer,
-		in.Note,
-		in.Key,
-		in.EventID,
-	).
-		Scan(&in.ID)
+	in.ID, in.EventID = attemptID, eventID
+	return nil
 }
 
 func same[T comparable](a, b *T) bool {

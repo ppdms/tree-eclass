@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
+	"tree-eclass/internal/domain/database"
 
 	"tree-eclass/internal/infrastructure/jobs"
 	"tree-eclass/internal/integrations/eclass"
@@ -53,7 +53,7 @@ func (s *Server) enqueueCheck(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
-	if errors.Is(err, rdbms.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Course not found")
 		return
 	}

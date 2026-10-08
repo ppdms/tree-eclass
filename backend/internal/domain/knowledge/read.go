@@ -6,9 +6,8 @@ import (
 	"errors"
 	"strconv"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/domain/queries"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Locator struct {
@@ -49,13 +48,13 @@ func (s Reader) Read(ctx context.Context, request ReadRequest) (ReadResponse, er
 		PageAnalyses:           []map[string]any{},
 		UntrustedContentNotice: UntrustedNotice,
 	}
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return result, err
 	}
 	defer tx.Rollback(ctx)
 	document, err := resourceDocument(ctx, tx, request.DocumentID)
-	if errors.Is(err, rdbms.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		return result, ErrUnavailable
 	}
 	if err != nil {
@@ -63,7 +62,7 @@ func (s Reader) Read(ctx context.Context, request ReadRequest) (ReadResponse, er
 	}
 	result.Document = documentEvidence(document)
 	if document.Status != "ready" {
-		return result, nil
+		return result, tx.Commit(ctx)
 	}
 	maximum := readLimit(request.MaxCharacters)
 	if err := readChunkUnits(ctx, tx, request, maximum, &result); err != nil {
@@ -83,29 +82,22 @@ func readLimit(maxCharacters int) int {
 	return maximum
 }
 
-func readChunkUnits(ctx context.Context, tx rdbms.Tx, request ReadRequest, maximum int, result *ReadResponse) error {
+func readChunkUnits(ctx context.Context, tx database.Tx, request ReadRequest, maximum int, result *ReadResponse) error {
 	ordinals, err := readOrdinals(ctx, tx, request)
 	if err != nil {
 		return err
 	}
-	rows, err := tx.Query(
-		ctx,
-		`SELECT id,ordinal,locator_type,locator_start,locator_end,heading,metadata_json,text FROM knowledge.chunks WHERE document_id=$1 AND ($2 OR ordinal=ANY($3::bigint[])) ORDER BY ordinal`,
-		request.DocumentID,
-		len(request.Locators) == 0,
-		ordinals,
-	)
+	chunks, err := tx.Documents().ReadChunks(ctx, request.DocumentID, ordinals, len(request.Locators) == 0)
 	if err != nil {
 		return err
 	}
-	for rows.Next() {
+	for _, chunk := range chunks {
 		if result.Characters >= maximum {
 			result.Truncated = true
 			break
 		}
-		unit, err := nextReadUnit(rows)
+		unit, err := readUnit(chunk)
 		if err != nil {
-			rows.Close()
 			return err
 		}
 		chars := []rune(unit.Text)
@@ -118,28 +110,17 @@ func readChunkUnits(ctx context.Context, tx rdbms.Tx, request ReadRequest, maxim
 		result.Characters += len(chars)
 		result.Units = append(result.Units, unit)
 	}
-	err = rows.Err()
-	rows.Close()
-	return err
+	return nil
 }
 
-func nextReadUnit(rows rdbms.Rows) (ReadUnit, error) {
-	var unit ReadUnit
-	var metadata string
-	if err := rows.Scan(
-		&unit.ChunkID,
-		&unit.Ordinal,
-		&unit.LocatorType,
-		&unit.LocatorStart,
-		&unit.LocatorEnd,
-		&unit.Heading,
-		&metadata,
-		&unit.Text,
-	); err != nil {
-		return unit, err
+func readUnit(chunk database.DocumentChunk) (ReadUnit, error) {
+	unit := ReadUnit{
+		ChunkID: chunk.ID, Ordinal: chunk.Ordinal, LocatorType: chunk.LocatorType,
+		LocatorStart: chunk.LocatorStart, LocatorEnd: chunk.LocatorEnd, Heading: chunk.Heading,
+		Text: chunk.Text,
 	}
 	unit.Metadata = map[string]any{}
-	if err := json.Unmarshal([]byte(metadata), &unit.Metadata); err != nil {
+	if err := json.Unmarshal([]byte(chunk.MetadataJSON), &unit.Metadata); err != nil {
 		return unit, err
 	}
 	unit.Text = identity.Decode(unit.Text)
@@ -151,8 +132,8 @@ func nextReadUnit(rows rdbms.Rows) (ReadUnit, error) {
 
 func readPageAnalyses(
 	ctx context.Context,
-	tx rdbms.Tx,
-	document queries.KnowledgeDocument,
+	tx database.Tx,
+	document database.KnowledgeDocument,
 	result *ReadResponse,
 ) error {
 	seen := map[string]bool{}
@@ -194,7 +175,7 @@ func readPageAnalyses(
 	}
 	return nil
 }
-func documentEvidence(d queries.KnowledgeDocument) map[string]any {
+func documentEvidence(d database.KnowledgeDocument) map[string]any {
 	decode := func(value *string) *string {
 		if value == nil {
 			return nil
@@ -224,44 +205,34 @@ func documentEvidence(d queries.KnowledgeDocument) map[string]any {
 		"evidence_class":     evidence,
 	}
 }
-func readOrdinals(ctx context.Context, tx rdbms.Tx, request ReadRequest) ([]int64, error) {
+func readOrdinals(ctx context.Context, tx database.Tx, request ReadRequest) ([]int64, error) {
 	result := []int64{}
 	if len(request.Locators) == 0 {
 		return result, nil
 	}
-	rows, err := tx.Query(
-		ctx,
-		`SELECT ordinal,locator_type,coalesce(locator_start,'') FROM knowledge.chunks WHERE document_id=$1 ORDER BY ordinal`,
-		request.DocumentID,
-	)
+	locators, err := tx.Documents().ChunkLocators(ctx, request.DocumentID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	selected := map[int64]bool{}
-	for rows.Next() {
-		var ordinal int64
-		var kind, start string
-		if err = rows.Scan(&ordinal, &kind, &start); err != nil {
-			return nil, err
-		}
+	for _, row := range locators {
 		for _, locator := range request.Locators {
-			if kind != locator.Type || !includes(locator, start) {
+			if row.LocatorType != locator.Type || !includes(locator, row.LocatorStart) {
 				continue
 			}
-			selected[ordinal] = true
+			selected[row.Ordinal] = true
 			if request.IncludeNeighbors {
-				if ordinal > 0 {
-					selected[ordinal-1] = true
+				if row.Ordinal > 0 {
+					selected[row.Ordinal-1] = true
 				}
-				selected[ordinal+1] = true
+				selected[row.Ordinal+1] = true
 			}
 		}
 	}
 	for ordinal := range selected {
 		result = append(result, ordinal)
 	}
-	return result, rows.Err()
+	return result, nil
 }
 func includes(locator Locator, value string) bool {
 	end := locator.Start

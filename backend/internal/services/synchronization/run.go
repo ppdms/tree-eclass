@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/notifications"
 	"tree-eclass/internal/integrations/eclass"
@@ -21,7 +21,7 @@ func (s Service) Run(ctx context.Context, request Request, base string) (Result,
 		return Result{}, err
 	}
 	defer source.Close()
-	courses, err := queries.ForPool(s.Pool).ListCourses(ctx, true)
+	courses, err := s.Pool.Courses().ListCourses(ctx, true)
 	if err != nil {
 		return Result{}, err
 	}
@@ -69,7 +69,7 @@ func (s Service) syncCourses(
 	source *eclass.Client,
 	request Request,
 	base string,
-	courses []queries.AppCourse,
+	courses []database.AppCourse,
 	combined *Result,
 ) ([]error, error) {
 	failures := []error{}
@@ -93,7 +93,7 @@ func (s Service) syncCourses(
 	return failures, nil
 }
 func (s Service) markCourse(ctx context.Context, source *eclass.Client, id int64, base string) (Result, error) {
-	if _, err := s.Pool.Exec(ctx, `UPDATE app.check_status SET is_checking=1,current_course_id=$1 WHERE id=1`, id); err != nil {
+	if err := s.Pool.Sync().MarkCourseChecking(ctx, id); err != nil {
 		return Result{}, err
 	}
 	return s.checkCourse(ctx, source, id, base)
@@ -148,17 +148,13 @@ func (s Service) Finish(ctx context.Context, result Result, failure error) error
 		return err
 	}
 	defer tx.Rollback(ctx)
-	_, err = tx.Exec(
-		ctx,
-		`INSERT INTO app.check_status(id,is_checking,last_check_at,last_check_result,last_error,last_files_added,last_files_changed) VALUES(1,0,$1,$2,$3,$4,$5)
-ON CONFLICT(id) DO UPDATE SET is_checking=0,current_course_id=NULL,last_check_at=$1,last_check_result=$2,last_error=$3,last_files_added=$4,last_files_changed=$5`,
-		now,
-		status,
-		message,
-		result.FilesAdded,
-		result.FilesChanged,
-	)
-	if err != nil {
+	if err = tx.Sync().FinishCheck(ctx, database.SyncCheckFinish{
+		At:          now,
+		Status:      status,
+		Error:       message,
+		FilesAdded:  result.FilesAdded,
+		FilesChange: result.FilesChanged,
+	}); err != nil {
 		return err
 	}
 	if failure != nil {

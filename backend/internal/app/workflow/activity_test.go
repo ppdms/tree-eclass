@@ -3,15 +3,14 @@ package workflow
 import (
 	"fmt"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/activity"
 	"tree-eclass/internal/domain/identity"
 )
 
-func activityChecks(t *testing.T, pool rdbms.Pool, base string) {
+func activityChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
-	_, err := pool.Exec(t.Context(), `INSERT INTO app.announcements(course_id,announcement_id,title,link,pub_date)
+	_, err := pool.Native.Exec(t.Context(), `INSERT INTO app.announcements(course_id,announcement_id,title,link,pub_date)
 SELECT 101,'synthetic-'||i,'Announcement '||i,'https://example.invalid/'||i,'2026-09-12T09:00:00Z' FROM generate_series(1,12) i;
 INSERT INTO app.announcements(course_id,announcement_id,title,link,pub_date) VALUES(102,'hidden','Must not appear','https://example.invalid','2027-01-01');
 INSERT INTO app.global_announcements(feed_key,announcement_id,title,link,pub_date) VALUES('dept','global','Exam deadline','https://example.invalid','2026-09-12T10:00:00Z');
@@ -20,7 +19,7 @@ INSERT INTO app.change_record_items(change_record_id,change_type,file_path,displ
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(t.Context(), `UPDATE app.announcements SET title=$1 WHERE announcement_id='synthetic-12'`, identity.Encode("Σημείωση\x00\ue000")); err != nil {
+	if _, err = pool.Native.Exec(t.Context(), `UPDATE app.announcements SET title=$1 WHERE announcement_id='synthetic-12'`, identity.Encode("Σημείωση\x00\ue000")); err != nil {
 		t.Fatal(err)
 	}
 	seen := map[string]bool{}

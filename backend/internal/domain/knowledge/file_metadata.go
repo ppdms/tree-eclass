@@ -3,9 +3,9 @@ package knowledge
 import (
 	"context"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type FileMetadata struct {
@@ -32,22 +32,6 @@ type FileMetadata struct {
 	PagesEnabled   bool    `json:"page_analysis_enabled"`
 }
 
-const fileMetadataQuery = `WITH target AS (
- SELECT d.* FROM knowledge.documents d WHERE d.course_id=$1 AND d.is_current=1
-), pages AS (
- SELECT p.document_id,count(*) total,count(*) FILTER(WHERE p.status='ready') ready
- FROM knowledge.page_enrichments p JOIN target d ON d.id=p.document_id
- WHERE d.status='ready' AND p.source_hash=d.source_hash AND p.analysis_version=$3 AND p.requested_model=$2
- GROUP BY p.document_id
-)
-SELECT d.id,d.source_path,d.source_hash,d.document_kind,d.status,d.diagnostic_reason,left(d.error,300),d.page_count,d.reading_minutes,d.complexity_label,
- coalesce(e.status,'not_queued'),e.model,e.analysis_version,e.generated_at,CASE WHEN e.status='failed' THEN left(e.error,300) END,
- coalesce(e.status='ready' AND CASE WHEN pg_input_is_valid(e.payload_json,'jsonb') THEN jsonb_typeof(e.payload_json::jsonb->'summary')='string' AND length(trim(e.payload_json::jsonb->>'summary'))>0 ELSE false END,false),
- coalesce(p.ready,0),coalesce(p.total,0)
-FROM target d LEFT JOIN knowledge.document_enrichments e ON e.document_id=d.id AND d.status='ready' AND e.source_hash=d.source_hash AND coalesce(e.requested_model,e.model)=$2
- AND e.analysis_version=CASE WHEN d.document_kind IN('pdf','image') THEN $5 ELSE $4 END
-LEFT JOIN pages p ON p.document_id=d.id ORDER BY d.source_path,d.id`
-
 // FileMetadata reads only compact columns; opening a file guide is a separate
 // operation so browsing a large course never loads every analysis payload.
 func (s Reader) FileMetadata(
@@ -55,13 +39,12 @@ func (s Reader) FileMetadata(
 	course int64,
 	keys map[string]string,
 ) (map[string]FileMetadata, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	var id int64
-	if err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0`, course).Scan(&id); err != nil {
+	if _, err = s.Visible(ctx, []int64{course}); err != nil {
 		return nil, err
 	}
 	a, err := settings.ReadAI(ctx, tx)
@@ -69,24 +52,14 @@ func (s Reader) FileMetadata(
 		return nil, err
 	}
 	enabled := metadataAIEnabled(a, keys)
-	rows, err := tx.Query(
-		ctx,
-		fileMetadataQuery,
-		course,
-		a.Model,
-		settings.PageAnalysisVersion,
-		settings.DocumentAnalysisVersion,
-		settings.PageSynthesisVersion,
-	)
+	rows, err := tx.Documents().FileMetadataRows(ctx, database.FileMetadataParams{
+		Course: course, Model: a.Model, PageVersion: settings.PageAnalysisVersion,
+		DocumentVersion: settings.DocumentAnalysisVersion, SynthesisVersion: settings.PageSynthesisVersion,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result, err := scanFileMetadata(rows, course, enabled)
-	if err != nil {
-		return nil, err
-	}
-	return result, tx.Commit(ctx)
+	return scanFileMetadata(rows, course, enabled), tx.Commit(ctx)
 }
 
 func metadataAIEnabled(a settings.AI, keys map[string]string) bool {
@@ -97,32 +70,16 @@ func metadataAIEnabled(a settings.AI, keys map[string]string) bool {
 	return enabled
 }
 
-func scanFileMetadata(rows rdbms.Rows, course int64, enabled bool) (map[string]FileMetadata, error) {
+func scanFileMetadata(rows []database.FileMetadataRow, course int64, enabled bool) map[string]FileMetadata {
 	result := map[string]FileMetadata{}
-	for rows.Next() {
-		item := FileMetadata{CourseID: course, AIEnabled: enabled, PagesEnabled: true}
-		var path string
-		if err := rows.Scan(
-			&item.ID,
-			&path,
-			&item.Hash,
-			&item.Kind,
-			&item.Status,
-			&item.Reason,
-			&item.Error,
-			&item.Pages,
-			&item.Minutes,
-			&item.Complexity,
-			&item.AnalysisStatus,
-			&item.Model,
-			&item.Version,
-			&item.Generated,
-			&item.AnalysisError,
-			&item.Guide,
-			&item.PagesReady,
-			&item.PagesTotal,
-		); err != nil {
-			return nil, err
+	for _, row := range rows {
+		item := FileMetadata{
+			ID: row.ID, CourseID: course, Hash: row.Hash, Kind: row.Kind, Status: row.Status,
+			Reason: row.Reason, Error: row.Error, Pages: row.Pages, Minutes: row.Minutes,
+			Complexity: row.Complexity, Guide: row.Guide, AIEnabled: enabled,
+			AnalysisStatus: row.Analysis, Model: row.Model, Version: row.Version,
+			Generated: row.GeneratedAt, AnalysisError: row.AnalysisError,
+			PagesReady: row.PagesReady, PagesTotal: row.PagesTotal, PagesEnabled: true,
 		}
 		item.Unit = unitName(item.Kind)
 		for _, value := range []*string{item.Error, item.AnalysisError, item.Reason} {
@@ -130,9 +87,9 @@ func scanFileMetadata(rows rdbms.Rows, course int64, enabled bool) (map[string]F
 				*value = identity.Decode(*value)
 			}
 		}
-		result[identity.Decode(path)] = item
+		result[identity.Decode(row.Path)] = item
 	}
-	return result, rows.Err()
+	return result
 }
 
 func unitName(kind string) string {

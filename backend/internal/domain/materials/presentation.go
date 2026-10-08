@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/url"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Material struct {
@@ -34,80 +34,52 @@ type Material struct {
 	DownloadURL    *string `json:"download_url"`
 }
 
-const materialPresentation = `SELECT d.id,d.course_id,d.display_name,d.source_path,d.source_origin,d.document_kind,d.status,d.diagnostic_reason,d.source_modified_at,d.indexed_at,d.source_size_bytes,d.page_count,d.reading_minutes,m.material_type,m.source_label,
-CASE WHEN d.status='ready' AND e.status='ready' AND e.source_hash=d.source_hash AND coalesce(e.requested_model,e.model)=$5
-AND e.analysis_version=CASE WHEN d.document_kind IN('pdf','image') THEN $4 ELSE $3 END AND pg_input_is_valid(e.payload_json,'jsonb')
-THEN jsonb_build_object('external_material_type',e.payload_json::jsonb->>'external_material_type','material_type',e.payload_json::jsonb->>'material_type') ELSE '{}'::jsonb END
-FROM knowledge.documents d LEFT JOIN app.external_material_metadata m ON m.course_id=d.course_id AND m.source_path=d.normalized_path
-LEFT JOIN knowledge.document_enrichments e ON e.document_id=d.id
-WHERE d.course_id=$1 AND d.is_current=1 AND d.source_origin='external' AND ($2='' OR d.id=$2) ORDER BY d.display_name,d.id`
-
 func (s Service) List(ctx context.Context, id int64, document string, pendingAI bool) ([]Material, error) {
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	var found int64
-	if err = tx.QueryRow(ctx, `SELECT id FROM app.courses WHERE id=$1 AND hidden=0`, id).Scan(&found); err != nil {
+	if _, err = tx.Courses().VisibleCourse(ctx, id); err != nil {
 		return nil, err
 	}
 	a, err := settings.ReadAI(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(
-		ctx,
-		materialPresentation,
-		id,
-		document,
-		settings.DocumentAnalysisVersion,
-		settings.PageSynthesisVersion,
-		a.Model,
-	)
+	rows, err := tx.Materials().ListPresentation(ctx, database.MaterialPresentationParams{
+		CourseID:        id,
+		DocumentID:      document,
+		DocumentVersion: settings.DocumentAnalysisVersion,
+		PageVersion:     settings.PageSynthesisVersion,
+		Model:           a.Model,
+	})
 	if err != nil {
 		return nil, err
 	}
-	items := []Material{}
-	for rows.Next() {
-		item, err := readMaterial(rows, pendingAI)
-		if err != nil {
-			rows.Close()
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
+	items := make([]Material, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, readMaterial(row, pendingAI))
 	}
 	return items, tx.Commit(ctx)
 }
 
-func readMaterial(row rdbms.Row, pendingAI bool) (Material, error) {
+func readMaterial(row database.MaterialPresentationRow, pendingAI bool) Material {
 	var item Material
-	var override *string
-	var raw []byte
-	err := row.Scan(
-		&item.ID,
-		&item.CourseID,
-		&item.Name,
-		&item.Path,
-		&item.Origin,
-		&item.Kind,
-		&item.Status,
-		&item.Reason,
-		&item.Modified,
-		&item.Indexed,
-		&item.Size,
-		&item.Pages,
-		&item.Minutes,
-		&override,
-		&item.Label,
-		&raw,
-	)
-	if err != nil {
-		return item, err
-	}
+	item.ID = row.ID
+	item.CourseID = row.CourseID
+	item.Name = row.DisplayName
+	item.Path = row.SourcePath
+	item.Origin = row.SourceOrigin
+	item.Kind = row.DocumentKind
+	item.Status = row.Status
+	item.Reason = row.DiagnosticReason
+	item.Modified = row.SourceModifiedAt
+	item.Indexed = row.IndexedAt
+	item.Size = row.SourceSizeBytes
+	item.Pages = row.PageCount
+	item.Minutes = row.ReadingMinutes
+	item.Label = row.SourceLabel
 	item.DocumentID = item.ID
 	for _, value := range []*string{&item.Name, &item.Path, item.Label, item.Reason} {
 		if value != nil {
@@ -115,12 +87,12 @@ func readMaterial(row rdbms.Row, pendingAI bool) (Material, error) {
 		}
 	}
 	manual := ""
-	if override != nil {
-		manual = *override
+	if row.MaterialType != nil {
+		manual = *row.MaterialType
 	}
 	item.Type, item.Classification = classify(item.Path, manual)
 	var payload map[string]string
-	_ = json.Unmarshal(raw, &payload)
+	_ = json.Unmarshal(row.EnrichmentPayload, &payload)
 	if manual == "" {
 		if inferred := aiType(payload); inferred != "" {
 			item.Type, item.Classification = inferred, "ai"
@@ -140,5 +112,5 @@ func readMaterial(row rdbms.Row, pendingAI bool) (Material, error) {
 			item.OpenURL = &open
 		}
 	}
-	return item, nil
+	return item
 }

@@ -2,11 +2,10 @@ package settings
 
 import (
 	"context"
-	"errors"
 	"strings"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Credentials struct {
@@ -14,15 +13,18 @@ type Credentials struct {
 	Password string `json:"-"`
 }
 
-func readCredentials(ctx context.Context, db queryer) (*Credentials, error) {
-	var result Credentials
-	err := db.QueryRow(ctx, `SELECT username,password FROM app.credentials WHERE id=1`).
-		Scan(&result.Username, &result.Password)
-	if errors.Is(err, rdbms.ErrNoRows) {
+func readCredentials(ctx context.Context, db database.Operations) (*Credentials, error) {
+	stored, err := db.Settings().LoadCredentials(ctx)
+	if database.IsNoRows(err) {
 		return nil, nil
 	}
-	result.Username, result.Password = identity.Decode(result.Username), identity.Decode(result.Password)
-	return &result, err
+	if err != nil {
+		return nil, err
+	}
+	return &Credentials{
+		Username: identity.Decode(stored.Username),
+		Password: identity.Decode(stored.Password),
+	}, nil
 }
 func (s Service) Credentials(ctx context.Context) (*Credentials, error) {
 	return readCredentials(ctx, s.Pool)
@@ -32,7 +34,7 @@ func (s Service) SaveCredentials(ctx context.Context, username, password string,
 	if username == "" {
 		return Invalid{"Username is required"}
 	}
-	return s.mutate(ctx, "credentials", func(tx rdbms.Tx) error {
+	return s.mutate(ctx, "credentials", func(tx database.Tx) error {
 		existing, err := readCredentials(ctx, tx)
 		if err != nil {
 			return err
@@ -49,29 +51,28 @@ func (s Service) SaveCredentials(ctx context.Context, username, password string,
 		default:
 			final = ""
 		}
-		_, err = tx.Exec(
-			ctx,
-			`INSERT INTO app.credentials(id,username,password) VALUES(1,$1,$2) ON CONFLICT(id) DO UPDATE SET username=$1,password=$2`,
-			identity.Encode(username),
-			identity.Encode(final),
-		)
-		if err != nil {
+		if err := tx.Settings().SaveCredentials(ctx, database.SettingsCredentials{
+			Username: identity.Encode(username),
+			Password: identity.Encode(final),
+		}); err != nil {
 			return err
 		}
 		// Saved cookies must not authenticate the previous credential pair.
 		if existing == nil || existing.Username != username || existing.Password != final {
-			_, err = tx.Exec(ctx, `DELETE FROM app.app_data WHERE key='session_cookie'`)
+			return tx.Settings().ClearSessionCookie(ctx)
 		}
-		return err
+		return nil
 	})
 }
 func (s Service) Webhook(ctx context.Context) (string, error) {
-	var value string
-	err := s.Pool.QueryRow(ctx, `SELECT webhook_url FROM app.webhook_config WHERE id=1`).Scan(&value)
-	if errors.Is(err, rdbms.ErrNoRows) {
-		err = nil
+	encoded, err := s.Pool.Settings().LoadWebhook(ctx)
+	if database.IsNoRows(err) {
+		return "", nil
 	}
-	return identity.Decode(value), err
+	if err != nil {
+		return "", err
+	}
+	return identity.Decode(encoded), nil
 }
 func (s Service) SaveWebhook(ctx context.Context, value string, clear bool) error {
 	if !clear && strings.TrimSpace(value) != "" {
@@ -79,18 +80,13 @@ func (s Service) SaveWebhook(ctx context.Context, value string, clear bool) erro
 			return Invalid{err.Error()}
 		}
 	}
-	return s.mutate(ctx, "webhook", func(tx rdbms.Tx) error {
+	return s.mutate(ctx, "webhook", func(tx database.Tx) error {
 		if !clear && strings.TrimSpace(value) == "" {
 			return nil
 		}
 		if clear {
 			value = ""
 		}
-		_, err := tx.Exec(
-			ctx,
-			`INSERT INTO app.webhook_config(id,webhook_url) VALUES(1,$1) ON CONFLICT(id) DO UPDATE SET webhook_url=$1`,
-			identity.Encode(strings.TrimSpace(value)),
-		)
-		return err
+		return tx.Settings().SaveWebhook(ctx, identity.Encode(strings.TrimSpace(value)))
 	})
 }

@@ -7,9 +7,8 @@ import (
 	"strings"
 
 	"tree-eclass/internal/domain/blueprints"
-	"tree-eclass/internal/domain/knowledge"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type evidenceSnapshot struct {
@@ -66,17 +65,18 @@ type evidenceDocument struct {
 	AnalysisStatus, AnalysisHash, Version, Model, RequestedModel, Context, Payload string
 }
 
-// A native document is backed by a registered, undeleted immutable S3 version.
-// Archive children must additionally bind an admitted current parent revision.
-const evidenceQuery = `SELECT d.id,d.source_hash,d.document_kind,d.display_name,d.source_path,d.source_origin,coalesce(d.source_url,''),
- coalesce(e.status,''),coalesce(e.source_hash,''),coalesce(e.analysis_version,''),coalesce(e.model,''),coalesce(e.requested_model,e.model,''),coalesce(e.context_hash,''),
- CASE WHEN octet_length(e.payload_json)<=4194304 THEN coalesce(e.payload_json,'') ELSE '' END
- FROM knowledge.documents d LEFT JOIN knowledge.document_enrichments e ON e.document_id=d.id
- WHERE d.course_id=$1 AND d.id=ANY($2::text[]) AND d.status='ready' AND d.content_hash_verified=1 AND ` + knowledge.CurrentSourcePredicate
+func evidenceDocumentFromRow(row database.NavigationEvidenceRow) evidenceDocument {
+	return evidenceDocument{
+		ID: row.ID, Hash: row.Hash, Kind: row.Kind, Name: row.Name, Path: row.Path,
+		Origin: row.Origin, URL: row.URL, AnalysisStatus: row.AnalysisStatus,
+		AnalysisHash: row.AnalysisHash, Version: row.Version, Model: row.Model,
+		RequestedModel: row.RequestedModel, Context: row.Context, Payload: row.Payload,
+	}
+}
 
 func freshEvidence(
 	ctx context.Context,
-	tx rdbms.Tx,
+	tx database.Tx,
 	course int64,
 	a settings.AI,
 	packet map[string]any,
@@ -89,39 +89,17 @@ func freshEvidence(
 	for id := range snapshots {
 		ids = append(ids, id)
 	}
-	rows, err := tx.Query(ctx, evidenceQuery, course, ids)
+	rows, err := tx.Navigation().EvidenceRows(ctx, course, ids)
 	if err != nil {
 		return nil, "", err
 	}
-	defer rows.Close()
 	links := map[string]map[string]any{}
-	for rows.Next() {
-		var d evidenceDocument
-		if err = rows.Scan(
-			&d.ID,
-			&d.Hash,
-			&d.Kind,
-			&d.Name,
-			&d.Path,
-			&d.Origin,
-			&d.URL,
-			&d.AnalysisStatus,
-			&d.AnalysisHash,
-			&d.Version,
-			&d.Model,
-			&d.RequestedModel,
-			&d.Context,
-			&d.Payload,
-		); err != nil {
-			return nil, "", err
-		}
+	for _, row := range rows {
+		d := evidenceDocumentFromRow(row)
 		if reason := checkSnapshot(d, snapshots[d.ID], a); reason != "" {
 			return nil, reason, nil
 		}
 		links["document:"+d.ID] = documentLink(d)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, "", err
 	}
 	if len(links) != len(snapshots) {
 		return nil, "cached_evidence_document_stale", nil

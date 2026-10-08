@@ -9,9 +9,9 @@ import (
 	"tree-eclass/internal/domain/inference"
 )
 
-type Store interface {
-	Load(context.Context, string) (State, error)
-	Save(context.Context, string, State) error
+type Loader interface {
+	Load(context.Context, string) (QuotaState, error)
+	Save(context.Context, string, QuotaState) error
 }
 type Streamer interface {
 	Stream(context.Context, inference.Candidate, inference.Request, func(inference.Delta) error) error
@@ -19,12 +19,12 @@ type Streamer interface {
 type providerState struct {
 	mu     sync.Mutex
 	loaded bool
-	value  State
+	value  QuotaState
 }
 type Guard struct {
 	Client    Streamer
 	Probe     Probe
-	Store     Store
+	Store     Loader
 	Now       func() time.Time
 	mu        sync.Mutex
 	providers map[string]*providerState
@@ -47,7 +47,7 @@ func (g *Guard) now() time.Time {
 	}
 	return time.Now().UTC()
 }
-func blocked(c inference.Candidate, s State, now time.Time) error {
+func blocked(c inference.Candidate, s QuotaState, now time.Time) error {
 	delay := time.Minute
 	if s.Blocked != nil {
 		delay = max(0, s.Blocked.Sub(now))
@@ -111,8 +111,9 @@ func (g *Guard) hydrate(ctx context.Context, c inference.Candidate, p *providerS
 }
 
 // recheck probes tracked providers and re-evaluates the admission window.
-func (g *Guard) recheck(ctx context.Context, c inference.Candidate, value State, now time.Time) (State, error) {
-	next := evaluate(Snapshot{}, now)
+func (g *Guard) recheck(ctx context.Context, c inference.Candidate, value QuotaState, now time.Time) (QuotaState,
+	error) {
+	next := evaluate(QuotaSnapshot{}, now)
 	if c.Provider == "synthetic" || c.Provider == "ollama" {
 		snapshot, err := g.Probe.Fetch(ctx, c)
 		if ctx.Err() != nil {
@@ -135,7 +136,7 @@ func (g *Guard) recheck(ctx context.Context, c inference.Candidate, value State,
 // advanceWindow counts the admitted request and forces a recheck before
 // exhausting a reported request-count window; the server is authoritative
 // about regeneration and other clients' usage.
-func advanceWindow(value State, now time.Time) State {
+func advanceWindow(value QuotaState, now time.Time) QuotaState {
 	value.Requests++
 	for _, window := range value.Windows {
 		if window.Remaining != nil && float64(value.Requests) >= *window.Remaining {

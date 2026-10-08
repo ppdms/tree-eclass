@@ -4,11 +4,10 @@ import (
 	"context"
 	"path"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/integrations/mirror"
 )
 
@@ -21,7 +20,7 @@ func (s Service) MirrorExternal(ctx context.Context, id int64) error {
 	if err != nil || root == "" {
 		return err
 	}
-	course, err := courseByPool(ctx, s.Pool, id)
+	course, err := s.Pool.Courses().Course(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -30,7 +29,7 @@ func (s Service) MirrorExternal(ctx context.Context, id int64) error {
 	return err
 }
 
-func (s Service) mirrorExternal(ctx context.Context, course queries.AppCourse) (mirror.Result, error) {
+func (s Service) mirrorExternal(ctx context.Context, course database.AppCourse) (mirror.Result, error) {
 	files, err := s.externalMirrorFiles(ctx, course.ID)
 	if err != nil {
 		return mirror.Result{}, err
@@ -46,7 +45,7 @@ func (s Service) mirrorExternal(ctx context.Context, course queries.AppCourse) (
 }
 
 func (s Service) externalMirrorFiles(ctx context.Context, id int64) ([]mirror.File, error) {
-	rows, err := queries.ForPool(s.Pool).ExternalMirrorFiles(ctx, id)
+	rows, err := s.Pool.Materials().ExternalMirrorFiles(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -54,13 +53,9 @@ func (s Service) externalMirrorFiles(ctx context.Context, id int64) ([]mirror.Fi
 	for _, row := range rows {
 		ref := blob.Reference{
 			Bucket: row.Bucket, Key: row.Key, VersionID: row.VersionID,
-			SHA256: row.Sha256, Bytes: row.Bytes,
+			SHA256: row.SHA256, Bytes: row.Bytes,
 		}
 		files = append(files, mirror.File{Path: identity.Decode(row.NormalizedPath), Object: &ref})
 	}
 	return files, nil
-}
-
-func courseByPool(ctx context.Context, pool rdbms.Pool, id int64) (queries.AppCourse, error) {
-	return queries.ForPool(pool).Course(ctx, id)
 }

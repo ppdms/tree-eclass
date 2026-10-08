@@ -5,12 +5,12 @@ import (
 	"errors"
 	"time"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 type Service struct {
-	Pool   rdbms.Pool
+	Pool   database.Store
 	Sender Sender
 }
 type delivery struct {
@@ -19,19 +19,15 @@ type delivery struct {
 }
 
 func (s Service) Recover(ctx context.Context) error {
-	_, err := s.Pool.Exec(
-		ctx,
-		`UPDATE app.notification_messages SET status=CASE WHEN attempts>=5 THEN 'failed' ELSE 'pending' END,error='Delivery interrupted before acknowledgement' WHERE status='running'`,
-	)
-	return err
+	return s.Pool.Notifications().RecoverInterrupted(ctx)
 }
 func (s Service) claim(ctx context.Context) (delivery, error) {
 	var d delivery
 	// Fast path: no webhook configured means no claimable work. Skip the
 	// serializing write transaction entirely so an idle notifier never
 	// contends with crawls and projections on a small sqlite pool.
-	var target string
-	if err := s.Pool.QueryRow(ctx, `SELECT coalesce((SELECT webhook_url FROM app.webhook_config WHERE id=1),'')`).Scan(&target); err != nil {
+	target, err := s.Pool.Notifications().WebhookTarget(ctx)
+	if err != nil {
 		return d, err
 	}
 	if target == "" {
@@ -49,24 +45,26 @@ func (s Service) claim(ctx context.Context) (delivery, error) {
 	if err != nil {
 		return d, err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE app.notification_messages SET status='canceled',error='Webhook destination changed or notifications disabled' WHERE status='pending' AND (NOT $1 OR target_hash<>$2)`, cfg.Enabled && cfg.Target != "", targetHash(cfg.Target)); err != nil {
+	obsolete := cfg.Enabled && cfg.Target != ""
+	if err = tx.Notifications().CancelObsoleteTargets(ctx, obsolete, targetHash(cfg.Target)); err != nil {
 		return d, err
 	}
 	if !cfg.Enabled || cfg.Target == "" {
 		return d, tx.Commit(ctx)
 	}
-	var paused bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app.notification_limits WHERE target_hash=$1 AND next_at>clock_timestamp())`, targetHash(cfg.Target)).Scan(&paused); err != nil {
+	paused, err := tx.Notifications().DestinationPaused(ctx, targetHash(cfg.Target))
+	if err != nil {
 		return d, err
 	}
 	if paused {
 		return d, tx.Commit(ctx)
 	}
-	err = tx.QueryRow(ctx, `WITH next AS(SELECT id FROM app.notification_messages WHERE status='pending' AND target_hash=$1 AND available_at<=clock_timestamp() ORDER BY created_at,event_key,position FOR UPDATE SKIP LOCKED LIMIT 1)
- UPDATE app.notification_messages m SET status='running',attempts=attempts+1 FROM next WHERE m.id=next.id RETURNING m.id,m.content,m.attempts`, targetHash(cfg.Target)).
-		Scan(&d.ID, &d.Content, &d.Attempts)
-	if err != nil && !errors.Is(err, rdbms.ErrNoRows) {
+	claim, err := tx.Notifications().ClaimMessage(ctx, targetHash(cfg.Target))
+	if err != nil && !errors.Is(err, database.ErrNoRows) {
 		return d, err
+	}
+	if err == nil {
+		d.ID, d.Content, d.Attempts = claim.ID, claim.Content, claim.Attempts
 	}
 	d.Target, d.Content = cfg.Target, identity.Decode(d.Content)
 	return d, tx.Commit(ctx)
@@ -88,12 +86,7 @@ func (s Service) Tick(ctx context.Context) error {
 				return err
 			}
 		}
-		_, err = s.Pool.Exec(
-			ctx,
-			`UPDATE app.notification_messages SET status='sent',sent_at=clock_timestamp(),error=NULL WHERE id=$1 AND status='running'`,
-			d.ID,
-		)
-		return err
+		return s.Pool.Notifications().AckMessage(ctx, d.ID)
 	}
 	status := "pending"
 	var failure Failure
@@ -115,30 +108,18 @@ func (s Service) Tick(ctx context.Context) error {
 	if failure.Status != 0 {
 		message = failure.Error()
 	}
-	_, err = s.Pool.Exec(
+	return s.Pool.Notifications().FailMessage(
 		ctx,
-		`UPDATE app.notification_messages SET status=$2,error=$3,available_at=clock_timestamp()+$4*interval '1 second',attempts=attempts-$5 WHERE id=$1 AND status='running'`,
-		d.ID,
-		status,
-		message,
-		retry.Seconds(),
-		flag(quota),
+		database.NotificationFailure{
+			ID:           d.ID,
+			Status:       status,
+			Error:        message,
+			DelaySeconds: retry.Seconds(),
+			Quota:        quota,
+		},
 	)
-	return err
-}
-func flag(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }
 
 func (s Service) pause(ctx context.Context, target string, delay time.Duration) error {
-	_, err := s.Pool.Exec(
-		ctx,
-		`INSERT INTO app.notification_limits(target_hash,next_at) VALUES($1,clock_timestamp()+$2*interval '1 second') ON CONFLICT(target_hash) DO UPDATE SET next_at=greatest(app.notification_limits.next_at,excluded.next_at)`,
-		targetHash(target),
-		delay.Seconds(),
-	)
-	return err
+	return s.Pool.Notifications().PauseDestination(ctx, targetHash(target), delay)
 }

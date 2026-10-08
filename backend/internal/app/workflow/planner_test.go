@@ -4,15 +4,14 @@ import (
 	"errors"
 	"net/url"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/settings"
 )
 
-func plannerChecks(t *testing.T, pool rdbms.Pool, base string) {
+func plannerChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
 	ctx := t.Context()
-	_, err := pool.Exec(
+	_, err := pool.Native.Exec(
 		ctx,
 		`INSERT INTO app.courses(id,name,webdav_folder,hidden) VALUES(102,'Κρυφό','/Courses/102',1),(103,'Ανενεργό','/Courses/103',1);
 INSERT INTO app.course_exam_plans(course_id,enabled,remaining_blocks,importance,max_daily_blocks) VALUES(101,0,12,2.5,4),(102,1,3,1,2);

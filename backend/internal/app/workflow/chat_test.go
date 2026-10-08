@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/services/chat"
 )
 
-func chatChecks(t *testing.T, pool rdbms.Pool, base string) {
+func chatChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
 	ctx := context.Background()
 	store := chat.Store{Pool: pool}
@@ -53,7 +52,7 @@ func chatChecks(t *testing.T, pool rdbms.Pool, base string) {
 	apiJSON(t, "DELETE", target, nil, 200, nil)
 	apiJSON(t, "GET", target, nil, 404, nil)
 	var messages int
-	if err = pool.QueryRow(ctx, `SELECT count(*) FROM app.chat_messages WHERE conversation_id=$1`, first.ID).Scan(&messages); err != nil {
+	if err = pool.Native.QueryRow(ctx, `SELECT count(*) FROM app.chat_messages WHERE conversation_id=$1`, first.ID).Scan(&messages); err != nil {
 		t.Fatal(err)
 	}
 	if messages != 0 {

@@ -4,9 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
 
-	"tree-eclass/internal/domain/queries"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/settings"
 )
 
@@ -30,30 +29,26 @@ func (s Service) enqueue(ctx context.Context, id *int64, retry bool) (string, er
 		return "", err
 	}
 	defer tx.Rollback(ctx)
-	q := queries.ForTx(tx)
-	if err = q.QueueLock(ctx, "eclass-check"); err != nil {
+	if err = tx.Jobs().QueueLock(ctx, "eclass-check"); err != nil {
 		return "", err
 	}
 	if id != nil {
-		var hidden int64
-		if err = tx.QueryRow(ctx, `SELECT hidden FROM app.courses WHERE id=$1 FOR SHARE`, *id).Scan(&hidden); err != nil {
+		hidden, err := tx.Sync().CourseHidden(ctx, *id)
+		if err != nil {
 			return "", err
 		}
 		if hidden != 0 {
-			return "", rdbms.ErrNoRows
+			return "", database.ErrNoRows
 		}
 	}
 	command, err := admitCheck(ctx, tx, id, retry)
 	if err != nil {
 		return "", err
 	}
-	_, err = tx.Exec(
-		ctx,
-		`INSERT INTO app.check_status(id,is_checking,started_at,current_course_id) VALUES(1,1,$1,$2) ON CONFLICT(id) DO UPDATE SET is_checking=1,started_at=$1,current_course_id=$2`,
-		time.Now().UTC().Format(time.RFC3339),
-		id,
-	)
-	if err != nil {
+	if err = tx.Sync().MarkCheckStart(ctx, database.SyncCheckStart{
+		At:       time.Now().UTC().Format(time.RFC3339),
+		CourseID: id,
+	}); err != nil {
 		return "", err
 	}
 	return command, tx.Commit(ctx)

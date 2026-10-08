@@ -3,18 +3,17 @@ package workflow
 import (
 	"errors"
 	"testing"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"tree-eclass/internal/domain/settings"
 	"tree-eclass/internal/infrastructure/jobs"
 	"tree-eclass/internal/services/synchronization"
 )
 
-func syncRetryChecks(t *testing.T, pool rdbms.Pool, service synchronization.Service) {
+func syncRetryChecks(t *testing.T, pool *fixtureStore, service synchronization.Service) {
 	t.Helper()
 	ctx := t.Context()
 	var original string
-	if err := pool.QueryRow(ctx, `UPDATE app.control_commands SET attempts=4,error='login failed',available_at=clock_timestamp()+interval '2 hours'
+	if err := pool.Native.QueryRow(ctx, `UPDATE app.control_commands SET attempts=4,error='login failed',available_at=clock_timestamp()+interval '2 hours'
 WHERE queue='sync' AND status='pending' RETURNING id`).Scan(&original); err != nil {
 		t.Fatal(err)
 	}

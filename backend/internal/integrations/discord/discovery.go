@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
 )
@@ -129,27 +130,17 @@ func (s Service) storeDiscovered(ctx context.Context, cfg settings.Discord, all 
 	if err = checkSettings(ctx, tx, cfg); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `DELETE FROM app.discord_discovered_channels;DELETE FROM app.discord_root_channels`); err != nil {
-		return err
-	}
+	channels := make([]database.DiscoveredChannel, 0, len(all))
 	for _, ch := range all {
-		if _, err = tx.Exec(ctx, `INSERT INTO app.discord_discovered_channels(channel_id,root_id,guild_id,name,is_thread) VALUES($1,$2,$3,$4,$5)`, ch.ID, ch.Root, ch.Guild, identity.Encode(ch.Name), ch.Thread); err != nil {
-			return err
-		}
-		if !ch.Thread {
-			// Scalar jsonb_build_object (literal key + one text value) is
-			// covered by the sqlite shim, which renders the same postgres
-			// jsonb text; no Go rewrite needed.
-			if _, err = tx.Exec(ctx, `INSERT INTO app.discord_root_channels(root_channel_id,name,metadata) VALUES($1,$2,jsonb_build_object('guild_id',$3::text))`, fmt.Sprint(ch.ID), identity.Encode(ch.Name), fmt.Sprint(ch.Guild)); err != nil {
-				return err
-			}
-		}
+		channels = append(channels, database.DiscoveredChannel{
+			ChannelID: ch.ID,
+			RootID:    ch.Root,
+			GuildID:   ch.Guild,
+			Name:      identity.Encode(ch.Name),
+			IsThread:  ch.Thread,
+		})
 	}
-	_, err = tx.Exec(
-		ctx,
-		`INSERT INTO messages.message_state(key,value,updated_at) VALUES('native_discovery','ready',clock_timestamp()::text) ON CONFLICT(key) DO UPDATE SET value='ready',updated_at=excluded.updated_at`,
-	)
-	if err != nil {
+	if err = tx.Discord().ReplaceDiscovery(ctx, channels); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

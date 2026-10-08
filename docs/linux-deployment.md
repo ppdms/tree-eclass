@@ -66,9 +66,9 @@ only these keys matter:
 }
 ```
 
-- `sqlite_path` (or `database_url` for the legacy postgres backend),
-  `objects_root`, `mode` and `session` are mandatory; `address`
-  defaults to port 80 if omitted.
+- Exactly one of `sqlite_path` or `database_url` (PostgreSQL), plus
+  `objects_root`, `mode` and `session`, is mandatory; `address`
+  defaults to port 80 if omitted. Supplying both database options is rejected.
 - `external_workers: false` parks the sync, Discord, notification and analysis
   workers and their triggers answer 503. Native development mode sets it from
   `Mode`; container deployments normally keep it `true`. A dev overlay reuses
@@ -83,13 +83,18 @@ only these keys matter:
 
 ## Storage
 
-- **Database** — sqlite file at `sqlite_path` (WAL mode; `-wal`/`-shm` live
-  alongside it), opened with `MaxOpenConns(1)` and `busy_timeout`. The legacy
-  postgres backend (`database_url`) is unchanged. `admitSQLite` refuses a
-  database that contains tables but no `tree_go_migrations` ledger, so an
-  existing pre-rewrite (Python-era) database cannot be adopted: create a fresh
-  one. There is no SQLite import path; `eclass.db`, `knowledge.db` and
-  `discord_knowledge.db` are legacy files.
+- **Database** — the selected backend implements the same typed application
+  operations using directly written native SQL, not dialect translation.
+  SQLite uses WAL mode (`-wal`/`-shm` alongside `sqlite_path`), a bounded
+  four-connection pool and a busy timeout. Writer transactions take
+  `BEGIN IMMEDIATE`; read-only snapshots retain their own connection.
+  The canonical database path's `.owner` lock excludes another runtime and
+  migrations until admitted operations and transactions have finished.
+  PostgreSQL uses its native transactions, row locks and advisory ownership
+  lock. Both backends verify immutable migration checksums before admission.
+  An existing database with tables but no migration ledger cannot be adopted;
+  start with a fresh database instead. There is no SQLite import path;
+  `eclass.db`, `knowledge.db` and `discord_knowledge.db` are legacy files.
 - **Objects store** — a local content-addressed directory. Compose bind-mounts
   the host path from `TREE_OBJECTS_DIR` at `/data/objects`, and the runtime
   configuration points `objects_root` there; the host directory must already be

@@ -7,11 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/knowledge"
-	"tree-eclass/internal/domain/queries"
 	"tree-eclass/internal/infrastructure/blob"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
 func (s *Server) fileRoutes() {
@@ -40,7 +39,7 @@ func (s *Server) documentContent(w http.ResponseWriter, r *http.Request) {
 	s.blobs.Serve(w, r, content.Object, content.Name)
 }
 func (s *Server) fileContent(w http.ResponseWriter, r *http.Request) {
-	row, err := queries.ForPool(s.db.Pool).FileObject(r.Context(), r.PathValue("file_id"))
+	row, err := s.db.Pool.Objects().FileObject(r.Context(), r.PathValue("file_id"))
 	if err != nil {
 		s.fileError(w, err)
 		return
@@ -49,12 +48,12 @@ func (s *Server) fileContent(w http.ResponseWriter, r *http.Request) {
 		w,
 		r,
 		blob.Reference{
-			Bucket:    row.Bucket,
-			Key:       row.Key,
-			VersionID: row.VersionID,
-			SHA256:    row.Sha256,
-			Bytes:     row.Bytes,
-			MediaType: row.MediaType,
+			Bucket:    row.Object.Bucket,
+			Key:       row.Object.Key,
+			VersionID: row.Object.VersionID,
+			SHA256:    row.Object.SHA256,
+			Bytes:     row.Object.Bytes,
+			MediaType: row.Object.MediaType,
 		},
 		path.Base(row.LogicalPath),
 	)
@@ -78,7 +77,7 @@ func (s *Server) logicalContent(w http.ResponseWriter, r *http.Request) {
 	s.blobs.Serve(w, r, content.Object, content.Name)
 }
 func (s *Server) fileError(w http.ResponseWriter, err error) {
-	if errors.Is(err, rdbms.ErrNoRows) {
+	if errors.Is(err, database.ErrNoRows) {
 		writeFailure(w, http.StatusNotFound, "Document not found")
 		return
 	}

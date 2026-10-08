@@ -40,11 +40,10 @@ func (s *archiveSourceFixture) Download(_ context.Context, _, _, etag string) (e
 func (s *archiveSourceFixture) Drive(context.Context, string, string) (eclass.Download, error) {
 	return eclass.Download{}, errors.New("unexpected Drive request")
 }
-func archiveSyncChecks(t *testing.T, indexer knowledge.Indexer) {
+func archiveSyncChecks(t *testing.T, pool *fixtureStore, indexer knowledge.Indexer) {
 	t.Helper()
 	ctx := t.Context()
-	pool := indexer.Pool
-	if _, err := pool.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(792,'Official archive','/Courses/792')`); err != nil {
+	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(792,'Official archive','/Courses/792')`); err != nil {
 		t.Fatal(err)
 	}
 	source := &archiveSourceFixture{
@@ -56,13 +55,13 @@ func archiveSyncChecks(t *testing.T, indexer knowledge.Indexer) {
 		t.Fatal(err)
 	}
 	var parent, child string
-	if err := pool.QueryRow(ctx, `SELECT id FROM knowledge.documents WHERE course_id=792`).Scan(&parent); err != nil {
+	if err := pool.Native.QueryRow(ctx, `SELECT id FROM knowledge.documents WHERE course_id=792`).Scan(&parent); err != nil {
 		t.Fatal(err)
 	}
 	if err := indexer.Index(ctx, parent); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT child_document_id FROM knowledge.archive_members WHERE parent_document_id=$1`, parent).Scan(&child); err != nil {
+	if err := pool.Native.QueryRow(ctx, `SELECT child_document_id FROM knowledge.archive_members WHERE parent_document_id=$1`, parent).Scan(&child); err != nil {
 		t.Fatal(err)
 	}
 	if err := indexer.Index(ctx, child); err != nil {

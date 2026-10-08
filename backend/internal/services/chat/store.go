@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
-	"tree-eclass/internal/infrastructure/rdbms"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 )
 
-type Store struct{ Pool rdbms.Pool }
+type Store struct{ Pool database.Store }
 type Consultation struct {
 	Tool      string         `json:"tool"`
 	Arguments map[string]any `json:"arguments"`
@@ -54,30 +54,21 @@ func title(question string) string {
 	return text
 }
 func (s Store) List(ctx context.Context, limit int) ([]Summary, error) {
-	rows, err := s.Pool.Query(
-		ctx,
-		`SELECT c.id,c.title,c.created_at,c.updated_at,(SELECT count(*) FROM app.chat_messages m WHERE m.conversation_id=c.id),coalesce((SELECT substr(m.content,1,140) FROM app.chat_messages m WHERE m.conversation_id=c.id AND m.role='user' ORDER BY m.id DESC LIMIT 1),'') FROM app.chat_conversations c ORDER BY c.updated_at DESC,coalesce((SELECT max(m.id) FROM app.chat_messages m WHERE m.conversation_id=c.id),0) DESC,c.id DESC LIMIT $1`,
-		min(max(limit, 1), 200),
-	)
+	rows, err := s.Pool.Chat().ListConversations(ctx, min(max(limit, 1), 200))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	result := []Summary{}
 	counts := map[string]int{}
-	for rows.Next() {
-		var item Summary
-		if err = rows.Scan(
-			&item.ID,
-			&item.Title,
-			&item.CreatedAt,
-			&item.UpdatedAt,
-			&item.MessageCount,
-			&item.Excerpt,
-		); err != nil {
-			return nil, err
+	for _, row := range rows {
+		item := Summary{
+			ID:           row.ID,
+			Title:        identity.Decode(row.Title),
+			CreatedAt:    row.CreatedAt,
+			UpdatedAt:    row.UpdatedAt,
+			MessageCount: row.MessageCount,
+			Excerpt:      identity.Decode(row.Excerpt),
 		}
-		item.Title, item.Excerpt = identity.Decode(item.Title), identity.Decode(item.Excerpt)
 		item.DisplayTitle = strings.Join(strings.Fields(item.Title), " ")
 		if item.DisplayTitle == "" {
 			item.DisplayTitle = "New conversation"
@@ -91,47 +82,31 @@ func (s Store) List(ctx context.Context, limit int) ([]Summary, error) {
 			result[i].DisplayTitle += " · " + string(chars[:min(64, len(chars))])
 		}
 	}
-	return result, rows.Err()
+	return result, nil
 }
 func (s Store) Get(ctx context.Context, id int64) (Conversation, error) {
 	result := Conversation{Messages: []Message{}}
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return result, err
 	}
 	defer tx.Rollback(ctx)
-	err = tx.QueryRow(ctx, `SELECT id,title,created_at,updated_at FROM app.chat_conversations WHERE id=$1`, id).
-		Scan(&result.ID, &result.Title, &result.CreatedAt, &result.UpdatedAt)
+	header, err := tx.Chat().GetConversation(ctx, id)
 	if err != nil {
 		return result, err
 	}
-	result.Title = identity.Decode(result.Title)
-	rows, err := tx.Query(
-		ctx,
-		`SELECT id,role,content,consulted_json,model,created_at FROM app.chat_messages WHERE conversation_id=$1 ORDER BY id`,
-		id,
-	)
+	result.ID, result.CreatedAt, result.UpdatedAt = header.ID, header.CreatedAt, header.UpdatedAt
+	result.Title = identity.Decode(header.Title)
+	rows, err := tx.Chat().ListMessages(ctx, id)
 	if err != nil {
 		return result, err
 	}
-	for rows.Next() {
-		var message Message
-		var consulted *string
-		if err = rows.Scan(
-			&message.ID,
-			&message.Role,
-			&message.Content,
-			&consulted,
-			&message.Model,
-			&message.CreatedAt,
-		); err != nil {
-			rows.Close()
-			return result, err
-		}
-		message.Content = identity.Decode(message.Content)
+	for _, row := range rows {
+		message := Message{ID: row.ID, Role: row.Role, Content: identity.Decode(row.Content)}
+		message.Model, message.CreatedAt = row.Model, row.CreatedAt
 		message.Consulted = []Consultation{}
-		if consulted != nil {
-			if err := json.Unmarshal([]byte(identity.Decode(*consulted)), &message.Consulted); err != nil {
+		if row.ConsultedJSON != nil {
+			if err := json.Unmarshal([]byte(identity.Decode(*row.ConsultedJSON)), &message.Consulted); err != nil {
 				message.Consulted = []Consultation{}
 			}
 		}
@@ -140,33 +115,17 @@ func (s Store) Get(ctx context.Context, id int64) (Conversation, error) {
 		}
 		result.Messages = append(result.Messages, message)
 	}
-	if err = rows.Err(); err != nil {
-		return result, err
-	}
 	return result, tx.Commit(ctx)
 }
 func (s Store) Delete(ctx context.Context, id int64) error {
-	tag, err := s.Pool.Exec(ctx, `DELETE FROM app.chat_conversations WHERE id=$1`, id)
-	if err == nil && tag.RowsAffected() == 0 {
-		return rdbms.ErrNoRows
-	}
-	return err
+	return s.Pool.Chat().DeleteConversation(ctx, id)
 }
 func (s Store) Rename(ctx context.Context, id int64, value string) error {
 	clean := []rune(strings.Join(strings.Fields(value), " "))
 	if len(clean) == 0 {
 		return errors.New("a title is required")
 	}
-	tag, err := s.Pool.Exec(
-		ctx,
-		`UPDATE app.chat_conversations SET title=$2 WHERE id=$1`,
-		id,
-		identity.Encode(string(clean[:min(len(clean), 120)])),
-	)
-	if err == nil && tag.RowsAffected() == 0 {
-		return rdbms.ErrNoRows
-	}
-	return err
+	return s.Pool.Chat().RenameConversation(ctx, id, identity.Encode(string(clean[:min(len(clean), 120)])))
 }
 
 type Turn struct {
@@ -184,42 +143,37 @@ func (s Store) SaveTurn(ctx context.Context, turn Turn) (Saved, error) {
 	if strings.TrimSpace(turn.Question) == "" || strings.TrimSpace(turn.Answer) == "" {
 		return result, errors.New("a complete question and answer are required")
 	}
+	consulted, err := json.Marshal(turn.Consulted)
+	if err != nil {
+		return result, err
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return result, err
 	}
 	defer tx.Rollback(ctx)
 	if turn.ConversationID == nil {
-		err = tx.QueryRow(ctx, `INSERT INTO app.chat_conversations(title) VALUES($1) RETURNING id`, identity.Encode(title(turn.Question))).
-			Scan(&result.ID)
+		result.ID, err = tx.Chat().CreateConversation(ctx, identity.Encode(title(turn.Question)))
 	} else {
-		err = tx.QueryRow(ctx, `SELECT id FROM app.chat_conversations WHERE id=$1 FOR UPDATE`, *turn.ConversationID).Scan(&result.ID)
+		result.ID, err = tx.Chat().LockConversation(ctx, *turn.ConversationID)
 	}
 	if err != nil {
 		return result, err
 	}
-	consulted, err := json.Marshal(turn.Consulted)
-	if err != nil {
-		return result, err
-	}
-	_, err = tx.Exec(
+	err = tx.Chat().InsertTurnMessages(
 		ctx,
-		`INSERT INTO app.chat_messages(conversation_id,role,content,consulted_json,model) VALUES($1,'user',$2,NULL,NULL),($1,'assistant',$3,$4,$5)`,
-		result.ID,
-		identity.Encode(turn.Question),
-		identity.Encode(turn.Answer),
-		identity.Encode(string(consulted)),
-		turn.Model,
+		database.ChatTurnMessages{
+			ConversationID:   result.ID,
+			UserContent:      identity.Encode(turn.Question),
+			AssistantContent: identity.Encode(turn.Answer),
+			Consulted:        identity.Encode(string(consulted)),
+			Model:            turn.Model,
+		},
 	)
 	if err != nil {
 		return result, err
 	}
-	_, err = tx.Exec(
-		ctx,
-		`UPDATE app.chat_conversations SET updated_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS.MS') WHERE id=$1`,
-		result.ID,
-	)
-	if err != nil {
+	if err = tx.Chat().TouchConversation(ctx, result.ID); err != nil {
 		return result, err
 	}
 	return result, tx.Commit(ctx)

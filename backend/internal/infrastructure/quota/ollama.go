@@ -39,7 +39,7 @@ func normalizeCookie(raw string) (string, error) {
 	}
 	return "", errors.New("Ollama quota cookie has no recognized session")
 }
-func usageWindow(html, label, name string, limit float64) *Window {
+func usageWindow(html, label, name string, limit float64) *QuotaWindow {
 	start := strings.Index(html, label)
 	if start < 0 {
 		return nil
@@ -67,15 +67,15 @@ func usageWindow(html, label, name string, limit float64) *Window {
 		return nil
 	}
 	*used = min(100, max(0, *used))
-	result := &Window{Name: name, Used: used, Limit: limit}
+	result := &QuotaWindow{Name: name, Used: used, Limit: limit}
 	if reset := resetTime.FindStringSubmatch(window); reset != nil {
 		result.Reset = date(reset[1])
 	}
 	return result
 }
-func parseOllama(raw []byte) (Snapshot, error) {
+func parseOllama(raw []byte) (QuotaSnapshot, error) {
 	html := string(raw)
-	result := Snapshot{Windows: []Window{}}
+	result := QuotaSnapshot{Windows: []QuotaWindow{}}
 	session := usageWindow(html, "Session usage", "session", 95)
 	if session == nil {
 		session = usageWindow(html, "Hourly usage", "session", 95)

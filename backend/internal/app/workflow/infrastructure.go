@@ -13,9 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/infrastructure/process"
+	"tree-eclass/internal/infrastructure/rdbms"
 	"tree-eclass/internal/infrastructure/storage"
 )
 
@@ -67,11 +68,7 @@ func (c *Controller) start(ctx context.Context, name string, argv, env []string,
 }
 
 func (c *Controller) waitDatabase(ctx context.Context) error {
-	cfg, err := pgx.ParseConfig(c.databaseURL())
-	if err != nil {
-		return err
-	}
-	cfg.Database = "postgres"
+	name := databaseName(c.database)
 	deadline := time.Now().Add(20 * time.Second)
 	retry := time.NewTimer(0)
 	if !retry.Stop() {
@@ -79,16 +76,11 @@ func (c *Controller) waitDatabase(ctx context.Context) error {
 	}
 	defer retry.Stop()
 	for {
-		conn, err := pgx.ConnectConfig(ctx, cfg)
+		err := rdbms.EnsurePostgresDatabase(ctx, c.databaseURL(), name)
 		if err == nil {
-			defer conn.Close(ctx)
-			var exists bool
-			if err = conn.QueryRow(ctx, "SELECT EXISTS(SELECT FROM pg_database WHERE datname='tree')").Scan(&exists); err != nil {
-				return err
-			}
-			if !exists {
-				_, err = conn.Exec(ctx, "CREATE DATABASE tree")
-			}
+			return nil
+		}
+		if !errors.Is(err, database.ErrUnavailable) {
 			return err
 		}
 		if time.Now().After(deadline) {

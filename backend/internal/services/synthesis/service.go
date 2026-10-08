@@ -8,7 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
+
+	"tree-eclass/internal/domain/database"
 
 	"tree-eclass/internal/domain/blueprints"
 	"tree-eclass/internal/domain/settings"
@@ -16,37 +17,32 @@ import (
 )
 
 type Service struct {
-	Pool      rdbms.Pool
+	Pool      database.Store
 	Generator inference.Generator
 	Keys      map[string]string
 }
 type job struct {
-	ID, Course, Attempts                          int64
-	Lane, Unit, Hash, Blueprint, Requested, Claim string
-	Packet                                        map[string]any
-	AI                                            settings.AI
+	ID, Course, Attempts                    int64
+	Lane                                    database.SynthesisLane
+	Unit, Hash, Blueprint, Requested, Claim string
+	Packet                                  map[string]any
+	AI                                      settings.AI
 }
 
-func table(lane string) string {
-	if lane == "practice" {
-		return "knowledge.practice_question_sets"
-	}
-	return "knowledge.course_blueprints"
-}
-func model(a settings.AI, lane string) string {
-	if lane == "practice" {
+func model(a settings.AI, lane database.SynthesisLane) string {
+	if lane == database.SynthesisPractice {
 		return a.PracticeModel
 	}
 	return a.CourseModel
 }
-func version(lane string) string {
-	if lane == "practice" {
+func version(lane database.SynthesisLane) string {
+	if lane == database.SynthesisPractice {
 		return settings.PracticeAnalysisVersion
 	}
 	return settings.CourseAnalysisVersion
 }
-func enabled(a settings.AI, lane string) bool {
-	return a.EnrichmentEnabled && a.CourseEnabled && (lane != "practice" || a.PracticeEnabled)
+func enabled(a settings.AI, lane database.SynthesisLane) bool {
+	return a.EnrichmentEnabled && a.CourseEnabled && (lane != database.SynthesisPractice || a.PracticeEnabled)
 }
 func planning(p settings.ExamPlan) map[string]any {
 	return map[string]any{
@@ -87,8 +83,8 @@ func (s Service) Recover(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	for _, lane := range []string{"course", "practice"} {
-		if _, err = tx.Exec(ctx, `UPDATE `+table(lane)+` SET status='pending',claimed_at=NULL,attempts=greatest(0,attempts-1),available_at=$1 WHERE status='running'`, stamp(time.Now())); err != nil {
+	for _, lane := range []database.SynthesisLane{database.SynthesisCourse, database.SynthesisPractice} {
+		if err = tx.Synthesis().RecoverLane(ctx, lane, stamp(time.Now())); err != nil {
 			return err
 		}
 	}
@@ -97,14 +93,15 @@ func (s Service) Recover(ctx context.Context) error {
 
 // RunOne fairly scans one course and then consumes at most one durable claim.
 func (s Service) RunOne(ctx context.Context, lane string) (bool, error) {
-	if lane != "course" && lane != "practice" {
+	parsed, ok := database.SynthesisLaneFor(lane)
+	if !ok {
 		return false, errors.New("invalid synthesis lane")
 	}
-	if err := s.prepare(ctx, lane); err != nil {
+	if err := s.prepare(ctx, parsed); err != nil {
 		return false, err
 	}
-	j, err := s.claim(ctx, lane)
-	if errors.Is(err, rdbms.ErrNoRows) {
+	j, err := s.claim(ctx, parsed)
+	if errors.Is(err, database.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {

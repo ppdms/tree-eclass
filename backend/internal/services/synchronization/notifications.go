@@ -2,24 +2,24 @@ package synchronization
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
-	"tree-eclass/internal/infrastructure/rdbms"
 
 	"golang.org/x/net/html"
 
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/infrastructure/notifications"
 	"tree-eclass/internal/integrations/eclass"
 )
 
-func courseHeader(ctx context.Context, tx rdbms.Tx, id int64, title string) (string, error) {
-	var name string
-	err := tx.QueryRow(ctx, `SELECT name FROM app.courses WHERE id=$1`, id).Scan(&name)
+func courseHeader(ctx context.Context, tx database.Tx, id int64, title string) (string, error) {
+	name, err := tx.Sync().CourseName(ctx, id)
 	return "**" + title + " — " + notifications.Plain(identity.Decode(name)) + "**", err
 }
-func announceChanges(ctx context.Context, tx rdbms.Tx, course, record int64, changes []Change) error {
+func announceChanges(ctx context.Context, tx database.Tx, course, record int64, changes []Change) error {
 	header, err := courseHeader(ctx, tx, course, "Course changes")
 	if err != nil {
 		return err
@@ -85,7 +85,7 @@ func htmlText(source string) string {
 	}
 	return strings.Join(strings.Fields(text.String()), " ")
 }
-func announceExercises(ctx context.Context, tx rdbms.Tx, course int64, lines []string) error {
+func announceExercises(ctx context.Context, tx database.Tx, course int64, lines []string) error {
 	if len(lines) == 0 {
 		return nil
 	}
@@ -103,13 +103,12 @@ func announceExercises(ctx context.Context, tx rdbms.Tx, course int64, lines []s
 		},
 	)
 }
-func exerciseEvents(ctx context.Context, tx rdbms.Tx, course int64, ex eclass.Exercise) ([]string, error) {
-	var grade, comments, file, url string
-	err := tx.QueryRow(ctx, `SELECT coalesce(grade,''),coalesce(grade_comments,''),coalesce(assignment_file_name,''),coalesce(assignment_file_url,'') FROM app.exercises WHERE course_id=$1 AND exercise_id=$2`, course, identity.Encode(ex.ID)).
-		Scan(&grade, &comments, &file, &url)
+func exerciseEvents(ctx context.Context, tx database.Tx, course int64, ex eclass.Exercise) ([]string, error) {
+	state, err := tx.Sync().ExerciseState(ctx, course, identity.Encode(ex.ID))
+	grade, comments, file, url := state.Grade, state.GradeComments, state.AssignmentFileName, state.AssignmentFileURL
 	title := notifications.Plain(ex.Title)
 	lines := []string{}
-	if err == rdbms.ErrNoRows {
+	if errors.Is(err, database.ErrNoRows) {
 		line := "• New exercise: **" + title + "**"
 		if ex.Deadline != "" {
 			line += "\nDeadline: " + notifications.Plain(ex.Deadline)

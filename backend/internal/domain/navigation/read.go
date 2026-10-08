@@ -9,12 +9,12 @@ import (
 	"errors"
 
 	"tree-eclass/internal/domain/courses"
+	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
 	"tree-eclass/internal/domain/settings"
-	"tree-eclass/internal/infrastructure/rdbms"
 )
 
-type Service struct{ Pool rdbms.Pool }
+type Service struct{ Pool database.Store }
 type Request struct {
 	CourseID                               int64
 	Roadmap, IncludeHidden, IncludeActions bool
@@ -26,31 +26,9 @@ type View struct {
 	Blueprint   map[string]any `json:"course_blueprint"`
 }
 
-// navigationBaseQuery loads the immutable plan payloads. Progress aggregates
-// use explicit columns assembled in Go below so the queries stay portable:
-// row-form JSON constructors have no sqlite form and fail at prepare time.
-const navigationBaseQuery = `SELECT n.overview,content.payload,coalesce(n.source_generation,-1),g.generation,coalesce(n.config_generation,'')
-FROM read_model.course_generation g LEFT JOIN read_model.navigation n USING(course_id)
-LEFT JOIN read_model.roadmap_content content ON $2 AND content.content_id=n.content_id WHERE g.course_id=$1`
-
-// navigationActionsCTE shares the action/progress join across the progress
-// queries. Status derives from the latest learner event; the unit counts use
-// count(CASE...) so both drivers aggregate identically.
-const navigationActionsCTE = `WITH actions AS (
- SELECT a.action_id,a.unit_key,a.ordinal,a.payload,
- CASE WHEN p.latest_event IN('completed','stuck','deferred') THEN p.latest_event WHEN p.latest_event IS NOT NULL THEN 'in_progress' ELSE 'pending' END status,
- coalesce(p.progress_minutes,0) progress_minutes FROM read_model.roadmap_actions a LEFT JOIN read_model.action_progress p USING(course_id,action_id) WHERE a.course_id=$1
-)`
-
-const navigationUnitsQuery = navigationActionsCTE + ` SELECT unit_key,count(*) total_actions,count(CASE WHEN status='completed' THEN 1 END) completed_actions FROM actions GROUP BY unit_key`
-
-const navigationNextQuery = navigationActionsCTE + ` SELECT payload,status,progress_minutes FROM actions WHERE status<>'completed' ORDER BY CASE WHEN status IN('pending','in_progress') THEN 0 ELSE 1 END,ordinal LIMIT 1`
-
-const navigationActionsQuery = navigationActionsCTE + ` SELECT payload,status,progress_minutes FROM actions WHERE ($2 IS NULL OR unit_key=$2) ORDER BY ordinal`
-
 func (s Service) Read(ctx context.Context, request Request) (View, error) {
 	result := View{}
-	tx, err := s.Pool.BeginTx(ctx, rdbms.Options{Isolation: rdbms.RepeatableRead, AccessMode: rdbms.ReadOnly})
+	tx, err := s.Pool.BeginTx(ctx, database.Options{Isolation: database.RepeatableRead, AccessMode: database.ReadOnly})
 	if err != nil {
 		return result, err
 	}
@@ -63,7 +41,7 @@ func (s Service) Read(ctx context.Context, request Request) (View, error) {
 }
 
 // ReadTx shares an existing repeatable-read snapshot with study/practice views.
-func (s Service) ReadTx(ctx context.Context, tx rdbms.Tx, request Request) (View, error) {
+func (s Service) ReadTx(ctx context.Context, tx database.Tx, request Request) (View, error) {
 	result := View{}
 	selected, err := loadReadCourse(ctx, tx, request)
 	if err != nil {
@@ -82,13 +60,13 @@ func (s Service) ReadTx(ctx context.Context, tx rdbms.Tx, request Request) (View
 }
 
 // loadReadCourse resolves the visible course row for the request.
-func loadReadCourse(ctx context.Context, tx rdbms.Tx, request Request) (*courses.Course, error) {
-	_, selected, err := courses.SnapshotCourses(ctx, tx, &request.CourseID)
+func loadReadCourse(ctx context.Context, ops database.Operations, request Request) (*courses.Course, error) {
+	_, selected, err := courses.SnapshotCourses(ctx, ops, &request.CourseID)
 	if err != nil {
 		return nil, err
 	}
 	if selected.Hidden && !request.IncludeHidden {
-		return nil, rdbms.ErrNoRows
+		return nil, database.ErrNoRows
 	}
 	return selected, nil
 }
@@ -96,46 +74,43 @@ func loadReadCourse(ctx context.Context, tx rdbms.Tx, request Request) (*courses
 // loadReadPayload reads the plan payload and checks it against the current
 // generation stamps. A nil payload with a nil error means the cached plan is
 // stale and the caller should serve the pending blueprint.
-func loadReadPayload(ctx context.Context, tx rdbms.Tx, request Request) ([]byte, error) {
-	a, err := settings.ReadAI(ctx, tx)
+func loadReadPayload(ctx context.Context, ops database.Operations, request Request) ([]byte, error) {
+	a, err := settings.ReadAI(ctx, ops)
 	if err != nil {
 		return nil, err
 	}
-	var overview, content []byte
-	var built, current int64
-	var config string
-	err = tx.QueryRow(ctx, navigationBaseQuery, request.CourseID, request.Roadmap).
-		Scan(&overview, &content, &built, &current, &config)
+	payload, err := ops.Navigation().Payload(ctx, request.CourseID, request.Roadmap)
 	if err != nil {
 		return nil, err
 	}
-	if len(overview) == 0 || built != current || config != a.AnalysisGeneration() {
+	if len(payload.Overview) == 0 || payload.Built != payload.Current || payload.Config != a.AnalysisGeneration() {
 		return nil, nil
 	}
 	if request.Roadmap {
-		return content, nil
+		return payload.Content, nil
 	}
-	return overview, nil
+	return payload.Overview, nil
 }
 
 // finishRead attaches live progress to the plan payload and decodes it into
 // the view blueprint.
-func finishRead(ctx context.Context, tx rdbms.Tx, request Request, result *View, raw []byte) error {
-	units, err := marshalUnits(ctx, tx, request.CourseID)
+func finishRead(ctx context.Context, ops database.Operations, request Request, result *View, raw []byte) error {
+	units, err := marshalUnits(ctx, ops, request.CourseID)
 	if err != nil {
 		return err
 	}
-	next, err := marshalNext(ctx, tx, request.CourseID)
+	next, err := marshalNext(ctx, ops, request.CourseID)
 	if err != nil {
 		return err
 	}
 	actions := []byte("[]")
 	if request.Roadmap && request.IncludeActions {
-		var unit any
+		var unit *string
 		if request.Unit != nil {
-			unit = identity.Encode(*request.Unit)
+			encoded := identity.Encode(*request.Unit)
+			unit = &encoded
 		}
-		actions, err = marshalActions(ctx, tx, request.CourseID, unit)
+		actions, err = marshalActions(ctx, ops, request.CourseID, unit)
 		if err != nil {
 			return err
 		}
@@ -152,24 +127,15 @@ func finishRead(ctx context.Context, tx rdbms.Tx, request Request, result *View,
 }
 
 // marshalUnits assembles the per-unit progress stats decorateProgress reads
-// from explicit columns. Counts stay numbers; an empty course yields [] like
-// the old coalesce(jsonb_agg(...),'[]').
-func marshalUnits(ctx context.Context, tx rdbms.Tx, course int64) ([]byte, error) {
-	rows, err := tx.Query(ctx, navigationUnitsQuery, course)
+// from explicit rows. An empty course yields [].
+func marshalUnits(ctx context.Context, ops database.Operations, course int64) ([]byte, error) {
+	rows, err := ops.Navigation().UnitProgress(ctx, course)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	stats := []unitStats{}
-	for rows.Next() {
-		var stat unitStats
-		if err = rows.Scan(&stat.Key, &stat.Total, &stat.Complete); err != nil {
-			return nil, err
-		}
-		stats = append(stats, stat)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
+	for _, row := range rows {
+		stats = append(stats, unitStats{Key: row.Key, Total: row.Total, Complete: row.Complete})
 	}
 	return json.Marshal(stats)
 }
@@ -189,45 +155,31 @@ func marshalAction(payload []byte, status string, minutes int64) ([]byte, error)
 // marshalNext assembles the single next-action blob, or nil when every action
 // is completed. decorateProgress treats an empty blob as no next action, the
 // way it treated the old NULL subselect.
-func marshalNext(ctx context.Context, tx rdbms.Tx, course int64) ([]byte, error) {
-	var payload []byte
-	var status string
-	var minutes int64
-	err := tx.QueryRow(ctx, navigationNextQuery, course).Scan(&payload, &status, &minutes)
-	if errors.Is(err, rdbms.ErrNoRows) {
+func marshalNext(ctx context.Context, ops database.Operations, course int64) ([]byte, error) {
+	row, err := ops.Navigation().NextAction(ctx, course)
+	if errors.Is(err, database.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return marshalAction(payload, status, minutes)
+	return marshalAction(row.Payload, row.Status, row.Minutes)
 }
 
 // marshalActions assembles the ordered action blobs for the roadmap view,
-// optionally restricted to one unit. A nil unit selects every unit, matching
-// the old ($2 IS NULL OR unit_key=$2) filter.
-func marshalActions(ctx context.Context, tx rdbms.Tx, course int64, unit any) ([]byte, error) {
-	rows, err := tx.Query(ctx, navigationActionsQuery, course, unit)
+// optionally restricted to one unit. A nil unit selects every unit.
+func marshalActions(ctx context.Context, ops database.Operations, course int64, unit *string) ([]byte, error) {
+	rows, err := ops.Navigation().ListActions(ctx, course, unit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	list := []json.RawMessage{}
-	for rows.Next() {
-		var payload []byte
-		var status string
-		var minutes int64
-		if err = rows.Scan(&payload, &status, &minutes); err != nil {
-			return nil, err
-		}
-		raw, err := marshalAction(payload, status, minutes)
+	for _, row := range rows {
+		raw, err := marshalAction(row.Payload, row.Status, row.Minutes)
 		if err != nil {
 			return nil, err
 		}
 		list = append(list, raw)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
 	}
 	return json.Marshal(list)
 }
