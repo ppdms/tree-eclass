@@ -1,70 +1,32 @@
 package rdbms
 
 import (
-	"strconv"
 	"time"
 
 	"tree-eclass/internal/domain/database"
 )
 
-// analysisEligiblePG is the servable-document boundary for alias d joined to
+// analysisEligibleSQLite is the servable-document boundary for alias d joined to
 // course alias c: admitted source, ready verified non-archive content, and a
 // visible course (or a hidden course with an enabled exam plan).
-const analysisEligiblePG = documentAdmissionPG +
-	` AND d.status='ready' AND d.content_hash_verified=1 AND d.document_kind<>'archive'` +
-	` AND (c.hidden=0 OR EXISTS(SELECT 1 FROM app.course_exam_plans plan` +
-	` WHERE plan.course_id=c.id AND plan.enabled=1))`
-
-// analysisEligibleSQLite is the same boundary with unqualified table names.
 const analysisEligibleSQLite = documentAdmissionSQLite +
 	` AND d.status='ready' AND d.content_hash_verified=1 AND d.document_kind<>'archive'` +
 	` AND (c.hidden=0 OR EXISTS(SELECT 1 FROM course_exam_plans plan` +
 	` WHERE plan.course_id=c.id AND plan.enabled=1))`
 
-// analysisDuePG matches rows whose stored TEXT availability has passed at the
-// backend clock. Stored stamps are RFC3339Nano UTC text or legacy
-// space-separated UTC text; both cast to timestamptz for the comparison.
-func analysisDuePG(column string) string {
-	return column + "::timestamptz<=clock_timestamp()"
-}
-
-// analysisDueSQLite is the same due check over normalized julianday values.
+// analysisDueSQLite matches rows whose stored TEXT availability has passed.
+// datetime() truncates both sides to whole seconds: a float julianday
+// comparison misorders freshly written RFC3339Nano stamps against the
+// millisecond-precision now() about half the time, while second precision
+// is monotonic for due checks and claims at most a second early.
 func analysisDueSQLite(column string) string {
-	return "julianday(" + column + ")<=julianday('now')"
+	return "datetime(" + column + ")<=datetime('now')"
 }
-
-// analysisVisualDuePG reports whether a visual document still needs page
-// work: non-visual kinds are always due, otherwise any missing, stale, or
-// due pending page row makes it due, as does a complete ready page set. The
-// model binds at $model, the page version at $page.
-func analysisVisualDuePG(model, page int) string {
-	m, p := strconv.Itoa(model), strconv.Itoa(page)
-	return `(d.document_kind NOT IN('pdf','image')` +
-		` OR NOT EXISTS(SELECT 1 FROM knowledge.page_enrichments p WHERE p.document_id=d.id)` +
-		` OR EXISTS(SELECT 1 FROM knowledge.page_enrichments p WHERE p.document_id=d.id` +
-		` AND (p.source_hash<>d.source_hash OR p.requested_model<>$` + m +
-		` OR p.analysis_version<>$` + p +
-		` OR (p.status='pending' AND ` + analysisDuePG("p.available_at") + `)))` +
-		` OR (SELECT count(*) FROM knowledge.page_enrichments p WHERE p.document_id=d.id` +
-		` AND p.status='ready' AND p.source_hash=d.source_hash AND p.requested_model=$` + m +
-		` AND p.analysis_version=$` + p +
-		` AND p.page_number BETWEEN 1 AND d.page_count)=d.page_count)`
-}
-
-type postgresAnalysis struct{ db nativeDBTX }
 
 type sqliteAnalysis struct{ db nativeDBTX }
 
-// analysisContextPG renders the canonical document identity hash expression
-// for row aliases: sha256 hex over the jsonb array text of
-// (id, course, hash, kind, display, course-name, path, origin).
-// PostgreSQL 18 ships sha256(bytea) in core; no extension is required.
-const analysisContextPG = `encode(sha256(convert_to(jsonb_build_array(d.id,d.course_id,d.source_hash,` +
-	`d.document_kind,d.display_name,c.name,d.normalized_path,d.source_origin)::text,'UTF8')),'hex')`
-
 // analysisCandidateRow is one ordered enrichment candidate for Go-side due
-// evaluation on SQLite, where hashing and JSON text rules have no native
-// equivalent.
+// evaluation, where hashing and JSON text rules have no native equivalent.
 type analysisCandidateRow struct {
 	id, hash, kind, name, courseName, path, origin string
 	course                                         int64
@@ -131,7 +93,19 @@ func analysisDueText(stamp *string) bool {
 }
 
 // analysisContextHash renders the canonical identity hash via the shared
-// database port helper so SQLite evaluation matches PostgreSQL byte for byte.
+// database port helper.
 func analysisContextHash(id string, course int64, hash, kind, name, courseName, path, origin string) string {
 	return database.AnalysisContextHash(id, course, hash, kind, name, courseName, path, origin)
+}
+
+func scanExcerpts(rows nativeRows) ([]database.ExcerptRow, error) {
+	out := []database.ExcerptRow{}
+	for rows.Next() {
+		var item database.ExcerptRow
+		if err := rows.Scan(&item.LocatorType, &item.LocatorStart, &item.Text); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
 }

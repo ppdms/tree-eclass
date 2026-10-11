@@ -181,11 +181,10 @@ type Analysis interface {
 // AnalysisContextHash renders the canonical document identity hash: sha256
 // hex over the jsonb array text of the identity tuple (id, course, hash,
 // kind, display name, course name, path, origin). String elements use
-// PostgreSQL jsonb string escaping (short \b \f \n \r \t forms, \u00xx
+// JSONB string escaping (short \b \f \n \r \t forms, \u00xx
 // otherwise, raw UTF-8 passthrough) and the course id encodes as a JSON
-// number, matching the PostgreSQL jsonb_build_array expression exactly, so
-// stored context_hash values compare equal on both backends without
-// recomputation.
+// number, matching the canonical jsonb_build_array expression exactly, so
+// stored context_hash values compare equal without recomputation.
 func AnalysisContextHash(id string, course int64, hash, kind, name, courseName, path, origin string) string {
 	var builder strings.Builder
 	builder.WriteByte('[')

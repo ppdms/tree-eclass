@@ -8,7 +8,7 @@ import (
 	"tree-eclass/internal/domain/identity"
 )
 
-// Serialized PostgreSQL tsvectors contain positions, not just searchable text;
+// Serialized tsvectors contain positions, not just searchable text;
 // SQLite lower() also cannot provide the application's Unicode case folding.
 // Stream the ordered native rows through one canonical matcher. The result cap
 // applies after matching, and corpus growth does not grow retained memory.

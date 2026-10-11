@@ -10,7 +10,7 @@ import (
 	"tree-eclass/internal/domain/identity"
 )
 
-// RefreshCoverage processes at most one course per tick. PostgreSQL snapshots
+// RefreshCoverage processes at most one course per tick. SQLite snapshots
 // keep all aggregate inputs consistent; publishing their generation rather than
 // the current wall clock prevents a concurrent source edit being called fresh.
 func (s Service) RefreshCoverage(ctx context.Context) (bool, error) {

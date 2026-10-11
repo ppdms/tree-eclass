@@ -11,14 +11,14 @@ import (
 func plannerChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
 	ctx := t.Context()
-	_, err := pool.Native.Exec(
-		ctx,
-		`INSERT INTO app.courses(id,name,webdav_folder,hidden) VALUES(102,'Κρυφό','/Courses/102',1),(103,'Ανενεργό','/Courses/103',1);
-INSERT INTO app.course_exam_plans(course_id,enabled,remaining_blocks,importance,max_daily_blocks) VALUES(101,0,12,2.5,4),(102,1,3,1,2);
-INSERT INTO app.nodes(course_id,name,url,local_path) VALUES(101,'folder','https://example.invalid/folder','/Courses/101/eclass/folder')`,
-	)
-	if err != nil {
-		t.Fatal(err)
+	for _, stmt := range []string{
+		`INSERT INTO courses(id,name,webdav_folder,hidden) VALUES(102,'Κρυφό','/Courses/102',1),(103,'Ανενεργό','/Courses/103',1)`,
+		`INSERT INTO course_exam_plans(course_id,enabled,remaining_blocks,importance,max_daily_blocks) VALUES(101,0,12,2.5,4),(102,1,3,1,2)`,
+		`INSERT INTO nodes(course_id,name,url,local_path) VALUES(101,'folder','https://example.invalid/folder','/Courses/101/eclass/folder')`,
+	} {
+		if _, err := pool.Native.ExecContext(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
 	}
 	service := settings.Service{Pool: pool}
 	form := url.Values{

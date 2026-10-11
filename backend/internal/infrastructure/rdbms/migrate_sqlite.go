@@ -13,9 +13,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// migrateSQLite applies the sqlite schema chain with the same ledger contract
-// as postgres: goose ordering plus a per-source sha256 ledger written in the
-// same transaction as the DDL. Runtime and migration admission hold the same
+// migrateSQLite applies the sqlite schema chain: goose ordering plus a
+// per-source sha256 ledger written in the same transaction as the DDL.
+// Runtime and migration admission hold the same
 // exclusive kernel ownership lock; schema changes never race an application.
 func migrateSQLite(ctx context.Context, path string) error {
 	path, err := canonicalSQLitePath(path)
@@ -279,7 +279,8 @@ func isIdentChar(c byte) bool {
 
 func admitSQLite(ctx context.Context, db *sql.DB) error {
 	var ledger bool
-	err := db.QueryRowContext(ctx, "SELECT count(*)>0 FROM sqlite_master WHERE type='table' AND name='tree_go_migrations'").Scan(&ledger)
+	err := db.QueryRowContext(ctx, "SELECT count(*)>0 FROM sqlite_master"+
+		" WHERE type='table' AND name='tree_go_migrations'").Scan(&ledger)
 	if err != nil {
 		return err
 	}
@@ -287,7 +288,8 @@ func admitSQLite(ctx context.Context, db *sql.DB) error {
 		return nil
 	}
 	var count int
-	err = db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type IN ('table','index') AND name NOT LIKE 'sqlite_%'").Scan(&count)
+	err = db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master"+
+		" WHERE type IN ('table','index') AND name NOT LIKE 'sqlite_%'").Scan(&count)
 	if err != nil {
 		return err
 	}
@@ -296,7 +298,8 @@ func admitSQLite(ctx context.Context, db *sql.DB) error {
 	}
 	_, err = db.ExecContext(
 		ctx,
-		"CREATE TABLE tree_go_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,sha256 TEXT NOT NULL,applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')))",
+		"CREATE TABLE tree_go_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,"+
+			"sha256 TEXT NOT NULL,applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now')))",
 	)
 	return err
 }

@@ -109,7 +109,9 @@ func loadExistingAttempt(ctx context.Context, tx database.Tx, in *Attempt, q cur
 		return false, err
 	}
 	existing := storedAttempt(stored)
-	decodeAttemptText(&existing)
+	// Compare in storage encoding: the request is still identity-encoded here
+	// (Record decodes it only for the return value), so decoding the stored
+	// row first would report NUL/private-use text as a conflict.
 	if attemptConflict(existing, *in, q, stored.Set, stored.Revision) {
 		return false, ErrConflict
 	}

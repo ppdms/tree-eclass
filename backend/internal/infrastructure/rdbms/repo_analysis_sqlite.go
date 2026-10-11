@@ -8,8 +8,8 @@ import (
 
 // sqliteAnalysis implements database.Analysis with native SQLite SQL: ?
 // placeholders, unqualified table names, instr admission, julianday clocks
-// and JSON1 length checks. No PostgreSQL compatibility functions remain.
-// FindCandidate scans ordered eligible rows and evaluates due state in Go.
+// and JSON1 length checks. FindCandidate scans ordered eligible rows and
+// evaluates due state in Go.
 
 func (a sqliteAnalysis) FindCandidate(ctx context.Context, model string,
 	versions database.AnalysisVersions) (database.AnalysisClaim, error) {

@@ -27,7 +27,7 @@ Evidence keeps its origin: official material, past exams, community-authored con
 
 ```text
 ./tree                  Installed Go lifecycle controller; manual start/stop
-├── PostgreSQL 18       One authoritative relational database
+├── SQLite              One authoritative relational database file
 ├── Objects directory   Local content-addressed document/object storage
 ├── tree-eclass         Go JSON API, read-only MCP, queues and background jobs
 │   └── native helpers  Short-lived Python parsers, OCR, PDF and Discord export
@@ -40,10 +40,8 @@ Stable releases contain the compiled Go application, frontend, Python interprete
 locked parser packages and relocated native document helpers.
 
 Application and domain code use typed, SQL-free persistence operations from
-`backend/internal/domain/database`. Deployment configuration selects either
-`database_url` (PostgreSQL) or `sqlite_path` (SQLite), never both. Each adapter in
-`backend/internal/infrastructure/rdbms` owns its directly written native SQL;
-there is no PostgreSQL-to-SQLite translation or PostgreSQL-function emulation.
+`backend/internal/domain/database`. The single SQLite adapter in
+`backend/internal/infrastructure/rdbms` owns its directly written native SQL.
 Transactions span operation groups, with backend-neutral records and errors.
 
 ## Local development and regular use
@@ -52,8 +50,8 @@ The local machine owns the database and the objects store. Startup uses no login
 container engine, or external Git hosting. The private `laptop` Git remote is a
 local bare repository; only sanitized, public-safe history is published.
 
-On a Linux server the same application runs from `Dockerfile` with SQLite or
-PostgreSQL selected by configuration. The container contract (commands, runtime
+On a Linux server the same application runs from `Dockerfile` with the same
+SQLite database file. The container contract (commands, runtime
 configuration, objects directory, `/jobs`, health) is documented in
 [docs/linux-deployment.md](docs/linux-deployment.md).
 
@@ -88,7 +86,7 @@ The controller does not create commits automatically.
 
 ### Setup and releases
 
-On Apple Silicon macOS, install Go, Bun, uv, PostgreSQL 18, Tesseract, Poppler,
+On Apple Silicon macOS, install Go, Bun, uv, Tesseract, Poppler,
 sevenzip and diff-pdf, then run `./tree setup`. Setup installs a durable Go controller,
 verifies pinned Python, parser packages, Greek/English OCR models and
 Discord export tools, installs frontend dependencies, and initializes fresh private
@@ -146,7 +144,7 @@ free-disk measurements.
 ```
 
 The native gate suspends the application, builds the React browser app, runs Go race tests using
-private synthetic PostgreSQL and objects-store fixtures, verifies relocated parser/helpers and
+private synthetic SQLite and objects-store fixtures, verifies relocated parser/helpers and
 static browser delivery, runs frontend tests and quality gates, cleans output, then resumes
 the previous mode. It does not synchronize real courses or call external providers.
 

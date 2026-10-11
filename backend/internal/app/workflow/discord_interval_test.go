@@ -83,11 +83,16 @@ func newDiscordIntervalFixture(t *testing.T) *discordIntervalFixture {
 	c := nativeSharedController(t)
 	conn, objects := startTestStorage(t, c)
 	ctx := t.Context()
-	t.Cleanup(func() { conn.Close(ctx) })
+	t.Cleanup(func() { conn.Close() })
 	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
-	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(901,'Μάθημα','/901'),(902,'Άλλο','/902');INSERT INTO app.discord_course_channels(root_channel_id,course_id) VALUES('200',901);
- INSERT INTO app.discord_export_settings(id,enabled,token) VALUES(1,1,'synthetic') ON CONFLICT(id) DO UPDATE SET enabled=1,token='synthetic'`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(901,'Μάθημα','/901'),(902,'Άλλο','/902')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO discord_course_channels(root_channel_id,course_id) VALUES('200',901)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO discord_export_settings(id,enabled,token) VALUES(1,1,'synthetic') ON CONFLICT(id) DO UPDATE SET enabled=1,token='synthetic'`); err != nil {
 		t.Fatal(err)
 	}
 	runner := &syntheticDiscord{broken: true}
@@ -106,21 +111,21 @@ func discordIntervalPublicationChecks(t *testing.T, fixture *discordIntervalFixt
 		t.Fatal("partial interval committed")
 	}
 	var count, cursor int64
-	if err := pool.Native.QueryRow(ctx, `SELECT count(*) FROM messages.archive_sources`).Scan(&count); err != nil || count != 0 {
+	if err := pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM archive_sources`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("first partition escaped failed transaction", count, err)
 	}
-	if err := pool.Native.QueryRow(ctx, `SELECT after_id FROM messages.export_cursors WHERE root_id=200 AND channel_id=200`).Scan(&cursor); err != nil || cursor != 0 {
+	if err := pool.Native.QueryRowContext(ctx, `SELECT after_id FROM export_cursors WHERE root_id=200 AND channel_id=200`).Scan(&cursor); err != nil || cursor != 0 {
 		t.Fatal("failed interval advanced cursor", cursor, err)
 	}
 	runner.broken = false
 	if err := service.Tick(ctx, now.Add(6*time.Minute), false); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.Native.QueryRow(ctx, `SELECT after_id FROM messages.export_cursors WHERE root_id=200 AND channel_id=200`).Scan(&cursor); err != nil || cursor <= 9007199254741005 {
+	if err := pool.Native.QueryRowContext(ctx, `SELECT after_id FROM export_cursors WHERE root_id=200 AND channel_id=200`).Scan(&cursor); err != nil || cursor <= 9007199254741005 {
 		t.Fatal("complete interval did not advance", cursor, err)
 	}
 	var objectID string
-	if err := pool.Native.QueryRow(ctx, `SELECT object_id FROM messages.archive_media LIMIT 1`).Scan(&objectID); err != nil {
+	if err := pool.Native.QueryRowContext(ctx, `SELECT object_id FROM archive_media LIMIT 1`).Scan(&objectID); err != nil {
 		t.Fatal(err)
 	}
 	return objectID
@@ -160,7 +165,7 @@ func discordIntervalMappingChecks(t *testing.T, fixture *discordIntervalFixture,
 	t.Helper()
 	ctx, c, pool, objects, temp := fixture.ctx, fixture.c, fixture.pool, fixture.objects, fixture.temp
 	api, err := server.New(ctx, server.Config{
-		Mode: "test", DatabaseURL: c.databaseURL(),
+		Mode: "test", SQLitePath: c.storageConfig().SQLitePath,
 		ObjectsRoot: c.testObjectsRoot(), Temp: temp,
 	})
 	if err != nil {
@@ -174,7 +179,7 @@ func discordIntervalMappingChecks(t *testing.T, fixture *discordIntervalFixture,
 		response.Body.String() != "<html>untrusted attachment</html>" {
 		t.Fatal("media response", response.Code, response.Header(), response.Body.String())
 	}
-	if _, err = pool.Native.Exec(ctx, `UPDATE app.discord_course_channels SET course_id=902 WHERE root_channel_id='200'`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE discord_course_channels SET course_id=902 WHERE root_channel_id='200'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = fixture.reader.Media(ctx, objectID); err == nil {
@@ -187,7 +192,7 @@ func discordIntervalMappingChecks(t *testing.T, fixture *discordIntervalFixture,
 	if _, err = fixture.reader.Media(ctx, objectID); err != nil {
 		t.Fatal("remapped attachment unavailable", err)
 	}
-	if _, err = pool.Native.Exec(ctx, `UPDATE app.discord_export_settings SET enabled=0 WHERE id=1`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE discord_export_settings SET enabled=0 WHERE id=1`); err != nil {
 		t.Fatal(err)
 	}
 	calls := fixture.runner.calls

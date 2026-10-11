@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -13,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	_ "modernc.org/sqlite"
 
 	"tree-eclass/internal/app/server"
 	"tree-eclass/internal/domain/platform"
@@ -34,12 +35,12 @@ func fixtureApplication() int {
 					fmt.Fprintln(os.Stderr, err)
 					return 1
 				}
-				conn, err := pgx.Connect(ctx, cfg.DatabaseURL)
+				conn, err := sql.Open("sqlite", sqliteDSN(cfg.SQLitePath))
 				if err != nil {
 					return 1
 				}
-				defer conn.Close(ctx)
-				_, err = conn.Exec(ctx, `CREATE TABLE app.partially_migrated(id bigint)`)
+				defer conn.Close()
+				_, err = conn.ExecContext(ctx, `CREATE TABLE partially_migrated(id INTEGER)`)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 				}
@@ -117,7 +118,7 @@ func stoppedFixture(t *testing.T, c *Controller) {
 	if err := c.stopped(); err != nil {
 		t.Fatal("runtime not completely stopped", err)
 	}
-	for _, service := range []string{"api", "frontend-build", "frontend", "postgres"} {
+	for _, service := range []string{"api", "frontend-build", "frontend"} {
 		if c.Processes.Alive(service) {
 			t.Fatal("writer survived shutdown", service)
 		}

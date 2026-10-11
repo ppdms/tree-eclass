@@ -11,7 +11,7 @@ import (
 // sqliteDiscordImports implements the Discord archive staging/publication
 // port with native SQLite SQL. The staging area is a TEMP TABLE scoped to
 // the caller's transaction connection; writer admission serializes staging
-// against concurrent writers. No PostgreSQL syntax is used anywhere.
+// against concurrent writers.
 type sqliteDiscordImports struct{ db nativeDBTX }
 
 func (d sqliteDiscordImports) BeginStage(ctx context.Context) error {
@@ -321,4 +321,13 @@ func (d sqliteDiscordImports) MismappedSource(ctx context.Context) (database.Dis
 			&source.Object.Bucket, &source.Object.Key, &source.Object.VersionID,
 			&source.Object.SHA256, &source.Object.Bytes, &source.Object.MediaType)
 	return source, err
+}
+
+func scanDiscordStaged(rows nativeRows) (database.DiscordStagedMessage, error) {
+	var m database.DiscordStagedMessage
+	err := rows.Scan(
+		&m.ID, &m.Timestamp, &m.Epoch, &m.AuthorKey, &m.AuthorName,
+		&m.Content, &m.SearchText, &m.ReplyTo, &m.MessageType,
+		&m.Pinned, &m.Reactions, &m.Attachments)
+	return m, err
 }

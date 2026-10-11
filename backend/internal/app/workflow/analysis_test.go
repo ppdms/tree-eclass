@@ -43,10 +43,10 @@ func newSourceBoundAnalysisFixture(t *testing.T) *sourceBoundAnalysisFixture {
 	c := nativeSharedController(t)
 	ctx := t.Context()
 	conn, objects := startTestStorage(t, c)
-	t.Cleanup(func() { conn.Close(ctx) })
+	t.Cleanup(func() { conn.Close() })
 	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
-	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(771,'Synthetic analysis','/Courses/771')`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(771,'Synthetic analysis','/Courses/771')`); err != nil {
 		t.Fatal(err)
 	}
 	temp := t.TempDir()
@@ -166,7 +166,7 @@ func visualAnalysisChecks(t *testing.T, fixture *sourceBoundAnalysisFixture) {
 func analysisRecoveryChecks(t *testing.T, pool *fixtureStore, service analysis.Service, document string) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.document_enrichments SET status='pending',available_at='now',attempts=0 WHERE document_id=$1`, document); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE document_enrichments SET status='pending',available_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),attempts=0 WHERE document_id=?`, document); err != nil {
 		t.Fatal(err)
 	}
 	service.Generator.Client = syntheticInference(
@@ -179,12 +179,12 @@ func analysisRecoveryChecks(t *testing.T, pool *fixtureStore, service analysis.S
 	}
 	var attempts int64
 	var status string
-	if err := pool.Native.QueryRow(ctx, `SELECT attempts,status FROM knowledge.document_enrichments WHERE document_id=$1`, document).Scan(&attempts, &status); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx, `SELECT attempts,status FROM document_enrichments WHERE document_id=?`, document).Scan(&attempts, &status); err != nil ||
 		attempts != 0 ||
 		status != "pending" {
 		t.Fatal("quota pause exhausted retry budget", attempts, status, err)
 	}
-	if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.document_enrichments SET status='running',attempts=1 WHERE document_id=$1`, document); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE document_enrichments SET status='running',attempts=1 WHERE document_id=?`, document); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Recover(ctx); err != nil {
@@ -194,7 +194,7 @@ func analysisRecoveryChecks(t *testing.T, pool *fixtureStore, service analysis.S
 	service.Generator.Client = syntheticInference(
 		func(ctx context.Context, _ inference.Candidate, _ inference.Request, emit func(inference.Delta) error) error {
 			called = true
-			if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.documents SET source_hash='changed' WHERE id=$1`, document); err != nil {
+			if _, err := pool.Native.ExecContext(ctx, `UPDATE documents SET source_hash='changed' WHERE id=?`, document); err != nil {
 				return err
 			}
 			if err := emit(inference.Delta{Text: `{"summary":"must never publish"}`}); err != nil {
@@ -207,7 +207,7 @@ func analysisRecoveryChecks(t *testing.T, pool *fixtureStore, service analysis.S
 		t.Fatal("stale completion", worked, called, err)
 	}
 	var payload *string
-	if err := pool.Native.QueryRow(ctx, `SELECT status,payload_json FROM knowledge.document_enrichments WHERE document_id=$1`, document).Scan(&status, &payload); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx, `SELECT status,payload_json FROM document_enrichments WHERE document_id=?`, document).Scan(&status, &payload); err != nil ||
 		status == "ready" ||
 		(payload != nil && strings.Contains(*payload, "must never publish")) {
 		t.Fatal("stale source analysis published", status, err)

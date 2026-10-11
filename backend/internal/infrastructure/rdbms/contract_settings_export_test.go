@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
-
 	"tree-eclass/internal/domain/courses"
 	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/domain/identity"
@@ -45,25 +43,13 @@ func seedExportCourses(t *testing.T, store database.Store) {
 func seedExportStored2(t *testing.T, backend contractBackend) {
 	t.Helper()
 	ctx := t.Context()
-	if backend.name == "sqlite" {
-		db, err := sql.Open("sqlite", backend.cfg.SQLitePath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer db.Close()
-		query := `INSERT INTO course_exam_plans(course_id,enabled,exam_at) VALUES(101,2,'2026-09-20T10:00')`
-		if _, err = db.ExecContext(ctx, query); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	conn, err := pgx.Connect(ctx, backend.cfg.PostgresURL)
+	db, err := sql.Open("sqlite", backend.cfg.SQLitePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close(ctx)
-	query := `INSERT INTO app.course_exam_plans(course_id,enabled,exam_at) VALUES(101,2,'2026-09-20T10:00')`
-	if _, err = conn.Exec(ctx, query); err != nil {
+	defer db.Close()
+	query := `INSERT INTO course_exam_plans(course_id,enabled,exam_at) VALUES(101,2,'2026-09-20T10:00')`
+	if _, err = db.ExecContext(ctx, query); err != nil {
 		t.Fatal(err)
 	}
 }

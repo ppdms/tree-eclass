@@ -29,7 +29,7 @@ const usage = `tree — native laptop workflow
   credentials import       Import provider keys while stopped, before development
   mcp                      Bridge stdio MCP to the manually started native API
   status | doctor          Inspect selection, ownership and native prerequisites
-  logs SERVICE             Show recent api/frontend-build/postgres/migration/collection/watcher output
+  logs SERVICE             Show recent api/frontend-build/frontend/migration/collection/watcher output
   check                    Suspend, validate with synthetic data, clean and resume
   storage collect          Remove abandoned objects while stopped
   clean                    Remove owned disposable output while stopped

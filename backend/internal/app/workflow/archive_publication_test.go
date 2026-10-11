@@ -75,10 +75,10 @@ func newArchivePublicationFixture(t *testing.T, format string) archivePublicatio
 	c := nativeSharedController(t)
 	ctx := t.Context()
 	conn, objects := startTestStorage(t, c)
-	t.Cleanup(func() { conn.Close(ctx) })
+	t.Cleanup(func() { conn.Close() })
 	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
-	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(791,'Archive fixture','/Courses/791')`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(791,'Archive fixture','/Courses/791')`); err != nil {
 		t.Fatal(err)
 	}
 	temp := t.TempDir()
@@ -125,13 +125,13 @@ func archiveChildren(t *testing.T, fixture archivePublicationFixture) ([]string,
 		t.Fatal("archive indexing", err)
 	}
 	var parentChunks int
-	if err := pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.chunks WHERE document_id=$1`, parent.DocumentID).Scan(&parentChunks); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM chunks WHERE document_id=?`, parent.DocumentID).Scan(&parentChunks); err != nil ||
 		parentChunks != 0 {
 		t.Fatal("archive source was flattened outside its admitted leaves", parentChunks)
 	}
-	rows, err := pool.Native.Query(
+	rows, err := pool.Native.QueryContext(
 		ctx,
-		`SELECT d.id FROM knowledge.archive_members m JOIN knowledge.documents d ON d.id=m.child_document_id WHERE m.parent_document_id=$1 ORDER BY d.id`,
+		`SELECT d.id FROM archive_members m JOIN documents d ON d.id=m.child_document_id WHERE m.parent_document_id=? ORDER BY d.id`,
 		parent.DocumentID,
 	)
 	if err != nil {
@@ -208,7 +208,7 @@ func archiveReplacementChecks(t *testing.T, fixture archivePublicationFixture, u
 		t.Fatal("removed leaf remained current")
 	}
 	var current int64
-	if err := fixture.pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.archive_members m JOIN knowledge.documents d ON d.id=m.child_document_id WHERE m.parent_document_id=$1 AND d.is_current=1`, parent.DocumentID).Scan(&current); err != nil ||
+	if err := fixture.pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM archive_members m JOIN documents d ON d.id=m.child_document_id WHERE m.parent_document_id=? AND d.is_current=1`, parent.DocumentID).Scan(&current); err != nil ||
 		current != 2 {
 		t.Fatal("member replacement was not atomic", current, err)
 	}
@@ -226,7 +226,7 @@ func archiveUnsafeChecks(t *testing.T, fixture archivePublicationFixture, unchan
 		t.Fatal("failed parent authorized old child")
 	}
 	var current int
-	if err := fixture.pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.archive_members WHERE parent_document_id=$1`, parent.DocumentID).Scan(&current); err != nil ||
+	if err := fixture.pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM archive_members WHERE parent_document_id=?`, parent.DocumentID).Scan(&current); err != nil ||
 		current != 3 {
 		t.Fatal("failed scan overwrote prior membership history", current, err)
 	}

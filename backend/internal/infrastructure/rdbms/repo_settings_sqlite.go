@@ -2,14 +2,24 @@ package rdbms
 
 import (
 	"context"
+	"errors"
 
 	"tree-eclass/internal/domain/database"
 )
 
+var errDiscordExportChanged = errors.New("Discord settings changed during export")
+
+func boolToInt(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
+}
+
 // sqliteSettings implements database.Settings with native SQLite SQL:
 // positional placeholders, unqualified tables, no row locks or table locks.
 // The admitted writer owns every write until commit/rollback, which is
-// stronger than the PostgreSQL advisory and table locks; lock methods only
+// stronger than advisory and table locks; lock methods only
 // verify the caller holds a writer transaction.
 type sqliteSettings struct{ db nativeDBTX }
 
@@ -155,7 +165,7 @@ func (s sqliteSettings) VerifyDiscordExport(
 }
 
 func (s sqliteSettings) ListDiscordChannels(ctx context.Context) ([]database.SettingsDiscordChannel, error) {
-	// SQLite has no FULL JOIN. The union keeps the PostgreSQL shape:
+	// SQLite has no FULL JOIN. The union keeps the full-outer-join shape:
 	// roots without mappings, mappings without roots, and joined rows.
 	rows, err := s.db.Query(ctx, `SELECT root_channel_id,name,course_id FROM (`+
 		`SELECT r.root_channel_id AS root_channel_id,r.name AS name,m.course_id AS course_id`+

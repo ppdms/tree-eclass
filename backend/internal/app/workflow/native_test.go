@@ -2,17 +2,17 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	_ "modernc.org/sqlite"
+
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/infrastructure/process"
 	"tree-eclass/internal/infrastructure/storage"
@@ -54,29 +54,15 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
-	if os.Getenv("TREE_NATIVE_TESTS") != "1" {
-		os.Exit(m.Run())
-	}
-	code := m.Run()
-	if err := closeSharedNativeEnvironment(); err != nil {
-		fmt.Fprintln(os.Stderr, "native shared fixture cleanup:", err)
-		if code == 0 {
-			code = 1
-		}
-	}
-	os.Exit(code)
+	os.Exit(m.Run())
 }
 
 func nativeController(t *testing.T) *Controller {
 	t.Helper()
 	if os.Getenv("TREE_NATIVE_TESTS") != "1" {
-		t.Skip("set TREE_NATIVE_TESTS=1 for disposable native PostgreSQL checks")
+		t.Skip("set TREE_NATIVE_TESTS=1 for disposable native checks")
 	}
 	repo, err := filepath.Abs("../../../..")
-	if err != nil {
-		t.Fatal(err)
-	}
-	pg, err := nativePostgresBin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,18 +75,10 @@ func nativeController(t *testing.T) *Controller {
 		Repo:       repo,
 		Executable: executable,
 		Config: Config{
-			Format:          1,
-			PostgresBin:     pg,
-			PostgresVersion: "postgres (PostgreSQL) 18.6",
-			Password:        "synthetic-password",
-			Ports:           nativePorts(t),
+			Format: 1,
+			Ports:  nativePorts(t),
 		},
 	}
-	version, err := exec.Command(filepath.Join(pg, "postgres"), "--version").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.Config.PostgresVersion = strings.TrimSpace(string(version))
 	c.Processes = process.Manager{Root: filepath.Join(c.Root, "processes"), Executable: executable}
 	t.Cleanup(func() {
 		if err := c.stopAll(); err != nil {
@@ -113,30 +91,35 @@ func nativeController(t *testing.T) *Controller {
 	return c
 }
 
-func nativePostgresBin() (string, error) {
-	path := os.Getenv("TREE_POSTGRES_BIN")
-	if path == "" {
-		path = "/opt/homebrew/opt/postgresql@18/bin"
-	}
-	return filepath.Abs(path)
+// sqliteDSN opens the same WAL database the runtime uses. Fixture handles are
+// plain readers/writers; ownership admission stays with storage.OpenConfig.
+func sqliteDSN(path string) string {
+	return "file:" + path + "?_pragma=busy_timeout%3D30000&_pragma=journal_mode%3DWAL&_pragma=foreign_keys%3D1"
 }
 
-func startTestStorage(t *testing.T, c *Controller) (*pgx.Conn, *blob.Store) {
+// sqliteTestDB opens a fixture handle on the controller's sqlite database.
+// The handle closes with the test; explicit mid-test Close calls stay safe.
+func sqliteTestDB(t *testing.T, c *Controller) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", sqliteDSN(c.storageConfig().SQLitePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.PingContext(t.Context()); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+func startTestStorage(t *testing.T, c *Controller) (*sql.DB, *blob.Store) {
 	t.Helper()
 	ctx := context.Background()
-	if c.database == "" {
-		if err := c.infrastructure(ctx); err != nil {
-			_ = c.Logs("postgres")
-			t.Fatal(err)
-		}
-		if err := c.migrate(ctx); err != nil {
-			t.Fatal(err)
-		}
-	} else if err := c.migrate(ctx); err != nil {
-		t.Fatal("shared test database migration", err)
+	if err := c.infrastructure(ctx); err != nil {
+		t.Fatal(err)
 	}
-	conn, err := pgx.Connect(ctx, c.databaseURL())
-	if err != nil {
+	if err := c.migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
 	store, err := blob.New(c.testObjectsRoot())
@@ -146,7 +129,7 @@ func startTestStorage(t *testing.T, c *Controller) (*pgx.Conn, *blob.Store) {
 	if err := store.Setup(ctx); err != nil {
 		t.Fatal(err)
 	}
-	return conn, store
+	return sqliteTestDB(t, c), store
 }
 
 func TestNativeMigrationTamperAndOwnership(t *testing.T) {
@@ -155,33 +138,31 @@ func TestNativeMigrationTamperAndOwnership(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	conn, _ := startTestStorage(t, c)
-	defer conn.Close(ctx)
-	first, err := storage.Open(ctx, c.databaseURL())
+	defer conn.Close()
+	cfg := c.storageConfig()
+	first, err := storage.OpenConfig(ctx, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second, err := storage.Open(ctx, c.databaseURL()); err == nil {
+	if second, err := storage.OpenConfig(ctx, cfg); err == nil {
 		second.Close()
 		t.Fatal("second runtime admitted")
 	}
-	if err = storage.Migrate(ctx, c.databaseURL()); err == nil {
+	if err = storage.MigrateConfig(ctx, cfg); err == nil {
 		t.Fatal("migration admitted while application owns database")
 	}
 	first.Close()
-	if err = storage.Migrate(ctx, c.databaseURL()); err != nil {
+	if err = storage.MigrateConfig(ctx, cfg); err != nil {
 		t.Fatal("migration refused after writer stopped", err)
 	}
-	if _, err = conn.Exec(ctx, "UPDATE public.tree_go_migrations SET sha256='tampered' WHERE version=1"); err != nil {
+	if _, err = conn.ExecContext(ctx, "UPDATE tree_go_migrations SET sha256='tampered' WHERE version=1"); err != nil {
 		t.Fatal(err)
 	}
-	if err = storage.Migrate(ctx, c.databaseURL()); err == nil {
+	if err = storage.MigrateConfig(ctx, cfg); err == nil {
 		t.Fatal("tampered migration accepted")
 	}
 }
 
 func (c *Controller) testObjectsRoot() string {
-	if c.database != "" {
-		return sharedNative.objects
-	}
 	return c.objectsRoot()
 }

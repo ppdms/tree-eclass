@@ -3,10 +3,7 @@ package rdbms_test
 import (
 	"database/sql"
 	"os"
-	"path/filepath"
 	"testing"
-
-	"github.com/jackc/pgx/v5"
 
 	"tree-eclass/internal/infrastructure/rdbms"
 )
@@ -37,41 +34,36 @@ func TestChangedAppliedMigrationIsNeverRepairedOrAdmitted(t *testing.T) {
 
 func corruptMigrationLedger(t *testing.T, backend contractBackend) {
 	t.Helper()
-	if backend.name == "sqlite" {
-		db, err := sql.Open("sqlite", backend.cfg.SQLitePath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer db.Close()
-		_, err = db.ExecContext(t.Context(), `UPDATE tree_go_migrations SET sha256='invalid'
-			WHERE version=(SELECT min(version) FROM tree_go_migrations)`)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	conn, err := pgx.Connect(t.Context(), backend.cfg.PostgresURL)
+	db, err := sql.Open("sqlite", backend.cfg.SQLitePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close(t.Context())
-	if _, err := conn.Exec(t.Context(), `UPDATE public.tree_go_migrations SET sha256='invalid'
-		WHERE version=(SELECT min(version) FROM public.tree_go_migrations)`); err != nil {
+	defer db.Close()
+	_, err = db.ExecContext(t.Context(), `UPDATE tree_go_migrations SET sha256='invalid'
+		WHERE version=(SELECT min(version) FROM tree_go_migrations)`)
+	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestAmbiguousBackendSelectionDoesNotCreateStorage(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "ambiguous", "database.db")
-	cfg := rdbms.Config{PostgresURL: "postgresql://invalid/unused", SQLitePath: path}
+func TestEmptyConfigCreatesNoStorage(t *testing.T) {
+	dir := t.TempDir()
+	cfg := rdbms.Config{}
 	store, err := rdbms.Open(t.Context(), cfg)
 	if store != nil {
 		store.Close()
 	}
 	if err == nil {
-		t.Fatal("both configured backends were silently accepted")
+		t.Fatal("empty configuration was silently accepted")
 	}
-	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
-		t.Fatalf("ambiguous configuration touched storage before rejection: %v", err)
+	if err := rdbms.Migrate(t.Context(), cfg); err == nil {
+		t.Fatal("empty configuration was silently migrated")
+	}
+	entries, readErr := os.ReadDir(dir)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("empty configuration touched storage before rejection: %v", entries)
 	}
 }

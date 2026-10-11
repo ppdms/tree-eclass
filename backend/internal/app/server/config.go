@@ -31,7 +31,6 @@ import (
 type Config struct {
 	AllowedHosts     []string          `json:"allowed_hosts"`
 	AllowedOrigins   []string          `json:"allowed_origins"`
-	DatabaseURL      string            `json:"database_url"`
 	SQLitePath       string            `json:"sqlite_path,omitempty"`
 	ObjectsRoot      string            `json:"objects_root"`
 	Address          string            `json:"address"`
@@ -59,9 +58,9 @@ func Load(path string) (Config, error) {
 	return cfg, err
 }
 
-// StorageConfig preserves deployment selection; admission rejects both or neither.
+// StorageConfig maps the server config onto the sqlite-only storage backend.
 func (c Config) StorageConfig() storage.Config {
-	return storage.Config{PostgresURL: c.DatabaseURL, SQLitePath: c.SQLitePath}
+	return storage.Config{SQLitePath: c.SQLitePath}
 }
 
 type Server struct {

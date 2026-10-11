@@ -68,10 +68,13 @@ func newDiscordIngestFixture(t *testing.T) *discordIngestFixture {
 	c := nativeSharedController(t)
 	conn, blobs := startTestStorage(t, c)
 	ctx := t.Context()
-	t.Cleanup(func() { conn.Close(ctx) })
+	t.Cleanup(func() { conn.Close() })
 	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
-	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(901,'Μάθημα','/901'),(902,'Άλλο','/902');INSERT INTO app.discord_course_channels(root_channel_id,course_id) VALUES('100',901)`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(901,'Μάθημα','/901'),(902,'Άλλο','/902')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO discord_course_channels(root_channel_id,course_id) VALUES('100',901)`); err != nil {
 		t.Fatal(err)
 	}
 	importer := messages.Importer{Pool: pool, Blobs: blobs, Temp: t.TempDir()}
@@ -118,7 +121,7 @@ func discordInitialChecks(t *testing.T, fixture *discordIngestFixture) {
 		t.Fatal("original author/text lost", reading)
 	}
 	var before int64
-	if err = fixture.pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=901`).Scan(&before); err != nil {
+	if err = fixture.pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=901`).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
 	repeated, err := fixture.importer.Import(ctx, fixture.source, strings.NewReader(string(fixture.raw)))
@@ -126,7 +129,7 @@ func discordInitialChecks(t *testing.T, fixture *discordIngestFixture) {
 		t.Fatal("retry identity", repeated, err)
 	}
 	var after int64
-	if err = fixture.pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=901`).Scan(&after); err != nil ||
+	if err = fixture.pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=901`).Scan(&after); err != nil ||
 		after != before {
 		t.Fatal("idempotent import invalidated source", before, after, err)
 	}
@@ -155,13 +158,13 @@ func discordMappingChecks(t *testing.T, fixture *discordIngestFixture) {
 	t.Helper()
 	ctx := fixture.ctx
 	var oldID string
-	if err := fixture.pool.Native.QueryRow(
+	if err := fixture.pool.Native.QueryRowContext(
 		ctx,
-		`SELECT conversation_id FROM messages.conversations WHERE course_id=901 ORDER BY conversation_id LIMIT 1`,
+		`SELECT conversation_id FROM conversations WHERE course_id=901 ORDER BY conversation_id LIMIT 1`,
 	).Scan(&oldID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.pool.Native.Exec(ctx, `UPDATE app.discord_course_channels SET course_id=902 WHERE root_channel_id='100'`); err != nil {
+	if _, err := fixture.pool.Native.ExecContext(ctx, `UPDATE discord_course_channels SET course_id=902 WHERE root_channel_id='100'`); err != nil {
 		t.Fatal(err)
 	}
 	search, err := fixture.reader.Search(

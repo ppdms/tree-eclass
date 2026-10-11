@@ -13,7 +13,7 @@ func syncRetryChecks(t *testing.T, pool *fixtureStore, service synchronization.S
 	t.Helper()
 	ctx := t.Context()
 	var original string
-	if err := pool.Native.QueryRow(ctx, `UPDATE app.control_commands SET attempts=4,error='login failed',available_at=clock_timestamp()+interval '2 hours'
+	if err := pool.Native.QueryRowContext(ctx, `UPDATE control_commands SET attempts=4,error='login failed',available_at=strftime('%Y-%m-%dT%H:%M:%fZ','now','+2 hours')
 WHERE queue='sync' AND status='pending' RETURNING id`).Scan(&original); err != nil {
 		t.Fatal(err)
 	}

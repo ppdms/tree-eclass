@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/process"
 )
@@ -58,12 +57,10 @@ func fixtureOptimizedRuntime(t *testing.T, root string) bool {
 
 func fixtureExtractionMemory(t *testing.T, c *Controller, before map[string]int64) {
 	t.Helper()
-	conn, err := pgx.Connect(t.Context(), c.databaseURL())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close(t.Context())
-	if _, err = conn.Exec(t.Context(), `INSERT INTO app.courses(id,name,webdav_folder) VALUES(991002,'Memory fixture','/Courses/991002')`); err != nil {
+	conn := sqliteTestDB(t, c)
+	defer conn.Close()
+	var err error
+	if _, err = conn.ExecContext(t.Context(), `INSERT INTO courses(id,name,webdav_folder) VALUES(991002,'Memory fixture','/Courses/991002')`); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 6; i++ {
@@ -71,7 +68,7 @@ func fixtureExtractionMemory(t *testing.T, c *Controller, before map[string]int6
 		deadline := time.Now().Add(time.Minute)
 		for {
 			var status, diagnostic string
-			err = conn.QueryRow(t.Context(), `SELECT status,COALESCE(error,'') FROM knowledge.documents WHERE id=$1`, id).
+			err = conn.QueryRowContext(t.Context(), `SELECT status,COALESCE(error,'') FROM documents WHERE id=?`, id).
 				Scan(&status, &diagnostic)
 			if err != nil {
 				t.Fatal(err)
@@ -91,7 +88,7 @@ func fixtureExtractionMemory(t *testing.T, c *Controller, before map[string]int6
 	}
 	after := map[string]int64{}
 	var total int64
-	for _, name := range []string{"api", "postgres"} {
+	for _, name := range []string{"api"} {
 		var record process.Record
 		if err = platform.ReadJSON(filepath.Join(c.Processes.Root, name, "process.json"), &record); err != nil {
 			t.Fatal(err)
@@ -103,12 +100,12 @@ func fixtureExtractionMemory(t *testing.T, c *Controller, before map[string]int6
 		total += after[name]
 	}
 	t.Logf(
-		"Optimized Go API serving the static browser app and packaged helpers; summed tree RSS before=%v after six PDFs=%v total=%d bytes (supervisors remain instrumented; shared pages counted per process)",
+		"Optimized Go API serving the static browser app and packaged helpers; API tree RSS before=%v after six PDFs=%v total=%d bytes (supervisors remain instrumented; shared pages counted per process)",
 		before,
 		after,
 		total,
 	)
-	if after["api"] > 128<<20 || total > 1<<30 {
+	if after["api"] > 128<<20 {
 		t.Fatal("idle runtime memory budget exceeded", after, total)
 	}
 	if after["api"]-before["api"] > 32<<20 {

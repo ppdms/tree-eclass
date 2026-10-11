@@ -99,10 +99,10 @@ func newPDFDifferenceFixture(t *testing.T) *pdfDifferenceFixture {
 	c := nativeSharedController(t)
 	conn, objects := startTestStorage(t, c)
 	ctx := t.Context()
-	t.Cleanup(func() { conn.Close(ctx) })
+	t.Cleanup(func() { conn.Close() })
 	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
-	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(743,'Visual revisions','/Courses/743')`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(743,'Visual revisions','/Courses/743')`); err != nil {
 		t.Fatal(err)
 	}
 	synchronizer := synchronization.Service{Pool: pool, Objects: objects, Temp: t.TempDir()}
@@ -113,7 +113,7 @@ func newPDFDifferenceFixture(t *testing.T) *pdfDifferenceFixture {
 		}
 	}
 	var id string
-	if err := pool.Native.QueryRow(ctx, `SELECT id FROM app.pdf_differences`).Scan(&id); err != nil {
+	if err := pool.Native.QueryRowContext(ctx, `SELECT id FROM pdf_differences`).Scan(&id); err != nil {
 		t.Fatal("modified PDF was not queued", err)
 	}
 	binary, hash, err := pdfTool()
@@ -130,7 +130,7 @@ func newPDFDifferenceFixture(t *testing.T) *pdfDifferenceFixture {
 		t.Fatal("completed diff reran", runner.Calls, err)
 	}
 	var alias string
-	if err = pool.Native.QueryRow(ctx, `SELECT diff_webdav_path FROM app.file_versions WHERE pdf_difference_id=$1 LIMIT 1`, id).Scan(&alias); err != nil ||
+	if err = pool.Native.QueryRowContext(ctx, `SELECT diff_webdav_path FROM file_versions WHERE pdf_difference_id=? LIMIT 1`, id).Scan(&alias); err != nil ||
 		alias != pdfdiff.Alias(id) {
 		t.Fatal("history link", alias, err)
 	}
@@ -151,7 +151,7 @@ func pdfDifferenceRouteChecks(t *testing.T, fixture *pdfDifferenceFixture) {
 		t.Fatal("invalid output catalog", object)
 	}
 	api, err := server.New(ctx, server.Config{
-		Mode: "test", DatabaseURL: c.databaseURL(),
+		Mode: "test", SQLitePath: c.storageConfig().SQLitePath,
 		ObjectsRoot: c.testObjectsRoot(), Temp: fixture.temp,
 	})
 	if err != nil {
@@ -169,14 +169,14 @@ func pdfDifferenceRouteChecks(t *testing.T, fixture *pdfDifferenceFixture) {
 		}
 	}
 	var count int
-	if err = fixture.pool.Native.QueryRow(ctx, `SELECT count(*) FROM app.pdf_differences`).Scan(&count); err != nil || count != 2 {
+	if err = fixture.pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM pdf_differences`).Scan(&count); err != nil || count != 2 {
 		t.Fatal("A-B-A-B diff identity", count, err)
 	}
-	if err = fixture.pool.Native.QueryRow(ctx, `SELECT count(*) FROM app.file_versions WHERE pdf_difference_id=$1 AND diff_webdav_path=$2`, fixture.id, alias).Scan(&count); err != nil ||
+	if err = fixture.pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM file_versions WHERE pdf_difference_id=? AND diff_webdav_path=?`, fixture.id, alias).Scan(&count); err != nil ||
 		count != 2 {
 		t.Fatal("reused diff link", count, err)
 	}
-	if _, err = fixture.pool.Native.Exec(ctx, `UPDATE app.courses SET hidden=1 WHERE id=743`); err != nil {
+	if _, err = fixture.pool.Native.ExecContext(ctx, `UPDATE courses SET hidden=1 WHERE id=743`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = fixture.service.Content(ctx, alias); err == nil {

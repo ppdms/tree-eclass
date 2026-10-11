@@ -14,7 +14,7 @@ func studyProjectionChecks(t *testing.T, pool *fixtureStore, base, action string
 	now := time.Now()
 	service := study.Service{Pool: pool}
 	exam := now.AddDate(0, 0, 10).Format(time.DateOnly)
-	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.course_exam_plans(course_id,enabled,exam_at) VALUES(101,1,$1)`, exam); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO course_exam_plans(course_id,enabled,exam_at) VALUES(101,1,?)`, exam); err != nil {
 		t.Fatal(err)
 	}
 	// The exam-plan mutation invalidates the navigation as well as the schedule.
@@ -61,8 +61,8 @@ func studyProjectionChecks(t *testing.T, pool *fixtureStore, base, action string
 	if err != nil || nextDay["study_projection_status"] != "pending" {
 		t.Fatal("calendar rollover reused yesterday's schedule", nextDay, err)
 	}
-	for _, query := range []string{`DELETE FROM app.study_unit_events WHERE idempotency_key='study-projection-complete'`, `DELETE FROM app.course_exam_plans WHERE course_id=101`, `DELETE FROM read_model.study_metrics`} {
-		if _, err := pool.Native.Exec(ctx, query); err != nil {
+	for _, query := range []string{`DELETE FROM study_unit_events WHERE idempotency_key='study-projection-complete'`, `DELETE FROM course_exam_plans WHERE course_id=101`, `DELETE FROM study_metrics`} {
+		if _, err := pool.Native.ExecContext(ctx, query); err != nil {
 			t.Fatal(err)
 		}
 	}

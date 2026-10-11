@@ -10,7 +10,7 @@ import (
 func navigationChecks(t *testing.T, pool *fixtureStore) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(711,'Synthetic roadmap','/Courses/711')`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(711,'Synthetic roadmap','/Courses/711')`); err != nil {
 		t.Fatal(err)
 	}
 	service := navigation.Service{Pool: pool}
@@ -24,7 +24,7 @@ func navigationChecks(t *testing.T, pool *fixtureStore) {
 		t.Fatal(err)
 	}
 	var generation int64
-	if err = pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=711`).Scan(&generation); err != nil {
+	if err = pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=711`).Scan(&generation); err != nil {
 		t.Fatal(err)
 	}
 	payload := map[string]any{
@@ -69,7 +69,7 @@ func navigationProgressChecks(
 	var err error
 	var contentID string
 	var view navigation.View
-	if err = pool.Native.QueryRow(ctx, `SELECT content_id FROM read_model.navigation WHERE course_id=711`).Scan(&contentID); err != nil {
+	if err = pool.Native.QueryRowContext(ctx, `SELECT content_id FROM navigation WHERE course_id=711`).Scan(&contentID); err != nil {
 		t.Fatal(err)
 	}
 	view, err = service.Read(ctx, request)
@@ -80,7 +80,7 @@ func navigationProgressChecks(
 	if progress["total_actions"] != int64(2) || progress["completed_actions"] != int64(0) {
 		t.Fatal("publication trusted embedded learner state", progress)
 	}
-	if _, err = pool.Native.Exec(ctx, `INSERT INTO app.study_unit_events(course_id,plan_revision,action_id,unit_key,event_type,actual_minutes) VALUES(711,'synthetic-r1','a1','u1','partial',4),(711,'synthetic-r1','a1','u1','partial',3)`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `INSERT INTO study_unit_events(course_id,plan_revision,action_id,unit_key,event_type,actual_minutes) VALUES(711,'synthetic-r1','a1','u1','partial',4),(711,'synthetic-r1','a1','u1','partial',3)`); err != nil {
 		t.Fatal(err)
 	}
 	view, err = service.Read(ctx, request)
@@ -91,7 +91,7 @@ func navigationProgressChecks(
 	if next["progress_minutes"] != int64(7) || next["remaining_minutes"] != int64(3) {
 		t.Fatal("live partial progress", next)
 	}
-	if _, err = pool.Native.Exec(ctx, `INSERT INTO app.study_unit_events(course_id,plan_revision,action_id,unit_key,event_type) VALUES(711,'synthetic-r1','a1','u1','completed')`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `INSERT INTO study_unit_events(course_id,plan_revision,action_id,unit_key,event_type) VALUES(711,'synthetic-r1','a1','u1','completed')`); err != nil {
 		t.Fatal(err)
 	}
 	view, err = service.Read(ctx, request)
@@ -104,7 +104,7 @@ func navigationProgressChecks(
 	}
 	var afterID string
 	var afterGeneration int64
-	if err = pool.Native.QueryRow(ctx, `SELECT n.content_id,g.generation FROM read_model.navigation n JOIN read_model.course_generation g USING(course_id) WHERE course_id=711`).Scan(&afterID, &afterGeneration); err != nil ||
+	if err = pool.Native.QueryRowContext(ctx, `SELECT n.content_id,g.generation FROM navigation n JOIN course_generation g USING(course_id) WHERE course_id=711`).Scan(&afterID, &afterGeneration); err != nil ||
 		afterID != contentID ||
 		afterGeneration != generation {
 		t.Fatal("learner event rewrote immutable plan", err)
@@ -161,7 +161,7 @@ func navigationFreshnessChecks(
 ) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := pool.Native.Exec(ctx, `UPDATE app.courses SET name='Changed source' WHERE id=711`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE courses SET name='Changed source' WHERE id=711`); err != nil {
 		t.Fatal(err)
 	}
 	view, err := service.Read(ctx, navigation.Request{CourseID: 711})
@@ -171,7 +171,7 @@ func navigationFreshnessChecks(
 	if published, err := service.Publish(ctx, 711, generation, a, payload); err != nil || published {
 		t.Fatal("late processor replaced newer input", err)
 	}
-	if err = pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=711`).Scan(&generation); err != nil {
+	if err = pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=711`).Scan(&generation); err != nil {
 		t.Fatal(err)
 	}
 	changed := a
@@ -179,7 +179,7 @@ func navigationFreshnessChecks(
 	if err = (settings.Service{Pool: pool}).SaveAI(ctx, changed); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=711`).Scan(&generation); err != nil {
+	if err = pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=711`).Scan(&generation); err != nil {
 		t.Fatal(err)
 	}
 	if published, err := service.Publish(ctx, 711, generation, a, payload); err != nil || published {
@@ -190,18 +190,18 @@ func navigationFreshnessChecks(
 		t.Fatal("new configuration publication", err)
 	}
 	var count int
-	if err = pool.Native.QueryRow(ctx, `SELECT count(*) FROM read_model.roadmap_content WHERE content_id=$1`, contentID).Scan(&count); err != nil ||
+	if err = pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM roadmap_content WHERE content_id=?`, contentID).Scan(&count); err != nil ||
 		count != 0 {
 		t.Fatal("superseded content retained", err)
 	}
 	var currentID string
-	if err = pool.Native.QueryRow(ctx, `SELECT content_id FROM read_model.navigation WHERE course_id=711`).Scan(&currentID); err != nil {
+	if err = pool.Native.QueryRowContext(ctx, `SELECT content_id FROM navigation WHERE course_id=711`).Scan(&currentID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.courses WHERE id=711`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `DELETE FROM courses WHERE id=711`); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.Native.QueryRow(ctx, `SELECT count(*) FROM read_model.roadmap_content WHERE content_id=$1`, currentID).Scan(&count); err != nil ||
+	if err = pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM roadmap_content WHERE content_id=?`, currentID).Scan(&count); err != nil ||
 		count != 0 {
 		t.Fatal("deleted course retained immutable content", err)
 	}

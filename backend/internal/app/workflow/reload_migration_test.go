@@ -20,10 +20,10 @@ func seedDisposableMigrationFixture(t *testing.T, c *Controller) string {
 	t.Helper()
 	ctx := t.Context()
 	conn, _ := startTestStorage(t, c)
-	if _, err := conn.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(771,'Stable fixture','/Courses/771')`); err != nil {
+	if _, err := conn.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(771,'Stable fixture','/Courses/771')`); err != nil {
 		t.Fatal(err)
 	}
-	conn.Close(ctx)
+	conn.Close()
 	if err := c.stopAll(); err != nil {
 		t.Fatal(err)
 	}
@@ -34,10 +34,10 @@ func seedDisposableMigrationFixture(t *testing.T, c *Controller) string {
 	c.State.Mode = "development"
 	c.State.Baseline = baseline.ID
 	conn, _ = startTestStorage(t, c)
-	if _, err = conn.Exec(ctx, `UPDATE app.courses SET name='Development edit' WHERE id=771`); err != nil {
+	if _, err = conn.ExecContext(ctx, `UPDATE courses SET name='Development edit' WHERE id=771`); err != nil {
 		t.Fatal(err)
 	}
-	conn.Close(ctx)
+	conn.Close()
 	broken := strings.Repeat("d", 40)
 	fixtureRelease(t, c, broken, true)
 	candidate := filepath.Join(c.Root, "releases", broken, "tree-eclass")
@@ -72,12 +72,12 @@ func rejectDisposableMigrationPromotion(t *testing.T, c *Controller, development
 	// The failed migration was not silently rolled back; only explicit development
 	// exit restores the baseline and removes all checkpoints of development writes.
 	conn, _ := startTestStorage(t, c)
-	var extra *string
-	if err := conn.QueryRow(ctx, `SELECT to_regclass('app.partially_migrated')::text`).Scan(&extra); err != nil ||
-		extra == nil {
+	var extra int
+	if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='partially_migrated'`).Scan(&extra); err != nil ||
+		extra != 1 {
 		t.Fatal("failed migration silently restored data", err)
 	}
-	conn.Close(ctx)
+	conn.Close()
 }
 
 func verifyDevelopmentExitRestoresBaseline(t *testing.T, c *Controller, development string) {
@@ -90,15 +90,15 @@ func verifyDevelopmentExitRestoresBaseline(t *testing.T, c *Controller, developm
 		t.Fatal("development checkpoint survived exit", err)
 	}
 	conn, _ := startTestStorage(t, c)
-	defer conn.Close(ctx)
+	defer conn.Close()
 	var name string
-	if err := conn.QueryRow(ctx, `SELECT name FROM app.courses WHERE id=771`).Scan(&name); err != nil ||
+	if err := conn.QueryRowContext(ctx, `SELECT name FROM courses WHERE id=771`).Scan(&name); err != nil ||
 		name != "Stable fixture" {
 		t.Fatal("stable baseline not restored", name, err)
 	}
-	var extra *string
-	if err := conn.QueryRow(ctx, `SELECT to_regclass('app.partially_migrated')::text`).Scan(&extra); err != nil ||
-		extra != nil {
+	var extra int
+	if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='partially_migrated'`).Scan(&extra); err != nil ||
+		extra != 0 {
 		t.Fatal("development schema survived exit", extra, err)
 	}
 }

@@ -44,7 +44,9 @@ func reliableChannel(name string) bool {
 
 var stopwords = func() map[string]bool {
 	result := map[string]bool{}
-	for _, word := range strings.Fields("a an and are for how in is of the to what για ειναι η και με ο οι ποιο πως σε στη στην στο τα τη την τι το του των") {
+	// Fold through the same normalization as query terms: case folding maps
+	// final sigma (ς) to σ, so literals must not be matched unfolded.
+	for _, word := range strings.Fields(identity.Search("a an and are for how in is of the to what για ειναι η και με ο οι ποιο πως σε στη στην στο τα τη την τι το του των")) {
 		result[word] = true
 	}
 	return result

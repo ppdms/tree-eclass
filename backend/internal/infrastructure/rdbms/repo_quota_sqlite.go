@@ -4,12 +4,33 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 
 	"tree-eclass/internal/domain/database"
 )
 
 type sqliteQuota struct{ db nativeDBTX }
+
+var quotaProviders = []string{"synthetic", "ollama", "huggingface", "alibaba", "zai", "opencode-go"}
+
+func quotaKey(provider string) (string, error) {
+	if !slices.Contains(quotaProviders, provider) {
+		return "", errors.New("unknown quota provider")
+	}
+	return provider + "_quota", nil
+}
+
+func decodeQuotaState(raw *string) (database.QuotaState, error) {
+	var state database.QuotaState
+	if raw == nil {
+		return state, nil
+	}
+	if err := json.Unmarshal([]byte(*raw), &state); err != nil {
+		return database.QuotaState{}, errors.New("invalid saved quota state")
+	}
+	return state, nil
+}
 
 func (q sqliteQuota) LoadState(ctx context.Context, provider string) (database.QuotaState, error) {
 	key, err := quotaKey(provider)

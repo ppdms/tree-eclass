@@ -6,8 +6,7 @@ import (
 	"tree-eclass/internal/domain/database"
 )
 
-// SQLite exercises reads. Same columns, filters and ordering as PostgreSQL;
-// the ignored flag compares against 0 on both backends.
+// SQLite exercises reads. The ignored flag compares against 0.
 type sqliteExercises struct{ db nativeDBTX }
 
 const sqliteExerciseSummaryColumns = `e.id,e.course_id,c.name,e.exercise_id,e.title,e.link,` +

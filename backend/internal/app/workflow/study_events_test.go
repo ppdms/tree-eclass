@@ -47,7 +47,7 @@ func studyEventChecks(t *testing.T, pool *fixtureStore, base, action string) {
 		}
 	}
 	var count, total int64
-	if err := pool.Native.QueryRow(ctx, `SELECT count(*),sum(actual_minutes) FROM app.study_unit_events WHERE action_id=$1`, action).Scan(&count, &total); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx, `SELECT count(*),sum(actual_minutes) FROM study_unit_events WHERE action_id=?`, action).Scan(&count, &total); err != nil ||
 		count != 1 ||
 		total != 7 {
 		t.Fatal("retry duplicated learner time", count, total, err)
@@ -76,7 +76,7 @@ func studyEventChecks(t *testing.T, pool *fixtureStore, base, action string) {
 	in.Type = "partial"
 	in.Minutes = nil
 	apiJSON(t, "POST", url, in, 422, nil)
-	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.study_unit_events WHERE action_id=$1`, action); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `DELETE FROM study_unit_events WHERE action_id=?`, action); err != nil {
 		t.Fatal(err)
 	}
 }

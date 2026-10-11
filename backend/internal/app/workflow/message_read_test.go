@@ -16,32 +16,24 @@ func TestNativeMessageEvidenceScope(t *testing.T) {
 	c := nativeSharedController(t)
 	ctx := t.Context()
 	conn, _ := startTestStorage(t, c)
-	defer conn.Close(ctx)
+	defer conn.Close()
 	pool := newFixtureStore(t, ctx, c)
 	defer pool.Close()
-	_, err := pool.Native.Exec(
-		ctx,
-		`INSERT INTO app.courses(id,name,webdav_folder) VALUES(901,'Community course','/Courses/901'),(902,'Other course','/Courses/902');
- INSERT INTO app.discord_course_channels(root_channel_id,course_id) VALUES('90001',901),('90002',902);
- INSERT INTO messages.archive_sources(path,root_id,course_id,fingerprint,channel_id,status,indexed_at) VALUES
- ('current','90001',901,'f',11,'ready','2026-09-12'),('old','90001',901,'f-old',11,'ready','2026-09-01'),('foreign','90002',902,'other',12,'ready','2026-09-12');
- INSERT INTO messages.channels(channel_id,root_id,course_id,guild_id,channel_name,channel_type,source_path) VALUES
- (11,90001,901,99,'ανακοινώσεις','text','current'),(12,90002,902,99,'foreign','text','foreign');
- INSERT INTO messages.messages(message_id,channel_id,course_id,timestamp,timestamp_epoch,author_name,content,searchable_text,reply_to_message_id,message_type,source_path) VALUES
- (100,11,901,'2026-09-12',1789171200,'Author','New context','New context',NULL,'Default','current'),
- (100,11,901,'2026-09-01',1788220800,'Author','Old context','Old context',NULL,'Default','old'),
- (101,11,901,'2026-09-12',1789171201,'Author','Course evidence','Course evidence',777,'Default','current'),
- (102,11,901,'2026-09-12',1789171202,'Author','After','After',NULL,'Default','current'),
- (777,12,902,'2026-09-12',1789171200,'Foreign author','Private other course','Private',NULL,'Default','foreign');
- INSERT INTO messages.conversations(conversation_id,course_id,root_id,channel_id,channel_name,channel_type,first_message_id,last_message_id,started_at,ended_at,ended_at_epoch,text,normalized_text,participant_count,reaction_count,source_path)
- VALUES('conversation',901,90001,11,'ανακοινώσεις','text',101,101,'2026-09-12','2026-09-12',1789171201,'Course evidence','course evidence',1,0,'current');
- INSERT INTO messages.conversation_messages(conversation_id,message_id,source_path,position) VALUES('conversation',101,'current',0)`,
-	)
-	if err != nil {
-		t.Fatal(err)
+	for _, statement := range []string{
+		`INSERT INTO courses(id,name,webdav_folder) VALUES(901,'Community course','/Courses/901'),(902,'Other course','/Courses/902')`,
+		`INSERT INTO discord_course_channels(root_channel_id,course_id) VALUES('90001',901),('90002',902)`,
+		`INSERT INTO archive_sources(path,root_id,course_id,fingerprint,channel_id,status,indexed_at) VALUES ('current','90001',901,'f',11,'ready','2026-09-12'),('old','90001',901,'f-old',11,'ready','2026-09-01'),('foreign','90002',902,'other',12,'ready','2026-09-12')`,
+		`INSERT INTO channels(channel_id,root_id,course_id,guild_id,channel_name,channel_type,source_path) VALUES (11,90001,901,99,'ανακοινώσεις','text','current'),(12,90002,902,99,'foreign','text','foreign')`,
+		`INSERT INTO messages(message_id,channel_id,course_id,timestamp,timestamp_epoch,author_name,content,searchable_text,reply_to_message_id,message_type,source_path) VALUES (100,11,901,'2026-09-12',1789171200,'Author','New context','New context',NULL,'Default','current'), (100,11,901,'2026-09-01',1788220800,'Author','Old context','Old context',NULL,'Default','old'), (101,11,901,'2026-09-12',1789171201,'Author','Course evidence','Course evidence',777,'Default','current'), (102,11,901,'2026-09-12',1789171202,'Author','After','After',NULL,'Default','current'), (777,12,902,'2026-09-12',1789171200,'Foreign author','Private other course','Private',NULL,'Default','foreign')`,
+		`INSERT INTO conversations(conversation_id,course_id,root_id,channel_id,channel_name,channel_type,first_message_id,last_message_id,started_at,ended_at,ended_at_epoch,text,normalized_text,participant_count,reaction_count,source_path) VALUES('conversation',901,90001,11,'ανακοινώσεις','text',101,101,'2026-09-12','2026-09-12',1789171201,'Course evidence','course evidence',1,0,'current')`,
+		`INSERT INTO conversation_messages(conversation_id,message_id,source_path,position) VALUES('conversation',101,'current',0)`,
+	} {
+		if _, err := pool.Native.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
 	}
 	text := "Δένδρα\x00\ue000"
-	if _, err = pool.Native.Exec(ctx, `UPDATE messages.messages SET content=$1 WHERE message_id=101`, identity.Encode(text)); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE messages SET content=? WHERE message_id=101`, identity.Encode(text)); err != nil {
 		t.Fatal(err)
 	}
 	service := messages.Reader{Pool: pool}
@@ -68,7 +60,7 @@ func TestNativeMessageEvidenceScope(t *testing.T) {
 	}
 	messageSearchChecks(t, pool, service)
 	communityFreshnessChecks(t, pool)
-	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.discord_course_channels WHERE root_channel_id='90001'`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `DELETE FROM discord_course_channels WHERE root_channel_id='90001'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = service.Read(ctx, "conversation", 1, 1); !errors.Is(err, database.ErrNoRows) {
@@ -87,11 +79,18 @@ func TestNativeMessageEvidenceScope(t *testing.T) {
 func messageSearchChecks(t *testing.T, pool *fixtureStore, service messages.Reader) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := pool.Native.Exec(ctx, `UPDATE messages.conversations SET text='Τα δένδρα και οι βαθμοί',normalized_text='τα δενδρα και οι βαθμοι' WHERE conversation_id='conversation';
- INSERT INTO messages.conversations_fts(conversation_id,text,normalized_text,channel_name) VALUES('conversation','Τα δένδρα και οι βαθμοί','τα δενδρα και οι βαθμοι','ανακοινώσεις')`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE conversations SET text='Τα δένδρα και οι βαθμοί',`+
+		`normalized_text='τα δενδρα και οι βαθμοι' WHERE conversation_id='conversation'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Native.Exec(ctx, `INSERT INTO messages.conversation_embeddings(conversation_id,model,vector,dimensions) VALUES('conversation',$1,$2,384)`, knowledge.LocalEmbeddingModel, knowledge.Pack(knowledge.Embed("Τα δένδρα και οι βαθμοί"))); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO conversations_fts(conversation_id,text,`+
+		`normalized_text,channel_name) VALUES('conversation','Τα δένδρα και οι βαθμοί',`+
+		`'τα δενδρα και οι βαθμοι','ανακοινώσεις')`); err != nil {
+		t.Fatal(err)
+	}
+	embedding := knowledge.Pack(knowledge.Embed("Τα δένδρα και οι βαθμοί"))
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO conversation_embeddings(conversation_id,model,`+
+		`vector,dimensions) VALUES('conversation',?,?,384)`, knowledge.LocalEmbeddingModel, embedding); err != nil {
 		t.Fatal(err)
 	}
 	for _, mode := range []string{"lexical", "semantic", "hybrid"} {

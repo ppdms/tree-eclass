@@ -37,16 +37,16 @@ func TestNativeLearnerExport(t *testing.T) {
 	t.Parallel()
 	c := nativeSharedController(t)
 	conn, _ := startTestStorage(t, c)
-	defer conn.Close(t.Context())
+	defer conn.Close()
 	pool := newFixtureStore(t, t.Context(), c)
 	defer pool.Close()
 	seedLearnerExport(t, pool)
 	service := settings.Service{Pool: pool}
 	out := &snapshotWriter{first: func() {
-		_, err := pool.Native.Exec(
-			t.Context(),
-			`UPDATE app.courses SET name='later'; INSERT INTO app.study_sessions(course_id,note) VALUES(101,'later')`,
-		)
+		if _, err := pool.Native.ExecContext(t.Context(), `UPDATE courses SET name='later'`); err != nil {
+			t.Fatal(err)
+		}
+		_, err := pool.Native.ExecContext(t.Context(), `INSERT INTO study_sessions(course_id,note) VALUES(101,'later')`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,7 +120,7 @@ func exportHTTPCheck(t *testing.T, c *Controller) {
 	api, err := server.New(
 		t.Context(),
 		server.Config{
-			DatabaseURL: c.databaseURL(),
+			SQLitePath:  c.storageConfig().SQLitePath,
 			ObjectsRoot: c.testObjectsRoot(),
 			Temp:        temp,
 			Mode:        "test",
@@ -147,35 +147,39 @@ func exportHTTPCheck(t *testing.T, c *Controller) {
 
 func seedLearnerExport(t *testing.T, pool *fixtureStore) {
 	t.Helper()
-	_, err := pool.Native.Exec(t.Context(), `
-INSERT INTO app.courses(id,name,webdav_folder,hidden) VALUES(101,'hidden','/Courses/101',1);
-INSERT INTO app.course_exam_plans(course_id,enabled,exam_at) VALUES(101,1,'2026-09-20T10:00');
-INSERT INTO app.study_sessions(course_id,note) VALUES(101,'original');
-INSERT INTO app.study_unit_events(course_id,plan_revision,action_id,unit_key,event_type) VALUES(101,'rev','action','unit','completed');
-INSERT INTO app.study_plan_items(course_id,scheduled_date,kind) VALUES(101,'2026-09-20','study');
-INSERT INTO app.study_review_overrides(course_id,review_offset,scheduled_date) VALUES(101,1,'2026-09-20');
-INSERT INTO app.file_study(course_id,file_path,level) VALUES(101,'file',3);
-INSERT INTO app.collapsed_course_folders(course_id,folder_key,collapsed) VALUES(101,'root',1);
-INSERT INTO app.practice_attempts(course_id,unit_key,question_id,outcome) VALUES(101,'unit','question','correct');
-INSERT INTO app.study_workspace_sessions(id,course_id,client_session_key) VALUES(1,101,'synthetic');
-INSERT INTO app.study_reading_spans(session_id,course_id,document_id,page_number) VALUES(1,101,'doc',1);
-INSERT INTO app.study_reading_beats(session_id,sequence) VALUES(1,0);
-INSERT INTO app.study_annotations(id,course_id,document_id,page_number,status,tags_json) VALUES(9007199254740993,101,'doc',1,'deleted','["Επανάληψη"]'),(9007199254740994,101,'doc',2,'orphaned','[]');
-INSERT INTO app.chat_conversations(id,title) VALUES(1,'Συζήτηση');
-INSERT INTO app.chat_messages(conversation_id,role,content,consulted_json) VALUES(1,'user','Ερώτηση','[]'),(1,'assistant','answer','[{"tool":"read_material"}]');
-INSERT INTO app.credentials(id,username,password) VALUES(1,'synthetic','private-eclass');
-INSERT INTO app.app_data(key,value) VALUES('cookie',convert_to('private-cookie','UTF8'));
-INSERT INTO app.discord_export_settings(id,token) VALUES(1,'private-discord');
-`)
-	if err != nil {
+	statements := []string{
+		`INSERT INTO courses(id,name,webdav_folder,hidden) VALUES(101,'hidden','/Courses/101',1)`,
+		`INSERT INTO course_exam_plans(course_id,enabled,exam_at) VALUES(101,1,'2026-09-20T10:00')`,
+		`INSERT INTO study_sessions(course_id,note) VALUES(101,'original')`,
+		`INSERT INTO study_unit_events(course_id,plan_revision,action_id,unit_key,event_type) VALUES(101,'rev','action','unit','completed')`,
+		`INSERT INTO study_plan_items(course_id,scheduled_date,kind) VALUES(101,'2026-09-20','study')`,
+		`INSERT INTO study_review_overrides(course_id,review_offset,scheduled_date) VALUES(101,1,'2026-09-20')`,
+		`INSERT INTO file_study(course_id,file_path,level) VALUES(101,'file',3)`,
+		`INSERT INTO collapsed_course_folders(course_id,folder_key,collapsed) VALUES(101,'root',1)`,
+		`INSERT INTO practice_attempts(course_id,unit_key,question_id,outcome) VALUES(101,'unit','question','correct')`,
+		`INSERT INTO study_workspace_sessions(id,course_id,client_session_key) VALUES(1,101,'synthetic')`,
+		`INSERT INTO study_reading_spans(session_id,course_id,document_id,page_number) VALUES(1,101,'doc',1)`,
+		`INSERT INTO study_reading_beats(session_id,sequence) VALUES(1,0)`,
+		`INSERT INTO study_annotations(id,course_id,document_id,page_number,status,tags_json) VALUES(9007199254740993,101,'doc',1,'deleted','["Επανάληψη"]'),(9007199254740994,101,'doc',2,'orphaned','[]')`,
+		`INSERT INTO chat_conversations(id,title) VALUES(1,'Συζήτηση')`,
+		`INSERT INTO chat_messages(conversation_id,role,content,consulted_json) VALUES(1,'user','Ερώτηση','[]'),(1,'assistant','answer','[{"tool":"read_material"}]')`,
+		`INSERT INTO credentials(id,username,password) VALUES(1,'synthetic','private-eclass')`,
+		`INSERT INTO discord_export_settings(id,token) VALUES(1,'private-discord')`,
+	}
+	for _, statement := range statements {
+		if _, err := pool.Native.ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Native.ExecContext(t.Context(), `INSERT INTO app_data(key,value) VALUES('cookie',?)`, []byte("private-cookie")); err != nil {
 		t.Fatal(err)
 	}
 	for _, change := range []struct{ Query, Text string }{
-		{`UPDATE app.courses SET name=$1`, "Κρυφό\x00\ue000"},
-		{`UPDATE app.study_annotations SET body=$1`, "Σημείωση\x00\ue000"},
-		{`UPDATE app.chat_messages SET content=$1 WHERE role='assistant'`, "Απάντηση\x00"},
+		{`UPDATE courses SET name=?`, "Κρυφό\x00\ue000"},
+		{`UPDATE study_annotations SET body=?`, "Σημείωση\x00\ue000"},
+		{`UPDATE chat_messages SET content=? WHERE role='assistant'`, "Απάντηση\x00"},
 	} {
-		if _, err = pool.Native.Exec(t.Context(), change.Query, identity.Encode(change.Text)); err != nil {
+		if _, err := pool.Native.ExecContext(t.Context(), change.Query, identity.Encode(change.Text)); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -26,30 +26,6 @@ func (c *Controller) initialize(ctx context.Context) error {
 		return err
 	}
 	defer os.RemoveAll(temp)
-	password := filepath.Join(temp, "password")
-	if err = os.WriteFile(password, []byte(c.Config.Password), 0600); err != nil {
-		return err
-	}
-	err = c.run(
-		ctx,
-		c.Repo,
-		filepath.Join(c.Config.PostgresBin, "initdb"),
-		"-D",
-		filepath.Join(temp, "postgres"),
-		"-U",
-		"tree",
-		"--pwfile="+password,
-		"--auth-host=scram-sha-256",
-		"--auth-local=trust",
-		"--encoding=UTF8",
-		"--locale=C.UTF-8",
-	)
-	if err != nil {
-		return err
-	}
-	if err = os.Remove(password); err != nil {
-		return err
-	}
 	for _, dir := range []string{"objects", "settings", "exports"} {
 		if err = os.Mkdir(filepath.Join(temp, dir), 0700); err != nil {
 			return err
@@ -58,9 +34,8 @@ func (c *Controller) initialize(ctx context.Context) error {
 	if err = platform.WriteJSON(
 		filepath.Join(temp, "dataset.json"),
 		map[string]any{
-			"format":   2,
-			"postgres": c.Config.PostgresVersion,
-			"objects":  objectsFormat,
+			"format":  2,
+			"objects": objectsFormat,
 		},
 	); err != nil {
 		return err

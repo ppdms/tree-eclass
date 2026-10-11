@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/platform"
 	"tree-eclass/internal/infrastructure/storage"
 )
@@ -71,10 +70,10 @@ func newReloadFixture(t *testing.T) (*Controller, string, func(string)) {
 	}
 	write("first")
 	conn, _ := startTestStorage(t, c)
-	if _, err = conn.Exec(t.Context(), `INSERT INTO app.courses(id,name,webdav_folder) VALUES(771,'Stable fixture','/Courses/771')`); err != nil {
+	if _, err = conn.ExecContext(t.Context(), `INSERT INTO courses(id,name,webdav_folder) VALUES(771,'Stable fixture','/Courses/771')`); err != nil {
 		t.Fatal(err)
 	}
-	conn.Close(t.Context())
+	conn.Close()
 	if err = c.stopAll(); err != nil {
 		t.Fatal(err)
 	}
@@ -93,14 +92,12 @@ func newReloadFixture(t *testing.T) (*Controller, string, func(string)) {
 func reloadDuringDevelopment(t *testing.T, c *Controller, session string, write func(string)) {
 	t.Helper()
 	path := filepath.Join(c.Repo, "backend/cmd/tree-eclass/main.go")
-	conn, err := pgx.Connect(t.Context(), c.databaseURL())
-	if err != nil {
+	conn := sqliteTestDB(t, c)
+	var err error
+	if _, err = conn.ExecContext(t.Context(), `UPDATE courses SET name='Development edit' WHERE id=771`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = conn.Exec(t.Context(), `UPDATE app.courses SET name='Development edit' WHERE id=771`); err != nil {
-		t.Fatal(err)
-	}
-	conn.Close(t.Context())
+	conn.Close()
 	write("second")
 	waitReloadVersion(t, c, "second:"+session)
 	if err = os.WriteFile(path, []byte("this cannot compile"), 0600); err != nil {
@@ -116,16 +113,13 @@ func reloadDuringDevelopment(t *testing.T, c *Controller, session string, write 
 
 func developmentWritesSurviveReload(t *testing.T, c *Controller) {
 	t.Helper()
-	conn, err := pgx.Connect(t.Context(), c.databaseURL())
-	if err != nil {
-		t.Fatal(err)
-	}
+	conn := sqliteTestDB(t, c)
 	var name string
-	if err := conn.QueryRow(t.Context(), `SELECT name FROM app.courses WHERE id=771`).Scan(&name); err != nil ||
+	if err := conn.QueryRowContext(t.Context(), `SELECT name FROM courses WHERE id=771`).Scan(&name); err != nil ||
 		name != "Development edit" {
 		t.Fatal("reload lost development writes", name, err)
 	}
-	conn.Close(t.Context())
+	conn.Close()
 }
 
 func verifyReloadExit(t *testing.T, c *Controller) {
@@ -139,8 +133,8 @@ func verifyReloadExit(t *testing.T, c *Controller) {
 		t.Fatal("watcher survived shutdown")
 	}
 	conn, _ := startTestStorage(t, c)
-	defer conn.Close(t.Context())
-	if err := conn.QueryRow(t.Context(), `SELECT name FROM app.courses WHERE id=771`).Scan(&name); err != nil ||
+	defer conn.Close()
+	if err := conn.QueryRowContext(t.Context(), `SELECT name FROM courses WHERE id=771`).Scan(&name); err != nil ||
 		name != "Stable fixture" {
 		t.Fatal("exit failed to restore stable data", name, err)
 	}

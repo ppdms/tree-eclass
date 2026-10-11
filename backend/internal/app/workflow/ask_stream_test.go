@@ -33,7 +33,7 @@ func TestNativeAskCompleteAndAbandonedTurns(t *testing.T) {
 	c := nativeSharedController(t)
 	ctx := t.Context()
 	conn, _ := startTestStorage(t, c)
-	defer conn.Close(ctx)
+	defer conn.Close()
 	pool := newFixtureStore(t, ctx, c)
 	defer pool.Close()
 	entered, abandoned := make(chan struct{}), make(chan struct{})
@@ -56,7 +56,7 @@ func newAskFixtureServer(
 	api, err := server.New(
 		ctx,
 		server.Config{
-			DatabaseURL: c.databaseURL(),
+			SQLitePath:  c.storageConfig().SQLitePath,
 			ObjectsRoot: c.testObjectsRoot(),
 			Mode:        "test", Session: "test-runtime",
 			ProviderKeys: map[string]string{"SYNTHETIC_API_KEY": "synthetic-not-a-real-key"},
@@ -207,7 +207,7 @@ func historyChecks(t *testing.T, pool *fixtureStore, store chat.Store, id int64)
 	if err != nil || len(history) != 20 {
 		t.Fatal("history not bounded", len(history), err)
 	}
-	if _, err = pool.Native.Exec(ctx, `UPDATE app.chat_messages SET content=repeat('x',400001) WHERE id=(SELECT max(id) FROM app.chat_messages WHERE conversation_id=$1)`, id); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE chat_messages SET content=? WHERE id=(SELECT max(id) FROM chat_messages WHERE conversation_id=?)`, strings.Repeat("x", 400001), id); err != nil {
 		t.Fatal(err)
 	}
 	history, err = store.History(ctx, id)
@@ -234,7 +234,7 @@ func quotaPersistenceChecks(t *testing.T, pool *fixtureStore) {
 		t.Fatal("database pause lost on restart", calls, err)
 	}
 	var raw string
-	if err := pool.Native.QueryRow(t.Context(), `SELECT value FROM knowledge.knowledge_state WHERE key='huggingface_quota'`).Scan(&raw); err != nil ||
+	if err := pool.Native.QueryRowContext(t.Context(), `SELECT value FROM knowledge_state WHERE key='huggingface_quota'`).Scan(&raw); err != nil ||
 		strings.Contains(raw, candidate.APIKey) {
 		t.Fatal("unsafe quota persistence", err)
 	}

@@ -2,12 +2,14 @@ package rdbms
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"tree-eclass/internal/domain/database"
 )
 
-// settingsExportQueriesSQLite mirrors the PostgreSQL projection allowlist
+// settingsExportQueriesSQLite is the projection allowlist query map,
 // with unqualified tables and explicit ORDER BY columns.
 var settingsExportQueriesSQLite = map[string]struct {
 	query   string
@@ -115,4 +117,63 @@ func (s sqliteSettings) ExportRows(
 		}
 		return decodeSettingsExportRow(columns, raw)
 	}), nil
+}
+
+// decodeSettingsExportRow normalizes one scanned export row: NULL stays nil,
+// integers/floats become json.Number, booleans stay bool, everything else
+// stays text. Strings remain stored-encoded; the domain decodes them.
+func decodeSettingsExportRow(names []string, raw []any) (database.SettingsExportRow, error) {
+	row := make(database.SettingsExportRow, len(names))
+	for i, name := range names {
+		value, err := settingsExportValue(name, raw[i])
+		if err != nil {
+			return nil, err
+		}
+		row[name] = value
+	}
+	return row, nil
+}
+
+func settingsExportValue(name string, value any) (any, error) {
+	if name == "enabled" {
+		switch v := value.(type) {
+		case nil:
+			return nil, nil
+		case bool:
+			return v, nil
+		case int64:
+			return v != 0, nil
+		case int32:
+			return v != 0, nil
+		case int:
+			return v != 0, nil
+		case []byte:
+			text := string(v)
+			return text == "t" || text == "true" || text == "1", nil
+		case string:
+			return v == "t" || v == "true" || v == "1", nil
+		default:
+			return nil, fmt.Errorf("settings: unexpected %s type %T", name, value)
+		}
+	}
+	switch v := value.(type) {
+	case nil:
+		return nil, nil
+	case bool:
+		return v, nil
+	case int64:
+		return json.Number(strconv.FormatInt(v, 10)), nil
+	case int32:
+		return json.Number(strconv.FormatInt(int64(v), 10)), nil
+	case int:
+		return json.Number(strconv.Itoa(v)), nil
+	case float64:
+		return json.Number(strconv.FormatFloat(v, 'g', -1, 64)), nil
+	case []byte:
+		return string(v), nil
+	case string:
+		return v, nil
+	default:
+		return nil, fmt.Errorf("settings: unexpected %s type %T", name, value)
+	}
 }

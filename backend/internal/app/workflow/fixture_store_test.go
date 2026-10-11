@@ -2,9 +2,10 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	_ "modernc.org/sqlite"
 
 	"tree-eclass/internal/domain/database"
 	"tree-eclass/internal/infrastructure/blob"
@@ -13,21 +14,26 @@ import (
 
 // fixtureStore pairs a typed Store with its native handle for fixture-only
 // seed and assertion SQL. Production contracts stay SQL-free; tests keep
-// raw pgx access through the explicit Native handle.
+// raw database/sql access through the explicit Native handle.
 type fixtureStore struct {
 	database.Store
-	Native *pgxpool.Pool
+	Native *sql.DB
 }
 
-// newFixtureStore wraps an admitted native pool. The caller owns Close via
-// the returned Store; closing the Store also closes Native.
+// newFixtureStore opens the controller's sqlite database and wraps it in the
+// typed Store. The caller owns Close via the returned Store; closing the
+// Store also closes Native.
 func newFixtureStore(t *testing.T, ctx context.Context, c *Controller) *fixtureStore {
 	t.Helper()
-	native, err := pgxpool.New(ctx, c.databaseURL())
+	native, err := sql.Open("sqlite", sqliteDSN(c.storageConfig().SQLitePath))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &fixtureStore{Store: rdbms.WrapPostgres(native), Native: native}
+	if err = native.PingContext(ctx); err != nil {
+		_ = native.Close()
+		t.Fatal(err)
+	}
+	return &fixtureStore{Store: rdbms.WrapSQLite(native), Native: native}
 }
 
 // asObjectReference converts a fixture blob reference to its neutral catalog
@@ -43,7 +49,8 @@ func asObjectReference(ref blob.Reference) database.ObjectReference {
 	}
 }
 
-// Close releases the typed Store, which owns the native pool.
+// Close releases the typed Store, then the native handle it borrows.
 func (f *fixtureStore) Close() {
 	f.Store.Close()
+	_ = f.Native.Close()
 }

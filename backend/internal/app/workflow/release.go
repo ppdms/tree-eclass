@@ -242,7 +242,7 @@ func (c *Controller) migrateRelease(ctx context.Context, id string) error {
 
 func (c *Controller) migrateBinary(ctx context.Context, binary string) error {
 	path := filepath.Join(c.Root, "run", "release-migration.json")
-	if err := platform.WriteJSON(path, map[string]string{"database_url": c.databaseURL()}); err != nil {
+	if err := platform.WriteJSON(path, map[string]string{"sqlite_path": c.storageConfig().SQLitePath}); err != nil {
 		return err
 	}
 	defer os.Remove(path)

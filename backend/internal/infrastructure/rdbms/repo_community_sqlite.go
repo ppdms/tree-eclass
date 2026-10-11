@@ -6,9 +6,9 @@ import (
 	"tree-eclass/internal/domain/database"
 )
 
-// communityConvSourcesSQLite mirrors communityConvSourcesPG with unqualified
-// table names. SQLite compares TEXT with BINARY collation; the PostgreSQL
-// side pins COLLATE "C" on every TEXT comparison so both agree byte-wise.
+// communityConvSourcesSQLite scopes conversation reads to currently mapped
+// courses with ready archive ancestry. SQLite compares TEXT with BINARY
+// collation, agreeing byte-wise.
 const communityConvSourcesSQLite = ` JOIN courses co ON co.id=c.course_id AND co.hidden=0` +
 	` JOIN discord_course_channels mapping` +
 	` ON mapping.root_channel_id=CAST(c.root_id AS TEXT) AND mapping.course_id=c.course_id` +

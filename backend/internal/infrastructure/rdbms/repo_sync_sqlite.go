@@ -119,8 +119,8 @@ func (s sqliteSync) InsertFile(ctx context.Context, file database.SyncFileInput)
 }
 
 func (s sqliteSync) RetireMissingEclassDocuments(ctx context.Context, courseID int64, current []string) error {
-	// SQLite binds one parameter per id; empty current must retire every
-	// non-member eClass document, matching NOT(id=ANY('{}')) on postgres.
+	// SQLite binds one parameter per id; empty current retires every
+	// non-member eClass document.
 	args := []any{courseID}
 	filter := ""
 	if len(current) > 0 {

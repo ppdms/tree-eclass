@@ -18,7 +18,7 @@ func syncAPIChecks(t *testing.T, c *Controller) {
 	api, err := server.New(
 		t.Context(),
 		server.Config{
-			DatabaseURL:     c.databaseURL(),
+			SQLitePath:      c.storageConfig().SQLitePath,
 			ObjectsRoot:     c.testObjectsRoot(),
 			Mode:            "test",
 			ExternalWorkers: true,

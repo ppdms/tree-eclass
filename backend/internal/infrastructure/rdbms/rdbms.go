@@ -1,4 +1,4 @@
-// Package rdbms implements the SQL-free database ports using native backend SQL.
+// Package rdbms implements the SQL-free database ports over SQLite.
 // Driver handles, SQL text and scanners are private to this infrastructure layer.
 package rdbms
 
@@ -9,51 +9,35 @@ import (
 	"tree-eclass/internal/domain/database"
 )
 
-// Config selects the driver and its connection parameters. Exactly one of
-// PostgresURL and SQLitePath is set; empty Config is invalid.
+// Config carries the SQLite database path. Empty Config is invalid.
 type Config struct {
-	// PostgresURL is a postgresql:// URL, unchanged from current usage.
-	PostgresURL string
 	// SQLitePath is a filesystem path to the sqlite database file.
 	SQLitePath string
-	// MaxConns bounds the PostgreSQL pool; SQLite keeps bounded WAL readers
-	// and one context-cancelable writer admission slot.
-	MaxConns int32
 }
 
-// Open selects exactly one backend and returns typed operation ports.
+// Open connects SQLite and returns typed operation ports.
 func Open(ctx context.Context, cfg Config) (database.Store, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
-	}
-	if cfg.PostgresURL != "" {
-		return openPostgres(ctx, cfg)
 	}
 	return openSQLite(ctx, cfg)
 }
 
 func (cfg Config) validate() error {
-	if (cfg.PostgresURL == "") == (cfg.SQLitePath == "") {
-		return errors.New("rdbms: configure exactly one of postgres URL and sqlite path")
+	if cfg.SQLitePath == "" {
+		return errors.New("rdbms: sqlite path is required")
 	}
 	return nil
 }
 
-// Migrate applies the schema chain for the configured driver. It is separate
+// Migrate applies the sqlite schema chain. It is separate
 // from Open so the controller can migrate while writers are stopped, before
 // any pool (and its ownership lock) exists.
 func Migrate(ctx context.Context, cfg Config) error {
 	if err := cfg.validate(); err != nil {
 		return err
 	}
-	switch {
-	case cfg.PostgresURL != "":
-		return migratePostgres(ctx, cfg.PostgresURL)
-	case cfg.SQLitePath != "":
-		return migrateSQLite(ctx, cfg.SQLitePath)
-	default:
-		return errors.New("rdbms: no database configured")
-	}
+	return migrateSQLite(ctx, cfg.SQLitePath)
 }
 
 // Require validates that the connected database matches the embedded schema
@@ -62,33 +46,11 @@ func Require(ctx context.Context, cfg Config) error {
 	if err := cfg.validate(); err != nil {
 		return err
 	}
-	switch {
-	case cfg.PostgresURL != "":
-		return requirePostgres(ctx, cfg.PostgresURL)
-	case cfg.SQLitePath != "":
-		return requireSQLite(ctx, cfg.SQLitePath)
-	default:
-		return errors.New("rdbms: no database configured")
-	}
+	return requireSQLite(ctx, cfg.SQLitePath)
 }
 
-// Manifest returns the embedded migration name->sha256 map for the driver.
+// Manifest returns the embedded migration name->sha256 map.
 // Release packaging compares manifests across binaries for compatibility.
-func Manifest(driver string) (map[string]string, error) {
-	switch driver {
-	case "postgres":
-		return postgresManifest()
-	case "sqlite":
-		return sqliteManifest()
-	default:
-		return nil, errors.New("rdbms: unknown driver " + driver)
-	}
-}
-
-// Driver reports which backend backs a Config: "postgres" or "sqlite".
-func Driver(cfg Config) string {
-	if cfg.SQLitePath != "" {
-		return "sqlite"
-	}
-	return "postgres"
+func Manifest() (map[string]string, error) {
+	return sqliteManifest()
 }

@@ -12,24 +12,24 @@ func fileViewChecks(t *testing.T, pool *fixtureStore, base, document string) {
 	t.Helper()
 	ctx := t.Context()
 	a := settings.DefaultAI()
-	_, err := pool.Native.Exec(
+	_, err := pool.Native.ExecContext(
 		ctx,
-		`INSERT INTO knowledge.document_enrichments(document_id,source_hash,analysis_version,status,model,payload_json,available_at)
- SELECT id,source_hash,$2,'ready',$3,'{"summary":"Ελληνικός οδηγός","related_paths":[]}','now' FROM knowledge.documents WHERE id=$1
+		`INSERT INTO document_enrichments(document_id,source_hash,analysis_version,status,model,payload_json,available_at)
+ SELECT id,source_hash,?,'ready',?,'{"summary":"Ελληνικός οδηγός","related_paths":[]}',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM documents WHERE id=?
  ON CONFLICT(document_id) DO UPDATE SET source_hash=excluded.source_hash,analysis_version=excluded.analysis_version,model=excluded.model,payload_json=excluded.payload_json`,
-		document,
 		settings.DocumentAnalysisVersion,
 		a.Model,
+		document,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = pool.Native.Exec(
+	_, err = pool.Native.ExecContext(
 		ctx,
-		`UPDATE knowledge.page_enrichments SET analysis_version=$2,requested_model=$3,model='fallback-model' WHERE document_id=$1`,
-		document,
+		`UPDATE page_enrichments SET analysis_version=?,requested_model=?,model='fallback-model' WHERE document_id=?`,
 		settings.PageAnalysisVersion,
 		a.Model,
+		document,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func analysisGenerationChecks(t *testing.T, pool *fixtureStore, base, document, 
 		t.Fatal(err)
 	}
 	for _, change := range []string{"analysis_version='obsolete'", "source_hash='different-source'"} {
-		if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.document_enrichments SET `+change+` WHERE document_id=$1`, document); err != nil {
+		if _, err := pool.Native.ExecContext(ctx, `UPDATE document_enrichments SET `+change+` WHERE document_id=?`, document); err != nil {
 			t.Fatal(err)
 		}
 		apiJSON(t, "GET", guideURL, nil, 200, &guide)
@@ -103,7 +103,7 @@ func analysisGenerationChecks(t *testing.T, pool *fixtureStore, base, document, 
 			t.Fatal("stale contract/source guide displayed")
 		}
 	}
-	if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.document_enrichments SET analysis_version=$2,source_hash=(SELECT source_hash FROM knowledge.documents WHERE id=$1) WHERE document_id=$1`, document, settings.DocumentAnalysisVersion); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE document_enrichments SET analysis_version=?,source_hash=(SELECT source_hash FROM documents WHERE id=?) WHERE document_id=?`, settings.DocumentAnalysisVersion, document, document); err != nil {
 		t.Fatal(err)
 	}
 	// Configuration invalidation is visible before the processor runs again.
@@ -143,7 +143,7 @@ func coverageChecks(t *testing.T, pool *fixtureStore, base, path string) {
 		t.Fatal("initial coverage", shelf)
 	}
 	var generation int64
-	if err := pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=101`).Scan(&generation); err != nil {
+	if err := pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=101`).Scan(&generation); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.StudyLevel(ctx, 101, path, 4); err != nil {
@@ -157,7 +157,7 @@ func coverageChecks(t *testing.T, pool *fixtureStore, base, path string) {
 		t.Fatal("unrefreshed study edit called current")
 	}
 	var after int64
-	if err := pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=101`).Scan(&after); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=101`).Scan(&after); err != nil ||
 		after != generation {
 		t.Fatal("learner edit invalidated immutable evidence", err)
 	}
@@ -183,22 +183,20 @@ func coverageChecks(t *testing.T, pool *fixtureStore, base, path string) {
 func coverageScopeChecks(t *testing.T, pool *fixtureStore) {
 	t.Helper()
 	ctx := t.Context()
-	_, err := pool.Native.Exec(
-		ctx,
-		`INSERT INTO app.courses(id,name,webdav_folder) VALUES(909,'Coverage one','/Courses/909'),(910,'Coverage two','/Courses/910');
- INSERT INTO app.nodes(id,course_id,name,url,local_path) VALUES(9909,909,'root','https://example.invalid/909','/Courses/909/eclass')`,
-	)
-	if err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(909,'Coverage one','/Courses/909'),(910,'Coverage two','/Courses/910')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO nodes(id,course_id,name,url,local_path) VALUES(9909,909,'root','https://example.invalid/909','/Courses/909/eclass')`); err != nil {
 		t.Fatal(err)
 	}
 	var before, after int64
-	if err = pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=910`).Scan(&before); err != nil {
+	if err := pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=910`).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Native.Exec(ctx, `INSERT INTO app.files(node_id,url,name,local_path) VALUES(9909,'https://example.invalid/file','file.txt','/Courses/909/eclass/file.txt')`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO files(node_id,url,name,local_path) VALUES(9909,'https://example.invalid/file','file.txt','/Courses/909/eclass/file.txt')`); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=910`).Scan(&after); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=910`).Scan(&after); err != nil ||
 		after != before {
 		t.Fatal("file write invalidated unrelated course", err)
 	}
@@ -212,15 +210,18 @@ func coverageScopeChecks(t *testing.T, pool *fixtureStore) {
 			break
 		}
 	}
-	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.courses WHERE id=909;INSERT INTO app.courses(id,name,webdav_folder) VALUES(909,'Recreated course','/Courses/909')`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `DELETE FROM courses WHERE id=909`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(909,'Recreated course','/Courses/909')`); err != nil {
 		t.Fatal(err)
 	}
 	var count int
-	if err = pool.Native.QueryRow(ctx, `SELECT count(*) FROM read_model.course_coverage WHERE course_id=909`).Scan(&count); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM course_coverage WHERE course_id=909`).Scan(&count); err != nil ||
 		count != 0 {
 		t.Fatal("recreated course inherited coverage", count, err)
 	}
-	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.courses WHERE id IN(909,910)`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `DELETE FROM courses WHERE id IN(909,910)`); err != nil {
 		t.Fatal(err)
 	}
 }

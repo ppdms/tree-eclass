@@ -4,7 +4,6 @@ package workflow
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -24,21 +23,15 @@ const objectsFormat = "fs-v1"
 type Config struct {
 	SourceRoot      string `json:"source_root"`
 	Format          int    `json:"format"`
-	PostgresBin     string `json:"postgres_bin"`
-	PostgresVersion string `json:"postgres_version"`
 	Bun             string `json:"bun"`
 	ParserPython    string `json:"parser_python,omitempty"`
 	Tessdata        string `json:"tessdata"`
 	DiscordExporter string `json:"discord_exporter"`
 	PDFDiff         string `json:"pdf_diff"`
 	PDFDiffSHA      string `json:"pdf_diff_sha256"`
-	Password        string `json:"password"`
 	Ports           Ports  `json:"ports"`
-	// Database selects the storage backend: "" (postgres, current default)
-	// or "sqlite". Existing datasets omit the key and keep postgres.
-	Database string `json:"database,omitempty"`
 }
-type Ports struct{ Postgres, HTTP int }
+type Ports struct{ HTTP int }
 type Selection struct {
 	Mode       string    `json:"mode"`
 	Release    string    `json:"release,omitempty"`
@@ -140,35 +133,8 @@ func (c *Controller) space() error {
 	}
 	return nil
 }
-func (c *Controller) databaseURL() string {
-	u := url.URL{
-		Scheme: "postgresql",
-		User:   url.UserPassword("tree", c.Config.Password),
-		Host:   fmt.Sprintf("127.0.0.1:%d", c.Config.Ports.Postgres),
-		Path:   "/" + databaseName(c.database),
-	}
-	q := u.Query()
-	q.Set("sslmode", "disable")
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-func databaseName(name string) string {
-	if name == "" {
-		return "tree"
-	}
-	return name
-}
 
-// storageConfig resolves the active database backend. Empty Database keeps
-// postgres; "sqlite" stores a file database under active/sqlite.db.
+// storageConfig resolves the sqlite database file under active/sqlite.db.
 func (c *Controller) storageConfig() storage.Config {
-	if c.Config.Database == "sqlite" {
-		return storage.Config{SQLitePath: filepath.Join(c.active(), "sqlite.db")}
-	}
-	return storage.ConfigForURL(c.databaseURL())
-}
-
-// sqliteSelected reports whether the controller runs on the sqlite backend.
-func (c *Controller) sqliteSelected() bool {
-	return c.Config.Database == "sqlite"
+	return storage.Config{SQLitePath: filepath.Join(c.active(), "sqlite.db")}
 }

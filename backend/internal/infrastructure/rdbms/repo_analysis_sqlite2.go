@@ -35,8 +35,8 @@ func (a sqliteAnalysis) QueuePages(ctx context.Context,
 
 func (a sqliteAnalysis) SampleExcerpts(ctx context.Context,
 	document string) ([]database.ExcerptRow, error) {
-	// Twelve samples mirror the postgres round((total-1)/11*k)+1 row-number
-	// selection over k=0..11.
+	// Twelve samples use the round((total-1)/11*k)+1 row-number selection
+	// over k=0..11.
 	rows, err := a.db.Query(ctx, `WITH ranked AS(SELECT *,row_number() OVER(ORDER BY ordinal) n,`+
 		`count(*) OVER() total FROM chunks WHERE document_id=?)`+
 		` SELECT locator_type,coalesce(locator_start,''),substr(text,1,2500) FROM ranked`+

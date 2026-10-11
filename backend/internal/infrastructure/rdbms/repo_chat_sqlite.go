@@ -165,3 +165,10 @@ func (r sqliteChat) TouchConversation(ctx context.Context, id int64) error {
 		`UPDATE chat_conversations SET updated_at=strftime('%Y-%m-%d %H:%M:%f','now') WHERE id=?`, id)
 	return err
 }
+
+func scanChatMessage(row nativeRows) (database.ChatMessage, error) {
+	var item database.ChatMessage
+	err := row.Scan(&item.ID, &item.ConversationID, &item.Role, &item.Content,
+		&item.ConsultedJSON, &item.Model, &item.CreatedAt)
+	return item, err
+}

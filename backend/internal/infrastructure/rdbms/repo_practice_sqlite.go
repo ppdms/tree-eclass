@@ -19,7 +19,7 @@ func practiceSQLitePlaceholders(count int) string {
 
 func (p sqlitePractice) LockCourse(ctx context.Context, course int64) error {
 	// The admitted writer transaction serializes admission; SQLite takes no
-	// row locks. The visibility check matches the PostgreSQL predicate.
+	// row locks.
 	var id int64
 	err := p.db.QueryRow(ctx, `SELECT id FROM courses
 		WHERE id=? AND (hidden=0 OR EXISTS(
@@ -37,7 +37,7 @@ func (p sqlitePractice) ListQuestionSets(
 	ctx context.Context, selector database.PracticeSetSelector,
 ) ([]database.PracticeQuestionSet, error) {
 	// The DISTINCT ON preference (ready first, then newest per unit) is a
-	// direct window-function selection; tie order matches PostgreSQL.
+	// direct window-function selection with newest-first tie order.
 	rows, err := p.db.Query(ctx, `SELECT id,unit_key,set_hash,status,blueprint_revision_hash,model,generated_at
 		FROM (
 			SELECT id,unit_key,set_hash,status,blueprint_revision_hash,model,generated_at,
@@ -180,7 +180,7 @@ func (p sqlitePractice) InsertAttempt(
 	var eventID, attemptID int64
 	err := p.db.QueryRow(ctx, `INSERT INTO study_unit_events
 			(course_id,plan_revision,action_id,unit_key,event_type,idempotency_key,confidence,score,note)
-		VALUES(?,?,?,?, 'recall_answered',?,?,?) RETURNING id`,
+		VALUES(?,?,?,?, 'recall_answered',?,?,?,?) RETURNING id`,
 		params.CourseID, params.Revision, params.Question, params.Unit,
 		params.EventKey, params.Confidence, params.Score, params.Note,
 	).Scan(&eventID)

@@ -10,16 +10,24 @@ import (
 
 func activityChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
-	_, err := pool.Native.Exec(t.Context(), `INSERT INTO app.announcements(course_id,announcement_id,title,link,pub_date)
-SELECT 101,'synthetic-'||i,'Announcement '||i,'https://example.invalid/'||i,'2026-09-12T09:00:00Z' FROM generate_series(1,12) i;
-INSERT INTO app.announcements(course_id,announcement_id,title,link,pub_date) VALUES(102,'hidden','Must not appear','https://example.invalid','2027-01-01');
-INSERT INTO app.global_announcements(feed_key,announcement_id,title,link,pub_date) VALUES('dept','global','Exam deadline','https://example.invalid','2026-09-12T10:00:00Z');
-INSERT INTO app.change_records(id,course_id,change_no,timestamp,message) VALUES(990,101,'synthetic-change','2026-09-12T11:00:00Z','+1');
-INSERT INTO app.change_record_items(change_record_id,change_type,file_path,display_name) VALUES(990,'newfile','/Courses/101/eclass/notes.txt','notes.txt')`)
-	if err != nil {
+	ctx := t.Context()
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO announcements(course_id,announcement_id,title,link,pub_date)
+SELECT 101,'synthetic-'||i,'Announcement '||i,'https://example.invalid/'||i,'2026-09-12T09:00:00Z' FROM (SELECT 1 AS i UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Native.Exec(t.Context(), `UPDATE app.announcements SET title=$1 WHERE announcement_id='synthetic-12'`, identity.Encode("Σημείωση\x00\ue000")); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO announcements(course_id,announcement_id,title,link,pub_date) VALUES(102,'hidden','Must not appear','https://example.invalid','2027-01-01')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO global_announcements(feed_key,announcement_id,title,link,pub_date) VALUES('dept','global','Exam deadline','https://example.invalid','2026-09-12T10:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO change_records(id,course_id,change_no,timestamp,message) VALUES(990,101,'synthetic-change','2026-09-12T11:00:00Z','+1')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO change_record_items(change_record_id,change_type,file_path,display_name) VALUES(990,'newfile','/Courses/101/eclass/notes.txt','notes.txt')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE announcements SET title=? WHERE announcement_id='synthetic-12'`, identity.Encode("Σημείωση\x00\ue000")); err != nil {
 		t.Fatal(err)
 	}
 	seen := map[string]bool{}

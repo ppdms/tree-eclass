@@ -72,9 +72,8 @@ only these keys matter:
 }
 ```
 
-- Exactly one of `sqlite_path` or `database_url` (PostgreSQL), plus
-  `objects_root`, `mode` and `session`, is mandatory; `address`
-  defaults to port 80 if omitted. Supplying both database options is rejected.
+- `sqlite_path`, `objects_root`, `mode` and `session` are mandatory; `address`
+  defaults to port 80 if omitted.
 - `external_workers: false` parks the sync, Discord, notification and analysis
   workers and their triggers answer 503. Native development mode sets it from
   `Mode`; container deployments normally keep it `true`. A dev overlay reuses
@@ -89,15 +88,14 @@ only these keys matter:
 
 ## Storage
 
-- **Database** — the selected backend implements the same typed application
-  operations using directly written native SQL, not dialect translation.
+- **Database** — a SQLite file implementing the typed application
+  operations using directly written native SQL.
   SQLite uses WAL mode (`-wal`/`-shm` alongside `sqlite_path`), a bounded
   four-connection pool and a busy timeout. Writer transactions take
   `BEGIN IMMEDIATE`; read-only snapshots retain their own connection.
   The canonical database path's `.owner` lock excludes another runtime and
   migrations until admitted operations and transactions have finished.
-  PostgreSQL uses its native transactions, row locks and advisory ownership
-  lock. Both backends verify immutable migration checksums before admission.
+  Immutable migration checksums are verified before admission.
   An existing database with tables but no migration ledger cannot be adopted;
   start with a fresh database instead. There is no SQLite import path;
   `eclass.db`, `knowledge.db` and `discord_knowledge.db` are legacy files.

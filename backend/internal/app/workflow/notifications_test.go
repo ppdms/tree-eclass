@@ -33,12 +33,18 @@ func TestNativeNotificationPublicationAndDelivery(t *testing.T) {
 	t.Parallel()
 	c := nativeSharedController(t)
 	conn, _ := startTestStorage(t, c)
-	defer conn.Close(t.Context())
+	defer conn.Close()
 	ctx := t.Context()
 	pool := newFixtureStore(t, ctx, c)
 	defer pool.Close()
-	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(101,'Αλγόριθμοι','/101');INSERT INTO app.webhook_config(id,webhook_url) VALUES(1,'https://example.test/private-token');INSERT INTO app.preferences(id,notification_enabled,notification_on_error) VALUES(1,1,0) ON CONFLICT(id) DO UPDATE SET notification_enabled=1,notification_on_error=0`); err != nil {
-		t.Fatal(err)
+	for _, statement := range []string{
+		`INSERT INTO courses(id,name,webdav_folder) VALUES(101,'Αλγόριθμοι','/101')`,
+		`INSERT INTO webhook_config(id,webhook_url) VALUES(1,'https://example.test/private-token')`,
+		`INSERT INTO preferences(id,notification_enabled,notification_on_error) VALUES(1,1,0) ON CONFLICT(id) DO UPDATE SET notification_enabled=1,notification_on_error=0`,
+	} {
+		if _, err := pool.Native.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
 	}
 	sync := synchronization.Service{Pool: pool}
 	items := []eclass.Announcement{
@@ -79,7 +85,7 @@ func TestNativeNotificationPublicationAndDelivery(t *testing.T) {
 	}
 	tx.Rollback(ctx)
 	var count int64
-	if err = pool.Native.QueryRow(ctx, `SELECT count(*) FROM app.notification_messages`).Scan(&count); err != nil ||
+	if err = pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM notification_messages`).Scan(&count); err != nil ||
 		count != 3 {
 		t.Fatal("publication/repeat boundaries", count, err)
 	}
@@ -96,7 +102,7 @@ func notificationDeliveryChecks(t *testing.T, pool *fixtureStore) {
 		t.Fatal(err)
 	}
 	var attempts int
-	if err = pool.Native.QueryRow(ctx, `SELECT attempts FROM app.notification_messages WHERE available_at>clock_timestamp()`).Scan(&attempts); err != nil ||
+	if err = pool.Native.QueryRowContext(ctx, `SELECT attempts FROM notification_messages WHERE available_at>datetime('now')`).Scan(&attempts); err != nil ||
 		attempts != 0 {
 		t.Fatal("quota spent retry budget", attempts, err)
 	}
@@ -104,7 +110,10 @@ func notificationDeliveryChecks(t *testing.T, pool *fixtureStore) {
 		t.Fatal("destination cooldown was bypassed", sender.Calls, err)
 	}
 	sender.Quota = false
-	if _, err = pool.Native.Exec(ctx, `UPDATE app.notification_messages SET available_at='epoch';UPDATE app.notification_limits SET next_at='epoch'`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE notification_messages SET available_at='1970-01-01T00:00:00.000Z'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE notification_limits SET next_at='1970-01-01T00:00:00.000Z'`); err != nil {
 		t.Fatal(err)
 	}
 	for range 3 {
@@ -119,7 +128,10 @@ func notificationDeliveryChecks(t *testing.T, pool *fixtureStore) {
 	if err = service.Tick(ctx); err != nil || sender.Calls != 4 {
 		t.Fatal("completed messages resent", sender.Calls, err)
 	}
-	if _, err = pool.Native.Exec(ctx, `UPDATE app.notification_messages SET status='pending';UPDATE app.webhook_config SET webhook_url='https://example.test/new-destination'`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE notification_messages SET status='pending'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE webhook_config SET webhook_url='https://example.test/new-destination'`); err != nil {
 		t.Fatal(err)
 	}
 	if err = service.Tick(ctx); err != nil || sender.Calls != 4 {
@@ -155,7 +167,7 @@ func notificationRetryChecks(
 		if err = service.Tick(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = pool.Native.Exec(ctx, `UPDATE app.notification_messages SET available_at='epoch' WHERE status='pending'`); err != nil {
+		if _, err = pool.Native.ExecContext(ctx, `UPDATE notification_messages SET available_at='1970-01-01T00:00:00.000Z' WHERE status='pending'`); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -167,7 +179,7 @@ func notificationRetryChecks(
 	if err != nil || count != 1 {
 		t.Fatal("explicit retry", count, err)
 	}
-	if _, err = pool.Native.Exec(ctx, `UPDATE app.notification_messages SET status='running',attempts=1 WHERE event_key='retry'`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE notification_messages SET status='running',attempts=1 WHERE event_key='retry'`); err != nil {
 		t.Fatal(err)
 	}
 	if err = service.Recover(ctx); err != nil {

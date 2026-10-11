@@ -9,7 +9,7 @@ import (
 )
 
 // This is the complete Python runtime boundary. Business services, credentials,
-// and PostgreSQL stores do not enter the release.
+// and database stores do not enter the release.
 func copyParserSource(source, target string) error {
 	files := []string{"parser/__init__.py", "parser/parser_helper.py", "parser/models.py",
 		"parser/source_files.py", "parser/vision.py", "parser/archive_limits.py"}

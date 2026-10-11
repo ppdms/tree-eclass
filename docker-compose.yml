@@ -2,6 +2,7 @@ name: tree-eclass
 
 # Optional future Linux host. ./tree never starts this stack on the laptop.
 # Prepare private configuration first; migration is an explicit stopped operation.
+# The database is a sqlite file at `sqlite_path` shared via the jobs volume.
 x-api: &api
   build: .
   image: tree-eclass-local:${TREE_RELEASE:?set a committed release identifier}
@@ -19,54 +20,17 @@ x-api: &api
   restart: 'no'
 
 services:
-  postgres:
-    image: docker.io/library/postgres:18.6
-    environment:
-      POSTGRES_USER: tree
-      POSTGRES_DB: tree
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
-      PGDATA: /var/lib/postgresql/18/docker
-    command:
-      [
-        postgres,
-        -c,
-        shared_buffers=32MB,
-        -c,
-        work_mem=2MB,
-        -c,
-        maintenance_work_mem=32MB,
-        -c,
-        max_connections=16,
-        -c,
-        max_parallel_workers=0,
-      ]
-    volumes:
-      - postgres:/var/lib/postgresql
-    secrets: [postgres-password]
-    networks: [storage]
-    healthcheck:
-      test: [CMD-SHELL, pg_isready -U tree -d tree]
-      interval: 2s
-      retries: 30
-    stop_grace_period: 90s
-    restart: 'no'
-
   migrate:
     <<: *api
     profiles: [maintenance]
     command: [container-migrate]
-    depends_on:
-      postgres: { condition: service_healthy }
 
   api:
     <<: *api
     command: [container-serve]
     ports: [127.0.0.1:8000:8001]
-    depends_on:
-      postgres: { condition: service_healthy }
 
 volumes:
-  postgres:
   jobs:
 
 networks:
@@ -77,5 +41,3 @@ networks:
 secrets:
   application:
     file: ${TREE_CONTAINER_CONFIG:?path to private application configuration}
-  postgres-password:
-    file: ${TREE_POSTGRES_PASSWORD_FILE:?path to private PostgreSQL password file}

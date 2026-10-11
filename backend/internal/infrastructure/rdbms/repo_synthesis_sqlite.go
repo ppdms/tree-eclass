@@ -8,13 +8,14 @@ import (
 
 // sqliteSynthesis implements database.Synthesis with native SQLite SQL: ?
 // placeholders, unqualified table names, instr/JSON1 helpers and strftime
-// clocks. No PostgreSQL compatibility functions remain.
+// clocks.
 
 // synthesisDueSQLite matches rows whose stored TEXT availability has passed.
 // RFC3339Nano and legacy space-separated UTC stamps both normalize through
-// julianday for the due comparison.
+// datetime for the due comparison; second precision keeps freshly written
+// stamps due (a float julianday comparison misorders them).
 func synthesisDueSQLite(column string) string {
-	return "julianday(" + column + ")<=julianday('now')"
+	return "datetime(" + column + ")<=datetime('now')"
 }
 
 // synthesisJSONTextSQLite reads a top-level JSON string field with a validity

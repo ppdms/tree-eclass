@@ -42,9 +42,8 @@ func (c sqliteCourses) LockCourseForWrite(ctx context.Context, id int64) (databa
 }
 
 func (c sqliteCourses) ListCourses(ctx context.Context, includeHidden bool) ([]database.AppCourse, error) {
-	// Added courses default sort_order 0; PostgreSQL orders explicitly
-	// cleared NULL positions last by default, so state it explicitly and
-	// keep both backends in agreement.
+	// Added courses default sort_order 0; order explicitly cleared NULL
+	// positions last.
 	rows, err := c.db.Query(ctx, `SELECT `+sqliteCourseColumns+` FROM courses`+
 		` WHERE hidden=0 OR ? ORDER BY sort_order NULLS LAST,id`, includeHidden)
 	if err != nil {

@@ -268,7 +268,7 @@ func hashTopLevel(convJSON, fingerprint, members string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// quoteJSON renders text with postgres jsonb string escaping (short \b \f
+// quoteJSON renders text with jsonb string escaping (short \b \f
 // \n \r \t forms, \u00xx otherwise, raw UTF-8 passthrough, no HTML
 // escaping), matching the sqlite jsonbEncode shim byte-for-byte.
 func quoteJSON(text string) string {

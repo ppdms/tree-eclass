@@ -15,8 +15,8 @@ var ErrBusy = errors.New("this course is already being synchronized")
 
 func (s Service) Sync(ctx context.Context, id int64, source Source, rootURL string) (Result, error) {
 	// Crawl outside any write transaction: network I/O takes minutes and
-	// must never hold the single sqlite writer slot (or a postgres row
-	// lock) across the crawl. The short publish transaction below admits
+	// must never hold the single sqlite writer slot across the crawl.
+	// The short publish transaction below admits
 	// the course while holding the lock.
 	course, err := s.Pool.Courses().Course(ctx, id)
 	if err != nil {

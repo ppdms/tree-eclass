@@ -8,8 +8,7 @@ import (
 )
 
 // Courses learner state, coverage builds and destructive mutations on
-// SQLite. Native schema, placeholders and JSON semantics throughout; no
-// PostgreSQL compatibility shims.
+// SQLite. Native schema, placeholders and JSON semantics throughout.
 func (c sqliteCourses) SetStudyLevel(ctx context.Context, params database.SetStudyLevelParams) error {
 	if params.LastUpdated == nil {
 		_, err := c.db.Exec(ctx, `INSERT INTO file_study(course_id,file_path,level,last_updated)`+

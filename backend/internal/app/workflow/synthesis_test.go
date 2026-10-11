@@ -28,14 +28,13 @@ func newSynthesisFixture(t *testing.T) (*fixtureStore, synthesis.Service, string
 	c := nativeSharedController(t)
 	ctx := t.Context()
 	conn, objects := startTestStorage(t, c)
-	t.Cleanup(func() { conn.Close(ctx) })
+	t.Cleanup(func() { conn.Close() })
 	pool := newFixtureStore(t, ctx, c)
 	t.Cleanup(pool.Close)
-	_, err := pool.Native.Exec(
-		ctx,
-		`INSERT INTO app.courses(id,name,webdav_folder) VALUES(781,'Synthetic synthesis','/Courses/781'); INSERT INTO app.course_exam_plans(course_id,enabled,exam_at) VALUES(781,1,'2026-09-20T10:00')`,
-	)
-	if err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(781,'Synthetic synthesis','/Courses/781')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO course_exam_plans(course_id,enabled,exam_at) VALUES(781,1,'2026-09-20T10:00')`); err != nil {
 		t.Fatal(err)
 	}
 	a, doc := seedSynthesisSource(t, ctx, pool, objects)
@@ -99,14 +98,14 @@ func seedSynthesisSource(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Native.Exec(ctx, `UPDATE knowledge.documents SET status='ready',content_hash_verified=1 WHERE id=$1`, doc.DocumentID); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE documents SET status='ready',content_hash_verified=1 WHERE id=?`, doc.DocumentID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Native.Exec(ctx, `INSERT INTO knowledge.document_enrichments(document_id,source_hash,analysis_version,status,model,requested_model,payload_json,available_at)
- SELECT id,source_hash,$2,'ready','served-fallback',$3,'{"summary":"Tree definitions grounded in the source","importance":"essential","topics":["Trees"]}','now' FROM knowledge.documents WHERE id=$1`, doc.DocumentID, settings.DocumentAnalysisVersion, a.Model); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `INSERT INTO document_enrichments(document_id,source_hash,analysis_version,status,model,requested_model,payload_json,available_at)
+ SELECT id,source_hash,?,'ready','served-fallback',?,'{"summary":"Tree definitions grounded in the source","importance":"essential","topics":["Trees"]}',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM documents WHERE id=?`, settings.DocumentAnalysisVersion, a.Model, doc.DocumentID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Native.Exec(ctx, `INSERT INTO knowledge.chunks(id,document_id,ordinal,locator_type,locator_start,text,normalized_text,content_hash) VALUES('fixture-chunk',$1,0,'section','1','A tree is connected and acyclic.','a tree is connected and acyclic.','fixture')`, doc.DocumentID); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `INSERT INTO chunks(id,document_id,ordinal,locator_type,locator_start,text,normalized_text,content_hash) VALUES('fixture-chunk',?,0,'section','1','A tree is connected and acyclic.','a tree is connected and acyclic.','fixture')`, doc.DocumentID); err != nil {
 		t.Fatal(err)
 	}
 	return a, doc.DocumentID
@@ -182,7 +181,7 @@ func synthesisFixture(t *testing.T, repo, kind string) string {
 func synthesisRecoveryChecks(t *testing.T, pool *fixtureStore, service synthesis.Service, doc, output string) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := pool.Native.Exec(ctx, `UPDATE app.course_exam_plans SET planning_notes='Changed goal' WHERE course_id=781`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE course_exam_plans SET planning_notes='Changed goal' WHERE course_id=781`); err != nil {
 		t.Fatal(err)
 	}
 	service.Generator.Client = syntheticInference(
@@ -194,15 +193,15 @@ func synthesisRecoveryChecks(t *testing.T, pool *fixtureStore, service synthesis
 		t.Fatal("paused successor", worked, err)
 	}
 	var attempts, count int64
-	if err := pool.Native.QueryRow(ctx, `SELECT attempts FROM knowledge.course_blueprints WHERE status='pending'`).Scan(&attempts); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx, `SELECT attempts FROM course_blueprints WHERE status='pending'`).Scan(&attempts); err != nil ||
 		attempts != 0 {
 		t.Fatal("quota spent attempts", attempts, err)
 	}
-	if err := pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.course_blueprints WHERE status='ready'`).Scan(&count); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM course_blueprints WHERE status='ready'`).Scan(&count); err != nil ||
 		count != 1 {
 		t.Fatal("lost usable prior plan", count, err)
 	}
-	if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.course_blueprints SET status='running',attempts=1 WHERE status='pending'`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE course_blueprints SET status='running',attempts=1 WHERE status='pending'`); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Recover(ctx); err != nil {
@@ -212,7 +211,7 @@ func synthesisRecoveryChecks(t *testing.T, pool *fixtureStore, service synthesis
 	service.Generator.Client = syntheticInference(
 		func(ctx context.Context, _ inference.Candidate, _ inference.Request, emit func(inference.Delta) error) error {
 			called = true
-			if _, err := pool.Native.Exec(ctx, `UPDATE knowledge.document_enrichments SET payload_json='{"summary":"Source insight changed during generation"}' WHERE document_id=$1`, doc); err != nil {
+			if _, err := pool.Native.ExecContext(ctx, `UPDATE document_enrichments SET payload_json='{"summary":"Source insight changed during generation"}' WHERE document_id=?`, doc); err != nil {
 				return err
 			}
 			if err := emit(inference.Delta{Text: output}); err != nil {
@@ -224,7 +223,7 @@ func synthesisRecoveryChecks(t *testing.T, pool *fixtureStore, service synthesis
 	if worked, err := service.RunOne(ctx, "course"); err != nil || !worked || !called {
 		t.Fatal("stale completion", worked, called, err)
 	}
-	if err := pool.Native.QueryRow(ctx, `SELECT count(*) FROM knowledge.course_blueprints WHERE revision=(SELECT max(revision) FROM knowledge.course_blueprints) AND status='ready'`).Scan(&count); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM course_blueprints WHERE revision=(SELECT max(revision) FROM course_blueprints) AND status='ready'`).Scan(&count); err != nil ||
 		count != 0 {
 		t.Fatal("stale result published", count, err)
 	}

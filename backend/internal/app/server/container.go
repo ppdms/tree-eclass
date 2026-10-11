@@ -16,7 +16,7 @@ import (
 )
 
 // Containers use the same finite-writer journal and helper ownership protocol.
-// The orchestrator owns PostgreSQL and must checkpoint it while stopped
+// The orchestrator owns the sqlite database file and must checkpoint it while stopped
 // before explicitly invoking container-migrate for an application upgrade.
 func containerRuntime(ctx context.Context, cfg Config, migrate bool) (err error) {
 	if !filepath.IsAbs(cfg.Temp) || cfg.Temp == "/" || cfg.Session == "" || cfg.Mode != "stable" {

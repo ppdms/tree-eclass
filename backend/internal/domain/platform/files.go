@@ -79,7 +79,7 @@ func Available(path string) (uint64, error) {
 }
 
 // CloneTree only accepts real directories and regular files. In particular, a
-// PostgreSQL tablespace symlink must never escape the checkpoint's data root.
+// symlink must never escape the checkpoint's data root.
 func CloneTree(source, target string) error {
 	err := filepath.WalkDir(source, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {

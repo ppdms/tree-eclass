@@ -21,9 +21,9 @@ synthetic verification disposable and separate from the live dataset.
 Run services **natively on macOS**, with containers retained as an optional future
 server deployment using the same application contracts. Move document/blob storage
 to the **local content-addressed objects directory** of the active dataset;
-`active/objects` is the on-disk layout. Native macOS uses PostgreSQL; deployment
-configuration may select PostgreSQL or SQLite. These user choices supersede the
-earlier Colima/WebDAV replacement proposal.
+`active/objects` is the on-disk layout. The relational database is a single
+SQLite file (`active/sqlite.db`) on every deployment. These user choices
+supersede the earlier Colima/WebDAV replacement proposal.
 An idiomatic **Go backend and controller are required in this implementation**.
 Short-lived Python document parsers are allowed; a persistent Python API or worker
 is not the target architecture. Measure the complete process tree to verify memory
@@ -59,9 +59,9 @@ and must not be automatically removed.
 Native verification uses `go -C backend test ./cmd/... ./internal/...` (avoid `./...`, which
 also traverses Go files inside frontend dependencies). Opt-in native integration
 tests use `TREE_NATIVE_TESTS=1`; they create and remove private synthetic
-PostgreSQL clusters and disposable objects directories and never use
-`DATABASE_URL` or the authoritative dataset. SQL-free typed ports live in
-`backend/internal/domain/database/`; directly written PostgreSQL and SQLite
+SQLite files and disposable objects directories and never use
+the authoritative dataset. SQL-free typed ports live in
+`backend/internal/domain/database/`; directly written SQLite
 queries live only in `backend/internal/infrastructure/rdbms/`.
 Applied migration bytes are immutable release data: never reformat or edit an
 applied migration; append a new migration for schema changes.
@@ -193,9 +193,9 @@ failed turns must leave no half-turn. Verify with the synthetic Ask/MCP fixtures
 Document/page analysis, course/practice synthesis and indexing share one
 expensive-work admission lock.
 Commit claims before model or parser I/O, and compare source, context, requested
-model and claim again before publication. PostgreSQL `now()` is the transaction
-start time: a claim inserted later in that transaction must compare eligibility
-against `clock_timestamp()`, or it can reject itself. Serving-model fallback must
+model and claim again before publication. SQLite evaluates the clock per
+statement, so a claim inserted later in a transaction compares eligibility
+against the same clock it was written with. Serving-model fallback must
 not change the requested generation. Quota pauses are durable and do not consume
 job retry budgets; canceled quota probes must never cache an available decision.
 Generated guidance normalizes NUL characters; original source units retain their
@@ -305,7 +305,7 @@ and fix the controller rather than institutionalizing a manual workaround.
 | Daily startup or full shutdown                                       | [README daily workflow](README.md#daily-mac-start-and-stop); `dev up` ensures prerequisites; `dev down` fully shuts down |
 | First-time setup, credentials, editable development, stable releases | [README setup and releases](README.md#setup-and-releases); setup is not a daily startup command                          |
 | Native schema and recovery boundaries                                | `./tree snapshot list`; use cold checkpoints and forward migrations                                                      |
-| Full application validation                                          | `./tree check`; uses disposable PostgreSQL and removes generated build output afterward                                  |
+| Full application validation                                          | `./tree check`; uses disposable SQLite files and removes generated build output afterward                                |
 | Native build cleanup                                                 | `./tree clean` while stopped; see [low-disk policy](README.md#low-disk-development-policy)                               |
 | Frontend composition and styling                                     | Read [StyleX authoring](docs/stylex-authoring.md) and follow the design-system rules below                               |
 
@@ -354,7 +354,7 @@ agent should not have to rediscover?**
 - Frontend: React 19 + React Router under `frontend/`, built with Vite. Go serves its assets and API on one port; browser writes preserve their original page runtime session.
 - Document parsing is the pure Python boundary under `parser/`; stable artifacts contain only its explicitly inventoried parser sources. Application API, storage, workers and migrations are implemented in Go.
 - The design system is under `frontend/src/styles/`, assembled by `entry.css`. Navigation chrome is wired by `frontend/src/shell/navChrome.ts`.
-- Native storage is PostgreSQL 18 plus the active dataset's local content-addressed objects directory. Provider keys live in the active dataset's private settings.
+- Native storage is a SQLite file plus the active dataset's local content-addressed objects directory. Provider keys live in the active dataset's private settings.
 - The local catalog mirror is optional and configured by the Settings
   `download_base_path`; a course check refreshes upstream `eclass` files and
   current external-library objects, while stable browser uploads refresh the
@@ -364,25 +364,38 @@ agent should not have to rediscover?**
 ## Architecture
 
 Relational persistence must expose SQL-free operation contracts to application
-and domain code. Select the PostgreSQL or SQLite implementation at composition
-time from deployment configuration. Each adapter owns directly written,
-backend-native SQL and maps results and errors to backend-neutral Go types.
-Do not translate PostgreSQL SQL into SQLite SQL at runtime or emulate PostgreSQL
-syntax/functions to make application SQL run on SQLite. The contract must define
+and domain code. The single SQLite adapter owns directly written
+native SQL and maps results and errors to backend-neutral Go types.
+The contract must define
 observable results, ordering, null handling, errors, snapshot consistency and
-atomic cross-feature writes; verify those guarantees against both disposable
-backends. Raw SQL handles and driver types stay inside infrastructure adapters.
+atomic cross-feature writes; verify those guarantees against a disposable
+SQLite file. Raw SQL handles and driver types stay inside infrastructure adapters.
 
 The runtime owner lock must outlive all admitted transactions and iterators:
 `Store.Close` rejects new work and waits for consumers to finish before releasing
 ownership. SQLite file aliases use the canonical database path for that lock.
-Read-only repeatable snapshots use visibility checks without PostgreSQL row locks;
+Read-only repeatable snapshots use visibility checks;
 writer/publication guards retain their locks. Verify the common contract with
 `TREE_NATIVE_TESTS=1 go -C backend test ./internal/infrastructure/rdbms`.
 
+SQLite porting rules, all verified by failing native tests during the
+PostgreSQL removal: compare due timestamps with `datetime()` at second
+precision, never float `julianday()` (fresh RFC3339Nano stamps misorder
+against millisecond `now()` half the time); guard generation-bump triggers
+with a surviving-parent check so cascading deletes cannot re-insert a
+generation row for a deleted course; compare idempotency retries in storage
+encoding (decoding before comparison reports NUL/private-use text as a
+conflict); fold stopword literals through `identity.Search` (case folding
+maps final sigma ς to σ). Native tests use one disposable SQLite file per
+test with raw `database/sql` seed SQL (`ExecContext`/`QueryContext`/
+`QueryRowContext`, `?` binds, no schema prefixes, one statement per call);
+the repo `.venv` must be built from a non-managed interpreter or its runs
+write `__pycache__` into the managed parser distribution and break the
+release inventory check.
+
 ```text
 ./tree                  Installed Go lifecycle controller
-├── PostgreSQL 18       One active native relational database
+├── SQLite              One active native relational database file
 ├── Objects directory   One active content-addressed object store
 ├── tree-eclass         Go API, MCP, queues and background projections
 │   └── helpers         Short-lived Python, OCR, PDF and Discord processes
@@ -434,7 +447,7 @@ progress updates independently of immutable guidance.
 - Native tests live beside the Go packages under `backend/internal/` and
   `backend/cmd/`; run them with `go -C backend test ./cmd/... ./internal/...` and
   `go -C backend test -race ./cmd/... ./internal/...`. Native integration tests
-  opt in with `TREE_NATIVE_TESTS=1` and use private synthetic PostgreSQL and
+  opt in with `TREE_NATIVE_TESTS=1` and use private synthetic SQLite and
   objects-store fixtures. The parser fixture is short-lived and isolated; it never opens
   application storage or credentials.
 - Tests must stay offline and use disposable synthetic data. Never point native checks at the authoritative dataset. Browser behavior is checked by the native browser fixture and frontend tests.

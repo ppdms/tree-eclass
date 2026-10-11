@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"mime/multipart"
@@ -13,8 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
-
 	"tree-eclass/internal/app/server"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/materials"
@@ -24,7 +23,7 @@ import (
 type materialPublicationFixture struct {
 	c       *Controller
 	ctx     context.Context
-	conn    *pgx.Conn
+	conn    *sql.DB
 	pool    *fixtureStore
 	api     *server.Server
 	service materials.Service
@@ -44,16 +43,16 @@ func newMaterialPublicationFixture(t *testing.T) *materialPublicationFixture {
 	c := nativeSharedController(t)
 	ctx := context.Background()
 	conn, objects := startTestStorage(t, c)
-	t.Cleanup(func() { conn.Close(ctx) })
-	if _, err := conn.Exec(ctx, "INSERT INTO app.courses(id,name,webdav_folder) VALUES(101,'Συνθετικό μάθημα','/Courses/101')"); err != nil {
+	t.Cleanup(func() { conn.Close() })
+	if _, err := conn.ExecContext(ctx, "INSERT INTO courses(id,name,webdav_folder) VALUES(101,'Συνθετικό μάθημα','/Courses/101')"); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", t.TempDir())
-	if _, err := conn.Exec(ctx, `INSERT INTO app.preferences(id,download_base_path) VALUES(1,'/University')`); err != nil {
+	if _, err := conn.ExecContext(ctx, `INSERT INTO preferences(id,download_base_path) VALUES(1,'/University')`); err != nil {
 		t.Fatal(err)
 	}
 	api, err := server.New(ctx, server.Config{
-		DatabaseURL: c.databaseURL(), ObjectsRoot: c.testObjectsRoot(),
+		SQLitePath: c.storageConfig().SQLitePath, ObjectsRoot: c.testObjectsRoot(),
 		Mode:            "test",
 		ExternalWorkers: true,
 	})
@@ -98,7 +97,7 @@ func materialIndexChecks(t *testing.T, fixture *materialPublicationFixture) {
 		t.Fatal("missing parser succeeded")
 	}
 	var failedStatus, reason string
-	if err = fixture.pool.Native.QueryRow(ctx, `SELECT status,diagnostic_reason FROM knowledge.documents WHERE id=$1`, result.DocumentID).Scan(&failedStatus, &reason); err != nil ||
+	if err = fixture.pool.Native.QueryRowContext(ctx, `SELECT status,diagnostic_reason FROM documents WHERE id=?`, result.DocumentID).Scan(&failedStatus, &reason); err != nil ||
 		failedStatus != "failed" || reason != "extraction_failed" {
 		t.Fatal("extraction failure remained pending", failedStatus, reason, err)
 	}
@@ -106,7 +105,7 @@ func materialIndexChecks(t *testing.T, fixture *materialPublicationFixture) {
 		t.Fatal(err)
 	}
 	var count int
-	err = fixture.conn.QueryRow(ctx, "SELECT count(*) FROM knowledge.chunks_fts WHERE search_vector @@ public.tree_query('δενδρα')").Scan(&count)
+	err = fixture.conn.QueryRowContext(ctx, "SELECT count(*) FROM chunks_fts WHERE instr(search_vector, 'δενδρα') > 0").Scan(&count)
 	if err != nil || count != 1 {
 		t.Fatalf("Greek full-text index: %d %v", count, err)
 	}
@@ -160,7 +159,7 @@ func materialReaderChecks(t *testing.T, fixture *materialPublicationFixture) {
 
 func materialUploadMirrorCheck(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
-	if _, err := pool.Native.Exec(t.Context(), `UPDATE app.preferences SET download_base_path='/University' WHERE id=1`); err != nil {
+	if _, err := pool.Native.ExecContext(t.Context(), `UPDATE preferences SET download_base_path='/University' WHERE id=1`); err != nil {
 		t.Fatal(err)
 	}
 	var body bytes.Buffer

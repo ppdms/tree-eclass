@@ -11,8 +11,7 @@ import (
 // future migrations stay preserved without a code change.
 type sqliteObjectCatalog struct{ db nativeDBTX }
 
-// sqliteObjectCatalogKnownReferences mirrors the postgres reference inventory
-// without schema qualifiers.
+// sqliteObjectCatalogKnownReferences lists catalog columns holding object ids.
 var sqliteObjectCatalogKnownReferences = []struct{ table, column string }{
 	{"document_revisions", "object_id"},
 	{"files", "object_id"},
@@ -147,4 +146,10 @@ func sqliteObjectForeignColumns(ctx context.Context, db nativeDBTX, table string
 		return nil, err
 	}
 	return columns, nil
+}
+
+// quoteObjectCatalogIdentifier sanitizes a catalog-discovered identifier with
+// manual double-quote escaping.
+func quoteObjectCatalogIdentifier(part string) string {
+	return `"` + strings.ReplaceAll(part, `"`, `""`) + `"`
 }

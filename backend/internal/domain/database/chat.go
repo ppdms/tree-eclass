@@ -85,8 +85,8 @@ type Chat interface {
 	// returns its id.
 	CreateConversation(ctx context.Context, titleEncoded string) (int64, error)
 	// LockConversation returns the id after taking the backend write guard:
-	// a row lock on PostgreSQL, writer-transaction exclusion on SQLite (the
-	// caller must already hold a writer transaction). ErrNoRows when missing.
+	// writer-transaction exclusion (the caller must already hold a writer
+	// transaction). ErrNoRows when missing.
 	LockConversation(ctx context.Context, id int64) (int64, error)
 	// InsertTurnMessages appends the user row (NULL consulted/model) and the
 	// assistant row in one statement. The caller holds the conversation guard

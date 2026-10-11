@@ -4,18 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"tree-eclass/internal/domain/platform"
 )
 
 func (c *Controller) Doctor(ctx context.Context) error {
 	if err := c.configured(); err != nil {
-		return err
-	}
-	if err := c.verifyStorageTools(ctx); err != nil {
 		return err
 	}
 	if err := verifyTessdata(c.Config.Tessdata); err != nil {
@@ -29,37 +24,27 @@ func (c *Controller) Doctor(ctx context.Context) error {
 		return err
 	}
 	fmt.Printf(
-		"Native data: %s\nPostgreSQL: %s\nFree disk: %.2f GiB\n",
+		"Native data: %s\nDatabase: sqlite %s\nFree disk: %.2f GiB\n",
 		c.active(),
-		c.Config.PostgresVersion,
+		filepath.Join(c.active(), "sqlite.db"),
 		float64(free)/(1024*1024*1024),
 	)
 	return c.Status()
 }
 
-func (c *Controller) verifyStorageTools(ctx context.Context) error {
-	result, err := exec.CommandContext(ctx, filepath.Join(c.Config.PostgresBin, "postgres"), "--version").Output()
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(string(result)) != c.Config.PostgresVersion {
-		return fmt.Errorf("PostgreSQL version changed; cold checkpoints require %s", c.Config.PostgresVersion)
-	}
-	return nil
-}
 func (c *Controller) Status() error {
 	fmt.Printf("Mode: %s\nRelease: %s\n", c.State.Mode, c.State.Release)
 	if c.State.Baseline != "" {
 		fmt.Printf("Development baseline: %s (development writes will be discarded)\n", c.State.Baseline)
 	}
-	for _, name := range []string{"postgres", "api", "frontend-build", "frontend", "migration", "collection", "watcher"} {
+	for _, name := range []string{"api", "frontend-build", "frontend", "migration", "collection", "watcher"} {
 		fmt.Printf("%s: %t\n", name, c.Processes.Alive(name))
 	}
 	return nil
 }
 func (c *Controller) Logs(name string) error {
 	switch name {
-	case "postgres", "api", "frontend-build", "frontend", "migration", "collection", "watcher":
+	case "api", "frontend-build", "frontend", "migration", "collection", "watcher":
 	default:
 		return fmt.Errorf("unknown service %q", name)
 	}

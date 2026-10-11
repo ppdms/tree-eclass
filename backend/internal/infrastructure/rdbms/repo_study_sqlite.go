@@ -12,9 +12,8 @@ type sqliteStudy struct{ db nativeDBTX }
 // studyStalenessSQLite renders the inbox recency factor natively: a stored
 // last_updated parses only when it matches a full calendar-date shape
 // (YYYY-MM-DD with a valid month/day); anything else (including upstream
-// garbage like 'invalid-upstream-date') falls back to 30 days, exactly like
-// the PostgreSQL pg_input_is_valid probe. Clamp/floor semantics mirror the
-// PostgreSQL min/max/coalesce chain.
+// garbage like 'invalid-upstream-date') falls back to 30 days.
+// Clamp/floor semantics follow the min/max/coalesce chain.
 const studyStalenessSQLite = `min(90,max(0,coalesce(CASE WHEN
  f.last_updated GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'
  AND substr(f.last_updated,6,2) BETWEEN '01' AND '12'
@@ -337,4 +336,41 @@ func (s sqliteStudy) PublishMetric(
 		return false, err
 	}
 	return result.RowsAffected() == 1, nil
+}
+
+func scanStudyInbox(rows nativeRows) (database.StudyInboxItem, error) {
+	var item database.StudyInboxItem
+	err := rows.Scan(
+		&item.Path,
+		&item.Name,
+		&item.URL,
+		&item.Redirect,
+		&item.Updated,
+		&item.CourseID,
+		&item.CourseName,
+		&item.Prefix,
+		&item.Level,
+		&item.Priority,
+	)
+	return item, err
+}
+
+func scanStudyMaterial(rows nativeRows) (database.StudyPriorityMaterial, error) {
+	var row database.StudyPriorityMaterial
+	err := rows.Scan(
+		&row.ID,
+		&row.CourseID,
+		&row.CourseName,
+		&row.Name,
+		&row.Path,
+		&row.Origin,
+		&row.Kind,
+		&row.Complexity,
+		&row.Reading,
+		&row.Pages,
+		&row.Words,
+		&row.Level,
+		&row.Enrichment,
+	)
+	return row, err
 }

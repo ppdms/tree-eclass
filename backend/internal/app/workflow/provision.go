@@ -2,13 +2,11 @@ package workflow
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"tree-eclass/internal/domain/platform"
 )
@@ -25,11 +23,6 @@ func (c *Controller) Setup(ctx context.Context) error {
 
 // setupExisting refreshes the helper tooling of an already initialized dataset.
 func (c *Controller) setupExisting(ctx context.Context) error {
-	pg, version, err := postgresDependency(ctx)
-	if err != nil {
-		return err
-	}
-	c.Config.PostgresBin, c.Config.PostgresVersion = pg, version
 	if err := c.setupParser(ctx); err != nil {
 		return err
 	}
@@ -76,9 +69,8 @@ func (c *Controller) initializeSetup(ctx context.Context) error {
 	if err = c.setupParser(ctx); err != nil {
 		return err
 	}
-	cfg.Password = rand.Text()
 	cfg.SourceRoot = c.Repo
-	cfg.Ports = Ports{Postgres: 15432, HTTP: 8000}
+	cfg.Ports = Ports{HTTP: 8000}
 	cfg.Format = 1
 	c.Config = cfg
 	if err = c.setupDevelopment(ctx); err != nil {
@@ -121,10 +113,6 @@ func (c *Controller) writeSetupConfig() error {
 func (c *Controller) dependencies(ctx context.Context) (Config, error) {
 	var cfg Config
 	var err error
-	cfg.PostgresBin, cfg.PostgresVersion, err = postgresDependency(ctx)
-	if err != nil {
-		return cfg, err
-	}
 	cfg.Bun, err = exec.LookPath("bun")
 	if err != nil {
 		return cfg, err
@@ -147,23 +135,4 @@ func (c *Controller) dependencies(ctx context.Context) (Config, error) {
 		return cfg, err
 	}
 	return cfg, nil
-}
-
-func postgresDependency(ctx context.Context) (string, string, error) {
-	pg := os.Getenv("TREE_POSTGRES_BIN")
-	if pg == "" {
-		pg = "/opt/homebrew/opt/postgresql@18/bin"
-	}
-	pg, err := filepath.Abs(pg)
-	if err != nil {
-		return "", "", fmt.Errorf("set TREE_POSTGRES_BIN to PostgreSQL 18: %w", err)
-	}
-	version, err := exec.CommandContext(ctx, filepath.Join(pg, "postgres"), "--version").Output()
-	if err != nil {
-		return "", "", err
-	}
-	if !strings.Contains(string(version), " 18.") {
-		return "", "", errors.New("PostgreSQL 18 is required")
-	}
-	return pg, strings.TrimSpace(string(version)), nil
 }

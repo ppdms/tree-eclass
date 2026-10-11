@@ -1,13 +1,12 @@
 package workflow
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/jackc/pgx/v5"
 
 	"tree-eclass/internal/infrastructure/checkpoint"
 	"tree-eclass/internal/infrastructure/process"
@@ -30,14 +29,12 @@ func TestNativeApplicationLifecycleAndFailedActivation(t *testing.T) {
 	if err := c.Up(ctx); err != nil || c.State.Session != before {
 		t.Fatal("idempotent startup changed session", err)
 	}
-	conn, err := pgx.Connect(ctx, c.databaseURL())
-	if err != nil {
+	conn := sqliteTestDB(t, c)
+	var err error
+	if _, err = conn.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(991,'Stable fixture','/Courses/991')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = conn.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(991,'Stable fixture','/Courses/991')`); err != nil {
-		t.Fatal(err)
-	}
-	conn.Close(ctx)
+	conn.Close()
 	if err = c.Down(); err != nil {
 		t.Fatal(err)
 	}
@@ -57,12 +54,9 @@ func TestNativeApplicationLifecycleAndFailedActivation(t *testing.T) {
 	if err = c.Up(ctx); err != nil {
 		t.Fatal("resume after failed activation", err)
 	}
-	conn, err = pgx.Connect(ctx, c.databaseURL())
-	if err != nil {
-		t.Fatal(err)
-	}
+	conn = sqliteTestDB(t, c)
 	verifyStableData(t, conn)
-	conn.Close(ctx)
+	conn.Close()
 	if c.State.Session == before {
 		t.Fatal("restart reused browser write authority")
 	}
@@ -72,17 +66,17 @@ func TestNativeApplicationLifecycleAndFailedActivation(t *testing.T) {
 	failedDevelopmentStartChecks(t, c)
 }
 
-func verifyStableData(t *testing.T, conn *pgx.Conn) {
+func verifyStableData(t *testing.T, conn *sql.DB) {
 	t.Helper()
 	ctx := t.Context()
 	var name string
-	var extra *string
-	if err := conn.QueryRow(ctx, `SELECT name FROM app.courses WHERE id=991`).Scan(&name); err != nil ||
+	var extra int
+	if err := conn.QueryRowContext(ctx, `SELECT name FROM courses WHERE id=991`).Scan(&name); err != nil ||
 		name != "Stable fixture" {
 		t.Fatal("stable data lost", name, err)
 	}
-	if err := conn.QueryRow(ctx, `SELECT to_regclass('app.partially_migrated')::text`).Scan(&extra); err != nil ||
-		extra != nil {
+	if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='partially_migrated'`).Scan(&extra); err != nil ||
+		extra != 0 {
 		t.Fatal("failed activation schema survived", extra, err)
 	}
 }

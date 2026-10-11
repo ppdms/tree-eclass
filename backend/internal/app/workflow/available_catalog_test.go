@@ -15,7 +15,7 @@ func TestNativeAvailableCatalogListsPortfolio(t *testing.T) {
 	c := nativeSharedController(t)
 	ctx := context.Background()
 	conn, _ := startTestStorage(t, c)
-	t.Cleanup(func() { conn.Close(ctx) })
+	t.Cleanup(func() { conn.Close() })
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/main/login_form.php":
@@ -32,9 +32,9 @@ func TestNativeAvailableCatalogListsPortfolio(t *testing.T) {
 		}
 	}))
 	t.Cleanup(upstream.Close)
-	if _, err := conn.Exec(
+	if _, err := conn.ExecContext(
 		ctx,
-		`INSERT INTO app.credentials(id,username,password) VALUES(1,$1,$2)`,
+		`INSERT INTO credentials(id,username,password) VALUES(1,?,?)`,
 		identity.Encode("synthetic student"),
 		identity.Encode("synthetic-password"),
 	); err != nil {
@@ -42,7 +42,7 @@ func TestNativeAvailableCatalogListsPortfolio(t *testing.T) {
 	}
 	api, err := server.New(
 		ctx,
-		server.Config{DatabaseURL: c.databaseURL(), ObjectsRoot: c.testObjectsRoot(), Mode: "test"},
+		server.Config{SQLitePath: c.storageConfig().SQLitePath, ObjectsRoot: c.testObjectsRoot(), Mode: "test"},
 		server.WithEclassBaseURL(upstream.URL),
 	)
 	if err != nil {
@@ -80,7 +80,7 @@ func TestNativeAvailableCatalogListsPortfolio(t *testing.T) {
 		t.Fatalf("catalog did not reflect local edit: %#v", catalog)
 	}
 	var short *string
-	if err = conn.QueryRow(ctx, `SELECT short_name FROM app.courses WHERE id=543`).Scan(&short); err != nil ||
+	if err = conn.QueryRowContext(ctx, `SELECT short_name FROM courses WHERE id=543`).Scan(&short); err != nil ||
 		short == nil || identity.Decode(*short) != "KT" {
 		t.Fatalf("short name not stored: %#v %v", short, err)
 	}

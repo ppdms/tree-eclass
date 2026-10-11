@@ -33,13 +33,13 @@ func communityFreshnessChecks(t *testing.T, pool *fixtureStore) {
 	}
 	tx.Rollback(ctx)
 	var before, after int64
-	if err = pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=901`).Scan(&before); err != nil {
+	if err = pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=901`).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Native.Exec(ctx, `UPDATE messages.conversation_messages SET position=position+1 WHERE conversation_id='conversation'`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE conversation_messages SET position=position+1 WHERE conversation_id='conversation'`); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.Native.QueryRow(ctx, `SELECT generation FROM read_model.course_generation WHERE course_id=901`).Scan(&after); err != nil ||
+	if err = pool.Native.QueryRowContext(ctx, `SELECT generation FROM course_generation WHERE course_id=901`).Scan(&after); err != nil ||
 		after <= before {
 		t.Fatal("membership did not invalidate navigation", before, after, err)
 	}

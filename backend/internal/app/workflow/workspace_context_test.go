@@ -75,14 +75,14 @@ func workspaceContextChecks(t *testing.T, pool *fixtureStore, base, document, ac
 		nil,
 	)
 	apiJSON(t, "GET", root+"&document_id=missing", nil, 404, nil)
-	if _, err = pool.Native.Exec(ctx, `UPDATE knowledge.documents SET status='pending' WHERE id=$1`, document); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE documents SET status='pending' WHERE id=?`, document); err != nil {
 		t.Fatal(err)
 	}
 	apiJSON(t, "GET", root+"&document_id="+url.QueryEscape(document), nil, 409, nil)
-	if _, err = pool.Native.Exec(ctx, `UPDATE knowledge.documents SET status='ready' WHERE id=$1`, document); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE documents SET status='ready' WHERE id=?`, document); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Native.Exec(ctx, `UPDATE app.study_annotations SET source_hash='older-revision' WHERE id=$1`, live.ID); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE study_annotations SET source_hash='older-revision' WHERE id=?`, live.ID); err != nil {
 		t.Fatal(err)
 	}
 	apiJSON(t, "GET", root+"&document_id="+url.QueryEscape(document), nil, 200, &view)
@@ -93,7 +93,7 @@ func workspaceContextChecks(t *testing.T, pool *fixtureStore, base, document, ac
 	if err != nil || len(listing.Annotations) != 2 {
 		t.Fatal("deleted bookmark hid live bookmark", listing, err)
 	}
-	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.study_annotations WHERE id=ANY($1::bigint[])`, []int64{bookmark.ID, live.ID}); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `DELETE FROM study_annotations WHERE id=? OR id=?`, bookmark.ID, live.ID); err != nil {
 		t.Fatal(err)
 	}
 }

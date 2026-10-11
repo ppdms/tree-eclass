@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,7 +14,6 @@ import (
 	"testing"
 	"tree-eclass/internal/domain/database"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/knowledge"
 	"tree-eclass/internal/domain/materials"
 	"tree-eclass/internal/infrastructure/blob"
@@ -24,7 +24,7 @@ import (
 type syncFixture struct {
 	ctx         context.Context
 	c           *Controller
-	conn        *pgx.Conn
+	conn        *sql.DB
 	pool        *fixtureStore
 	objects     *blob.Store
 	generation  *atomic.Int32
@@ -56,8 +56,8 @@ func newSyncFixture(t *testing.T) *syncFixture {
 	c := nativeSharedController(t)
 	ctx := context.Background()
 	conn, objects := startTestStorage(t, c)
-	t.Cleanup(func() { conn.Close(ctx) })
-	if _, err := conn.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(101,'Συνθετικό','/Courses/101')`); err != nil {
+	t.Cleanup(func() { conn.Close() })
+	if _, err := conn.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(101,'Συνθετικό','/Courses/101')`); err != nil {
 		t.Fatal(err)
 	}
 	pool := newFixtureStore(t, ctx, c)
@@ -69,11 +69,11 @@ func newSyncFixture(t *testing.T) *syncFixture {
 		t.Fatal(err)
 	}
 	service := synchronization.Service{Pool: pool, Objects: objects, MirrorObjects: objects, Temp: t.TempDir()}
-	if _, err = conn.Exec(ctx, `INSERT INTO app.credentials(id,username,password) VALUES(1,'synthetic','synthetic')`); err != nil {
+	if _, err = conn.ExecContext(ctx, `INSERT INTO credentials(id,username,password) VALUES(1,'synthetic','synthetic')`); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", t.TempDir())
-	if _, err = conn.Exec(ctx, `INSERT INTO app.preferences(id,download_base_path) VALUES(1,'/University')`); err != nil {
+	if _, err = conn.ExecContext(ctx, `INSERT INTO preferences(id,download_base_path) VALUES(1,'/University')`); err != nil {
 		t.Fatal("configure automatic mirror", err)
 	}
 	if _, err = (materials.Service{Pool: pool, Objects: objects, Temp: t.TempDir()}).Upload(ctx, materials.Upload{
@@ -98,9 +98,9 @@ func newSyncFixture(t *testing.T) *syncFixture {
 		t.Fatalf("course check did not refresh external mirror: %q %v", external, err)
 	}
 	var document string
-	if err = pool.Native.QueryRow(
+	if err = pool.Native.QueryRowContext(
 		ctx,
-		`SELECT id FROM knowledge.documents WHERE course_id=101 AND source_origin='eclass'`,
+		`SELECT id FROM documents WHERE course_id=101 AND source_origin='eclass'`,
 	).Scan(&document); err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func syncArchiveChecks(t *testing.T, fixture *syncFixture) {
 	t.Helper()
 	ctx := fixture.ctx
 	var alias string
-	if err := fixture.conn.QueryRow(ctx, `SELECT version_webdav_path FROM app.file_versions WHERE change_type='deleted'`).Scan(&alias); err != nil {
+	if err := fixture.conn.QueryRowContext(ctx, `SELECT version_webdav_path FROM file_versions WHERE change_type='deleted'`).Scan(&alias); err != nil {
 		t.Fatal(err)
 	}
 	archive, err := (knowledge.Reader{Pool: fixture.pool}).LogicalContent(ctx, alias)

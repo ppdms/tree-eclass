@@ -3,6 +3,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,15 +11,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/annotations"
 	"tree-eclass/internal/domain/exercises"
 )
 
-func annotationChecks(t *testing.T, db *pgx.Conn, base, document string) {
+func annotationChecks(t *testing.T, db *sql.DB, base, document string) {
 	t.Helper()
 	var sourceHash string
-	if err := db.QueryRow(t.Context(), `SELECT source_hash FROM knowledge.documents WHERE id=$1`, document).Scan(&sourceHash); err != nil {
+	if err := db.QueryRowContext(t.Context(), `SELECT source_hash FROM documents WHERE id=?`, document).Scan(&sourceHash); err != nil {
 		t.Fatal(err)
 	}
 	body := map[string]any{
@@ -56,7 +56,7 @@ func annotationChecks(t *testing.T, db *pgx.Conn, base, document string) {
 	if len(result.Annotations) != 1 || result.NewlyOrphaned != 0 {
 		t.Fatalf("annotation listing: %+v", result)
 	}
-	if _, err := db.Exec(context.Background(), `UPDATE knowledge.documents SET source_hash='changed-source' WHERE id=$1`, document); err != nil {
+	if _, err := db.ExecContext(context.Background(), `UPDATE documents SET source_hash='changed-source' WHERE id=?`, document); err != nil {
 		t.Fatal(err)
 	}
 	apiJSON(t, "GET", url, nil, 200, &result)
@@ -77,16 +77,16 @@ func annotationChecks(t *testing.T, db *pgx.Conn, base, document string) {
 	apiJSON(t, "POST", base+"/api/study/annotations", body, 422, nil)
 	body["course_id"] = true
 	apiJSON(t, "POST", base+"/api/study/annotations", body, 422, nil)
-	if _, err := db.Exec(t.Context(), `UPDATE knowledge.documents SET source_hash=$2 WHERE id=$1`, document, sourceHash); err != nil {
+	if _, err := db.ExecContext(t.Context(), `UPDATE documents SET source_hash=? WHERE id=?`, sourceHash, document); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func exerciseChecks(t *testing.T, db *pgx.Conn, base string) {
+func exerciseChecks(t *testing.T, db *sql.DB, base string) {
 	t.Helper()
-	_, err := db.Exec(
+	_, err := db.ExecContext(
 		context.Background(),
-		`INSERT INTO app.exercises(course_id,exercise_id,title,link,deadline,description) VALUES(101,'assignment-1','Εργασία','https://example.invalid','25 Μαρτίου 2026 - 11:55 μ.μ.','Detailed synthetic assignment')`,
+		`INSERT INTO exercises(course_id,exercise_id,title,link,deadline,description) VALUES(101,'assignment-1','Εργασία','https://example.invalid','25 Μαρτίου 2026 - 11:55 μ.μ.','Detailed synthetic assignment')`,
 	)
 	if err != nil {
 		t.Fatal(err)

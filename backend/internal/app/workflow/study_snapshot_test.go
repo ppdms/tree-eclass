@@ -10,20 +10,20 @@ import (
 func studySnapshotChecks(t *testing.T, pool *fixtureStore, base string) {
 	t.Helper()
 	ctx := t.Context()
-	_, err := pool.Native.Exec(
-		ctx,
-		`INSERT INTO app.courses(id,name,webdav_folder,hidden) VALUES(801,'Study visible','/Courses/801',0),(802,'Study hidden planned','/Courses/802',1),(803,'Study hidden inactive','/Courses/803',1);
- INSERT INTO app.course_exam_plans(course_id,enabled,exam_at) VALUES(802,1,'2026-09-20');
- INSERT INTO app.nodes(id,course_id,name,url,local_path) VALUES(9801,801,'root','https://example.invalid/801','/Courses/801/eclass'),(9802,802,'root','https://example.invalid/802','/Courses/802/eclass');
- INSERT INTO app.files(node_id,url,name,local_path,last_updated) VALUES
+	for _, stmt := range []string{
+		`INSERT INTO courses(id,name,webdav_folder,hidden) VALUES(801,'Study visible','/Courses/801',0),(802,'Study hidden planned','/Courses/802',1),(803,'Study hidden inactive','/Courses/803',1)`,
+		`INSERT INTO course_exam_plans(course_id,enabled,exam_at) VALUES(802,1,'2026-09-20')`,
+		`INSERT INTO nodes(id,course_id,name,url,local_path) VALUES(9801,801,'root','https://example.invalid/801','/Courses/801/eclass'),(9802,802,'root','https://example.invalid/802','/Courses/802/eclass')`,
+		`INSERT INTO files(node_id,url,name,local_path,last_updated) VALUES
  (9801,'https://example.invalid/old','old.txt','/Courses/801/eclass/old.txt','2026-01-01'),
  (9801,'https://example.invalid/mastered','mastered.txt','/Courses/801/eclass/mastered.txt','2026-01-01'),
  (9801,'https://example.invalid/ignored','ignored.txt','/Courses/801/eclass/ignored.txt','2026-01-01'),
- (9802,'https://example.invalid/unknown','unknown.txt','/Courses/802/eclass/unknown.txt','invalid-upstream-date');
- INSERT INTO app.file_study(course_id,file_path,level) VALUES(801,'/Courses/801/eclass/mastered.txt',4),(801,'/Courses/801/eclass/ignored.txt',5)`,
-	)
-	if err != nil {
-		t.Fatal(err)
+ (9802,'https://example.invalid/unknown','unknown.txt','/Courses/802/eclass/unknown.txt','invalid-upstream-date')`,
+		`INSERT INTO file_study(course_id,file_path,level) VALUES(801,'/Courses/801/eclass/mastered.txt',4),(801,'/Courses/801/eclass/ignored.txt',5)`,
+	} {
+		if _, err := pool.Native.ExecContext(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
 	}
 	service := study.Service{Pool: pool}
 	selected := int64(801)
@@ -64,8 +64,9 @@ func studySnapshotChecks(t *testing.T, pool *fixtureStore, base string) {
 			t.Fatal("hidden study files leaked into unscoped inbox")
 		}
 	}
-	_, err = pool.Native.Exec(ctx, `INSERT INTO app.files(node_id,url,name,local_path,last_updated)
- SELECT 9801,'https://example.invalid/future-'||i,'future-'||i||'.txt','/Courses/801/eclass/future-'||i||'.txt','2100-01-01' FROM generate_series(1,65) i`)
+	_, err = pool.Native.ExecContext(ctx, `WITH RECURSIVE i(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM i WHERE x<65)
+ INSERT INTO files(node_id,url,name,local_path,last_updated)
+ SELECT 9801,'https://example.invalid/future-'||x,'future-'||x||'.txt','/Courses/801/eclass/future-'||x||'.txt','2100-01-01' FROM i`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func studySnapshotChecks(t *testing.T, pool *fixtureStore, base string) {
 		snapshot.Inbox[1].Priority != 0 {
 		t.Fatal("inbox bound, ordering or future timestamps", err)
 	}
-	if _, err = pool.Native.Exec(ctx, `DELETE FROM app.courses WHERE id IN(801,802,803)`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `DELETE FROM courses WHERE id IN(801,802,803)`); err != nil {
 		t.Fatal(err)
 	}
 }

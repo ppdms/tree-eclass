@@ -2,13 +2,13 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/infrastructure/blob"
 	"tree-eclass/internal/infrastructure/checkpoint"
 	"tree-eclass/internal/infrastructure/rdbms"
@@ -18,7 +18,7 @@ import (
 type coldRestoreFixture struct {
 	c        *Controller
 	ctx      context.Context
-	conn     *pgx.Conn
+	conn     *sql.DB
 	store    *blob.Store
 	ref      blob.Reference
 	snapshot checkpoint.Manifest
@@ -37,7 +37,7 @@ func prepareColdRestore(t *testing.T) coldRestoreFixture {
 	ctx := context.Background()
 	conn, store := startTestStorage(t, c)
 	ref := seedColdBaseline(t, c, ctx, conn, store)
-	if err := conn.Close(ctx); err != nil {
+	if err := conn.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.stopAll(); err != nil {
@@ -56,11 +56,11 @@ func seedColdBaseline(
 	t *testing.T,
 	c *Controller,
 	ctx context.Context,
-	conn *pgx.Conn,
+	conn *sql.DB,
 	store *blob.Store,
 ) blob.Reference {
 	t.Helper()
-	if _, err := conn.Exec(ctx, "INSERT INTO app.courses(id,name,webdav_folder) VALUES(101,'Σταθερό μάθημα','/Courses/101')"); err != nil {
+	if _, err := conn.ExecContext(ctx, "INSERT INTO courses(id,name,webdav_folder) VALUES(101,'Σταθερό μάθημα','/Courses/101')"); err != nil {
 		t.Fatal(err)
 	}
 	ref, err := store.Put(ctx, strings.NewReader("stable document"), "text/plain", t.TempDir())
@@ -72,18 +72,19 @@ func seedColdBaseline(
 	if err != nil || same.VersionID != ref.VersionID || same.MediaType != ref.MediaType {
 		t.Fatalf("immutable retry: %#v %v", same, err)
 	}
-	if err = rdbms.WrapConn(conn).Objects().RegisterObject(ctx, asObjectReference(ref)); err != nil {
+	catalog := rdbms.WrapSQLite(conn).Objects()
+	if err = catalog.RegisterObject(ctx, asObjectReference(ref)); err != nil {
 		t.Fatal(err)
 	}
-	if err = rdbms.WrapConn(conn).Objects().RegisterObject(ctx, asObjectReference(same)); err != nil {
+	if err = catalog.RegisterObject(ctx, asObjectReference(same)); err != nil {
 		t.Fatal("idempotent catalog registration", err)
 	}
 	changed := ref
 	changed.VersionID = "must-not-relabel-a-revision"
-	if err = rdbms.WrapConn(conn).Objects().RegisterObject(ctx, asObjectReference(changed)); err == nil {
+	if err = catalog.RegisterObject(ctx, asObjectReference(changed)); err == nil {
 		t.Fatal("object ID silently relabeled to a different object version")
 	}
-	if err = storage.Migrate(ctx, c.databaseURL()); err != nil {
+	if err = storage.MigrateConfig(ctx, c.storageConfig()); err != nil {
 		t.Fatal("idempotent migration", err)
 	}
 	return ref
@@ -92,7 +93,10 @@ func seedColdBaseline(
 func mutateColdDevelopment(t *testing.T, fixture coldRestoreFixture) {
 	t.Helper()
 	ctx, c, conn, store, ref := fixture.ctx, fixture.c, fixture.conn, fixture.store, fixture.ref
-	if _, err := conn.Exec(ctx, "ALTER TABLE app.courses DROP COLUMN name CASCADE; CREATE TABLE app.dev_only(id int)"); err != nil {
+	if _, err := conn.ExecContext(ctx, "ALTER TABLE courses DROP COLUMN name"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, "CREATE TABLE dev_only(id INTEGER)"); err != nil {
 		t.Fatal(err)
 	}
 	// Out-of-band loss: the content-addressed file vanishes after the snapshot was taken.
@@ -105,7 +109,7 @@ func mutateColdDevelopment(t *testing.T, fixture coldRestoreFixture) {
 	if err := os.WriteFile(filepath.Join(c.active(), "settings", "dev-only"), []byte("discard"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	_ = conn.Close(ctx)
+	_ = conn.Close()
 	if err := c.stopAll(); err != nil {
 		t.Fatal(err)
 	}
@@ -118,14 +122,14 @@ func restoreColdBaseline(t *testing.T, fixture coldRestoreFixture) {
 	t.Helper()
 	ctx, c := fixture.ctx, fixture.c
 	conn, store := startTestStorage(t, c)
-	t.Cleanup(func() { conn.Close(ctx) })
+	t.Cleanup(func() { conn.Close() })
 	var name string
-	if err := conn.QueryRow(ctx, "SELECT name FROM app.courses WHERE id=101").Scan(&name); err != nil ||
+	if err := conn.QueryRowContext(ctx, "SELECT name FROM courses WHERE id=101").Scan(&name); err != nil ||
 		name != "Σταθερό μάθημα" {
 		t.Fatalf("relational restore: %q %v", name, err)
 	}
-	var extra *string
-	if err := conn.QueryRow(ctx, "SELECT to_regclass('app.dev_only')::text").Scan(&extra); err != nil || extra != nil {
+	var extra int
+	if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='dev_only'").Scan(&extra); err != nil || extra != 0 {
 		t.Fatalf("development schema survived: %v %v", extra, err)
 	}
 	object, err := store.Open(ctx, fixture.ref)

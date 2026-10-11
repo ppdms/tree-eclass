@@ -67,7 +67,6 @@ func (c *Controller) Collect(ctx context.Context) (err error) {
 
 func (c *Controller) collectionConfig() server.Config {
 	return server.Config{
-		DatabaseURL: c.databaseURL(),
 		SQLitePath:  c.storageConfig().SQLitePath,
 		ObjectsRoot: c.objectsRoot(),
 	}

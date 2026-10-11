@@ -2,15 +2,15 @@ package workflow
 
 import (
 	"context"
+	"database/sql"
 	"net/url"
 	"testing"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
 	"tree-eclass/internal/domain/knowledge"
 )
 
-func searchChecks(t *testing.T, db *pgx.Conn, base, document string) {
+func searchChecks(t *testing.T, db *sql.DB, base, document string) {
 	t.Helper()
 	for _, mode := range []string{"lexical", "semantic", "hybrid"} {
 		var result knowledge.SearchResponse
@@ -31,7 +31,7 @@ func searchChecks(t *testing.T, db *pgx.Conn, base, document string) {
 		documents.Documents[0].EmbeddingCount != 1 {
 		t.Fatalf("index diagnostics: %+v", documents)
 	}
-	if _, err := db.Exec(context.Background(), `INSERT INTO knowledge.page_enrichments(document_id,page_number,source_hash,analysis_version,status,model,requested_model,payload_json,available_at) SELECT id,1,source_hash,'test','ready','synthetic','synthetic','{"summary":"Synthetic page insight","secret_internal_field":"must not leave"}','now' FROM knowledge.documents WHERE id=$1`, document); err != nil {
+	if _, err := db.ExecContext(context.Background(), `INSERT INTO page_enrichments(document_id,page_number,source_hash,analysis_version,status,model,requested_model,payload_json,available_at) SELECT id,1,source_hash,'test','ready','synthetic','synthetic','{"summary":"Synthetic page insight","secret_internal_field":"must not leave"}',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM documents WHERE id=?`, document); err != nil {
 		t.Fatal(err)
 	}
 	var pages knowledge.PageInsights

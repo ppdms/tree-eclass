@@ -43,7 +43,7 @@ func (s *archiveSourceFixture) Drive(context.Context, string, string) (eclass.Do
 func archiveSyncChecks(t *testing.T, pool *fixtureStore, indexer knowledge.Indexer) {
 	t.Helper()
 	ctx := t.Context()
-	if _, err := pool.Native.Exec(ctx, `INSERT INTO app.courses(id,name,webdav_folder) VALUES(792,'Official archive','/Courses/792')`); err != nil {
+	if _, err := pool.Native.ExecContext(ctx, `INSERT INTO courses(id,name,webdav_folder) VALUES(792,'Official archive','/Courses/792')`); err != nil {
 		t.Fatal(err)
 	}
 	source := &archiveSourceFixture{
@@ -55,13 +55,13 @@ func archiveSyncChecks(t *testing.T, pool *fixtureStore, indexer knowledge.Index
 		t.Fatal(err)
 	}
 	var parent, child string
-	if err := pool.Native.QueryRow(ctx, `SELECT id FROM knowledge.documents WHERE course_id=792`).Scan(&parent); err != nil {
+	if err := pool.Native.QueryRowContext(ctx, `SELECT id FROM documents WHERE course_id=792`).Scan(&parent); err != nil {
 		t.Fatal(err)
 	}
 	if err := indexer.Index(ctx, parent); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.Native.QueryRow(ctx, `SELECT child_document_id FROM knowledge.archive_members WHERE parent_document_id=$1`, parent).Scan(&child); err != nil {
+	if err := pool.Native.QueryRowContext(ctx, `SELECT child_document_id FROM archive_members WHERE parent_document_id=?`, parent).Scan(&child); err != nil {
 		t.Fatal(err)
 	}
 	if err := indexer.Index(ctx, child); err != nil {

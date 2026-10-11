@@ -28,16 +28,16 @@ func practiceChecks(t *testing.T, pool *fixtureStore, base, document string, ref
 	encoded, _ := json.Marshal(question)
 	a := settings.DefaultAI()
 	var setID int64
-	err = pool.Native.QueryRow(ctx, `INSERT INTO knowledge.practice_question_sets(course_id,unit_key,set_hash,blueprint_revision_hash,evidence_hash,evidence_packet_json,analysis_version,status,requested_model,model,available_at,created_at)
- VALUES(101,'unit_one','practice-set-1','build-r1','evidence-1','{}',$1,'ready',$2,'fallback-practice-model','now','now') RETURNING id`, settings.PracticeAnalysisVersion, a.PracticeModel).
+	err = pool.Native.QueryRowContext(ctx, `INSERT INTO practice_question_sets(course_id,unit_key,set_hash,blueprint_revision_hash,evidence_hash,evidence_packet_json,analysis_version,status,requested_model,model,available_at,created_at)
+ VALUES(101,'unit_one','practice-set-1','build-r1','evidence-1','{}',?,'ready',?,'fallback-practice-model',strftime('%Y-%m-%dT%H:%M:%fZ','now'),strftime('%Y-%m-%dT%H:%M:%fZ','now')) RETURNING id`, settings.PracticeAnalysisVersion, a.PracticeModel).
 		Scan(&setID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = pool.Native.Exec(
+	_, err = pool.Native.ExecContext(
 		ctx,
-		`INSERT INTO knowledge.practice_questions(question_id,set_id,course_id,unit_key,ordinal,question_key,response_mode,difficulty,estimated_minutes,payload_json)
- VALUES($1,$2,101,'unit_one',1,$3,$4,$5,$6,$7)`,
+		`INSERT INTO practice_questions(question_id,set_id,course_id,unit_key,ordinal,question_key,response_mode,difficulty,estimated_minutes,payload_json)
+ VALUES(?,?,101,'unit_one',1,?,?,?,?,?)`,
 		question.ID,
 		setID,
 		question.Key,
@@ -78,7 +78,7 @@ func practiceStaleChecks(
 	var view practice.View
 	url := base + "/api/study/practice?course_id=101"
 	var err error
-	if _, err = pool.Native.Exec(ctx, `UPDATE knowledge.practice_question_sets SET requested_model='obsolete-model' WHERE id=$1`, setID); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `UPDATE practice_question_sets SET requested_model='obsolete-model' WHERE id=?`, setID); err != nil {
 		t.Fatal(err)
 	}
 	apiJSON(t, "GET", url, nil, 200, &view)
@@ -98,7 +98,7 @@ func practiceStaleChecks(
 		409,
 		nil,
 	)
-	if _, err = pool.Native.Exec(ctx, `DELETE FROM knowledge.practice_question_sets WHERE id=$1;`, setID); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `DELETE FROM practice_question_sets WHERE id=?`, setID); err != nil {
 		t.Fatal(err)
 	}
 	refresh()
@@ -163,8 +163,8 @@ func practiceAttemptChecks(t *testing.T, pool *fixtureStore, base, question stri
 		t.Fatal("failed recall did not return question to queue", q)
 	}
 	practiceAtomicityChecks(t, pool, service, in)
-	for _, query := range []string{`DELETE FROM app.practice_attempts WHERE question_id=$1`, `DELETE FROM app.study_unit_events WHERE action_id=$1`} {
-		if _, err := pool.Native.Exec(ctx, query, question); err != nil {
+	for _, query := range []string{`DELETE FROM practice_attempts WHERE question_id=?`, `DELETE FROM study_unit_events WHERE action_id=?`} {
+		if _, err := pool.Native.ExecContext(ctx, query, question); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -173,10 +173,9 @@ func practiceAttemptChecks(t *testing.T, pool *fixtureStore, base, question stri
 func practiceAtomicityChecks(t *testing.T, pool *fixtureStore, service practice.Service, in practice.Attempt) {
 	t.Helper()
 	ctx := t.Context()
-	_, err := pool.Native.Exec(
+	_, err := pool.Native.ExecContext(
 		ctx,
-		`CREATE FUNCTION app.synthetic_attempt_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic disk failure'; END $$;
- CREATE TRIGGER synthetic_attempt_failure BEFORE INSERT ON app.practice_attempts FOR EACH ROW EXECUTE FUNCTION app.synthetic_attempt_failure()`,
+		`CREATE TRIGGER synthetic_attempt_failure BEFORE INSERT ON practice_attempts BEGIN SELECT RAISE(ABORT,'synthetic disk failure'); END`,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -186,12 +185,12 @@ func practiceAtomicityChecks(t *testing.T, pool *fixtureStore, service practice.
 		t.Fatal("injected attempt failure succeeded")
 	}
 	var attempts, events int64
-	err = pool.Native.QueryRow(ctx, `SELECT (SELECT count(*) FROM app.practice_attempts WHERE question_id=$1),(SELECT count(*) FROM app.study_unit_events WHERE action_id=$1)`, in.Question).
+	err = pool.Native.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM practice_attempts WHERE question_id=?),(SELECT count(*) FROM study_unit_events WHERE action_id=?)`, in.Question, in.Question).
 		Scan(&attempts, &events)
 	if err != nil || attempts != 3 || events != 3 {
 		t.Fatal("failed attempt left an orphan event", attempts, events, err)
 	}
-	if _, err = pool.Native.Exec(ctx, `DROP TRIGGER synthetic_attempt_failure ON app.practice_attempts; DROP FUNCTION app.synthetic_attempt_failure()`); err != nil {
+	if _, err = pool.Native.ExecContext(ctx, `DROP TRIGGER synthetic_attempt_failure`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = service.Record(ctx, in); err != nil {

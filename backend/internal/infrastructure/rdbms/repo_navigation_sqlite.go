@@ -229,7 +229,7 @@ func (n sqliteNavigation) BlueprintPayload(
 ) (database.NavigationBlueprintPayload, error) {
 	var out database.NavigationBlueprintPayload
 	// length(CAST(... AS BLOB)) counts payload bytes natively, matching the
-	// PostgreSQL octet_length budget.
+	// byte-length budget.
 	err := n.db.QueryRow(ctx, navigationBlueprintSQLite, id).
 		Scan(&out.Payload, &out.Packet)
 	return out, err
@@ -272,7 +272,7 @@ func (n sqliteNavigation) LockedGeneration(
 	ctx context.Context, course int64,
 ) (int64, error) {
 	// The admitted writer transaction (or the reader snapshot) provides the
-	// exclusion PostgreSQL expresses with FOR SHARE.
+	// exclusion a row share lock would express.
 	var generation int64
 	err := n.db.QueryRow(ctx, `SELECT generation FROM course_generation
 WHERE course_id=?`, course).Scan(&generation)

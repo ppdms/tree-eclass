@@ -52,7 +52,7 @@ func chatChecks(t *testing.T, pool *fixtureStore, base string) {
 	apiJSON(t, "DELETE", target, nil, 200, nil)
 	apiJSON(t, "GET", target, nil, 404, nil)
 	var messages int
-	if err = pool.Native.QueryRow(ctx, `SELECT count(*) FROM app.chat_messages WHERE conversation_id=$1`, first.ID).Scan(&messages); err != nil {
+	if err = pool.Native.QueryRowContext(ctx, `SELECT count(*) FROM chat_messages WHERE conversation_id=?`, first.ID).Scan(&messages); err != nil {
 		t.Fatal(err)
 	}
 	if messages != 0 {

@@ -1,6 +1,6 @@
 package identity
 
-// EncodeJSON preserves NUL and literal private-use characters through PostgreSQL
+// EncodeJSON preserves NUL and literal private-use characters through SQLite
 // JSONB, using the same reversible text codec as relational text columns. Call
 // DecodeJSON only at the corresponding encoded storage boundary.
 func EncodeJSON(value any) any { return mapJSON(value, Encode) }
