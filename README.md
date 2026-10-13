@@ -148,6 +148,24 @@ private synthetic SQLite and objects-store fixtures, verifies relocated parser/h
 static browser delivery, runs frontend tests and quality gates, cleans output, then resumes
 the previous mode. It does not synchronize real courses or call external providers.
 
+### Offline UI review
+
+The [offline UI review guide](docs/offline-ui-review.md) documents the synthetic
+Storybook catalog and interaction/screenshot evidence. It needs no native application
+or live dataset:
+
+```sh
+cd frontend
+bun run ui:preview
+bun run ui:build
+bun run ui:capture --list
+bun run ui:capture --only ask-- --only session-- --out reading-review
+```
+
+Build and capture are separate. Capture rejects stale builds and existing run names;
+galleries, screenshots, traces and manifests stay in the ignored `frontend/.ui-review/`.
+Offline UI evidence does not prove backend persistence, integrations or deployment parity.
+
 Focused checks:
 
 ```sh

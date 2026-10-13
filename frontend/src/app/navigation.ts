@@ -1,5 +1,6 @@
 import { matchRoutes, type RouteObject } from 'react-router';
-import { router, routes } from './router';
+import { router } from './router';
+import { routes } from './routes';
 
 export function navigate(href: string) {
   void router.navigate(href);

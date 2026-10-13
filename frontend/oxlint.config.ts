@@ -3,7 +3,7 @@
 import { defineConfig } from 'oxlint';
 
 export default defineConfig({
-  ignorePatterns: ['.next/**', 'dist/**', 'node_modules/**', 'tools/oxlint/anti-slop/**'],
+  ignorePatterns: ['.next/**', '.ui-review/**', 'dist/**', 'node_modules/**', 'tools/oxlint/anti-slop/**'],
   jsPlugins: [
     { name: 'anti-slop', specifier: './tools/oxlint/anti-slop/index.ts' },
     { name: 'stylex', specifier: '@stylexjs/eslint-plugin' },

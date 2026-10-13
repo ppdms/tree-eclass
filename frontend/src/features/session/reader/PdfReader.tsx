@@ -80,6 +80,12 @@ const styles = stylex.create({
   },
 });
 
+interface PageRenderTask {
+  cancelled: boolean;
+  canvas: pdfjs.RenderTask | null;
+  text: pdfjs.TextLayer | null;
+}
+
 async function renderPageToCanvas(
   pdf: PDFDocumentProxy,
   pageNumber: number,
@@ -87,8 +93,10 @@ async function renderPageToCanvas(
   target: HTMLCanvasElement,
   textLayer: HTMLElement,
   onRendered: (rendered: boolean) => void,
-): Promise<{ cancel: () => void }> {
+  task: PageRenderTask,
+): Promise<void> {
   const page = await pdf.getPage(pageNumber);
+  if (task.cancelled || pdf.loadingTask.destroyed) return;
   const viewport = page.getViewport({ scale });
   const ratio = !isServer() ? window.devicePixelRatio || 1 : 1;
   target.width = Math.floor(viewport.width * ratio);
@@ -98,25 +106,23 @@ async function renderPageToCanvas(
   target.style.height = `${viewport.height / rootFontSize}rem`;
 
   const context = target.getContext('2d');
-  if (!context) return { cancel: () => {} };
+  if (!context) return;
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  const task = page.render({ canvasContext: context, canvas: target, viewport });
-  try {
-    await task.promise;
-  } catch (error) {
-    if (error instanceof Error && error.name !== 'RenderingCancelledException') throw error;
-    return { cancel: () => {} };
-  }
-
+  task.canvas = page.render({ canvasContext: context, canvas: target, viewport });
+  await task.canvas.promise;
+  task.canvas = null;
+  if (task.cancelled || pdf.loadingTask.destroyed) return;
+  const content = await page.getTextContent();
+  if (task.cancelled || pdf.loadingTask.destroyed) return;
   textLayer.replaceChildren();
-  const layer = new pdfjs.TextLayer({
-    textContentSource: await page.getTextContent(),
+  task.text = new pdfjs.TextLayer({
+    textContentSource: content,
     container: textLayer,
     viewport,
   });
-  await layer.render();
-  onRendered(true);
-  return { cancel: () => task.cancel() };
+  await task.text.render();
+  task.text = null;
+  if (!task.cancelled && !pdf.loadingTask.destroyed) onRendered(true);
 }
 
 function usePageRender(
@@ -133,19 +139,27 @@ function usePageRender(
     const target = canvasRef.current;
     const textLayer = textLayerRef.current;
     if (!target || !textLayer) return undefined;
-    let cancelled = false;
-    let task: { cancel: () => void } | null = null;
-
-    (async () => {
-      const result = await renderPageToCanvas(pdf, pageNumber, scale, target, textLayer, onRendered);
-      if (cancelled) return;
-      task = result;
-    })();
-
-    return () => {
-      cancelled = true;
-      task?.cancel();
+    const task: PageRenderTask = { cancelled: false, canvas: null, text: null };
+    // Cleanup exists before async work starts. A canceled render cannot reuse
+    // this page's canvas/text layer or report a stale completion.
+    const cancel = () => {
+      task.cancelled = true;
+      task.canvas?.cancel();
+      task.text?.cancel();
     };
+    onRendered(false);
+    void renderPageToCanvas(pdf, pageNumber, scale, target, textLayer, onRendered, task).catch((error: Error) => {
+      // The loader can destroy this document before React cleans up its page effect.
+      if (
+        (task.cancelled || pdf.loadingTask.destroyed) &&
+        error instanceof Error &&
+        ((task.canvas !== null && error.name === 'RenderingCancelledException') ||
+          (task.text !== null && error.name === 'AbortException'))
+      )
+        return;
+      throw error;
+    });
+    return cancel;
   }, [pdf, pageNumber, scale, shouldRender, onRendered, canvasRef, textLayerRef]);
 }
 

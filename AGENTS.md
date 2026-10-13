@@ -300,14 +300,15 @@ Prefer `./tree`: it owns native configuration, operation locking, disposable
 verification and cleanup. If a workflow is missing, inspect `backend/internal/app/workflow/`
 and fix the controller rather than institutionalizing a manual workaround.
 
-| Task                                                                 | Start here                                                                                                               |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Daily startup or full shutdown                                       | [README daily workflow](README.md#daily-mac-start-and-stop); `dev up` ensures prerequisites; `dev down` fully shuts down |
-| First-time setup, credentials, editable development, stable releases | [README setup and releases](README.md#setup-and-releases); setup is not a daily startup command                          |
-| Native schema and recovery boundaries                                | `./tree snapshot list`; use cold checkpoints and forward migrations                                                      |
-| Full application validation                                          | `./tree check`; uses disposable SQLite files and removes generated build output afterward                                |
-| Native build cleanup                                                 | `./tree clean` while stopped; see [low-disk policy](README.md#low-disk-development-policy)                               |
-| Frontend composition and styling                                     | Read [StyleX authoring](docs/stylex-authoring.md) and follow the design-system rules below                               |
+| Task                                                                 | Start here                                                                                                                             |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Daily startup or full shutdown                                       | [README daily workflow](README.md#daily-mac-start-and-stop); `dev up` ensures prerequisites; `dev down` fully shuts down               |
+| First-time setup, credentials, editable development, stable releases | [README setup and releases](README.md#setup-and-releases); setup is not a daily startup command                                        |
+| Native schema and recovery boundaries                                | `./tree snapshot list`; use cold checkpoints and forward migrations                                                                    |
+| Full application validation                                          | `./tree check`; uses disposable SQLite files and removes generated build output afterward                                              |
+| Native build cleanup                                                 | `./tree clean` while stopped; see [low-disk policy](README.md#low-disk-development-policy)                                             |
+| Frontend composition and styling                                     | Read [StyleX authoring](docs/stylex-authoring.md) and follow the design-system rules below                                             |
+| Offline UI scenarios and screenshots                                 | Read [offline UI review](docs/offline-ui-review.md); use `bun run ui:preview`, explicit `ui:build`, then `ui:capture` from `frontend/` |
 
 Do not boot Colima, start the tunnel, or build application images for a
 documentation-only change. Validate documentation formatting and local links;
@@ -451,6 +452,14 @@ progress updates independently of immutable guidance.
   objects-store fixtures. The parser fixture is short-lived and isolated; it never opens
   application storage or credentials.
 - Tests must stay offline and use disposable synthetic data. Never point native checks at the authoritative dataset. Browser behavior is checked by the native browser fixture and frontend tests.
+
+Offline UI review uses the production route table, components and styling with
+synthetic HTTP fixtures in `frontend/review/`, not module mocks or a separate demo.
+Keep fixtures and generated evidence out of the production application path.
+The built Storybook index is authoritative; capture must reject stale builds,
+unexpected requests/errors and missing checkpoints. Do not mask real product
+failures in previews. See [offline UI review](docs/offline-ui-review.md) for the
+viewport, isolation, provenance, authoring and evidence limits.
 
 ## Security / trust boundary
 

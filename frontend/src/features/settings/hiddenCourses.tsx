@@ -2,6 +2,7 @@ import { navigate } from '@/app/navigation';
 import * as stylex from '@stylexjs/stylex';
 import { Icon } from '@/components/Icon';
 import * as React from 'react';
+import { useRevalidator } from 'react-router';
 import { buttonStyles } from '@/components/ui/styles';
 import type { CourseSummary } from '@/lib/types';
 import { media } from '@/styles/constants.stylex';
@@ -59,6 +60,7 @@ function HiddenCourseAction({ course, busy, onShow }: { course: CourseSummary; b
 }
 
 export function HiddenCourseRow({ course }: HiddenCourseRowProps) {
+  const revalidator = useRevalidator();
   const [state, setState] = React.useState<'busy' | string | null>(null);
   const show = async () => {
     setState('busy');
@@ -70,6 +72,8 @@ export function HiddenCourseRow({ course }: HiddenCourseRowProps) {
       });
       if (!response.ok) throw new Error('Could not restore this course.');
       navigate('/settings#hidden-courses');
+      // Hash-only navigation does not refresh loader data after the mutation.
+      void revalidator.revalidate();
     } catch (error) {
       setState(error instanceof Error ? error.message : 'Could not restore this course.');
     }

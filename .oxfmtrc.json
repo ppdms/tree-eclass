@@ -16,6 +16,7 @@
     "node_modules/",
     "frontend/node_modules/",
     "frontend/.next/",
+    "frontend/.ui-review/",
     "frontend/next-env.d.ts",
     "data/",
     ".venv/",

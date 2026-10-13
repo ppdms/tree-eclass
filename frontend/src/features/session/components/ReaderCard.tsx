@@ -21,6 +21,7 @@ export interface ReaderCardProps {
 const styles = stylex.create({
   readerPane: {
     overflow: 'hidden',
+    display: 'flex',
     flexBasis: '0%',
     flexGrow: 1,
     flexShrink: 1,
