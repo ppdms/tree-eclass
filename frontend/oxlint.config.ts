@@ -3,22 +3,13 @@
 import { defineConfig } from 'oxlint';
 
 export default defineConfig({
-  ignorePatterns: ['.next/**', 'dist/**', 'node_modules/**', 'tools/oxlint/anti-slop/**'],
+  // Generated, hash-pinned dependency products are checked by their native recipes.
+  ignorePatterns: ['.next/**', 'dist/**', 'node_modules/**', 'vendor/**', 'tools/oxlint/anti-slop/**'],
   jsPlugins: [
     { name: 'anti-slop', specifier: './tools/oxlint/anti-slop/index.ts' },
-    { name: 'stylex', specifier: '@stylexjs/eslint-plugin' },
     { name: 'stylistic', specifier: '@stylistic/eslint-plugin' },
   ],
   rules: {
-    // StyleX catches invalid declarations at compile time only loosely; keep
-    // the authoring rules in Oxlint so invalid properties and merge hazards
-    // fail before they reach the bundler.
-    'stylex/valid-styles': 'error',
-    'stylex/no-unused': 'error',
-    'stylex/valid-shorthands': 'warn',
-    'stylex/sort-keys': 'warn',
-    'stylex/enforce-extension': 'error',
-    'stylex/no-conflicting-props': 'error',
     // Structural gates: no file over 400 lines, no function body over 50
     // lines. The Stylistic JS plugin supplies the strict 120-character line
     // limit that Oxlint does not provide as a native rule.

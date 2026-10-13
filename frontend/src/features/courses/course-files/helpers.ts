@@ -15,15 +15,3 @@ export function formatFileSize(value: number | null | undefined): string {
 export function formatTimestamp(timestamp: string | undefined): string {
   return formatDateTime(timestamp) || String(timestamp);
 }
-
-export function relativePath(localPath: string | undefined, webdavFolder: string): string {
-  if (!localPath || !webdavFolder) return '';
-  const prefix = `${webdavFolder.replace(/\/+$/, '')}/`;
-  return localPath.startsWith(prefix) ? localPath.slice(prefix.length) : localPath;
-}
-
-export function fileHref(path: string): string {
-  if (!path) return '#';
-  const normalized = String(path).startsWith('/') ? String(path) : `/${path}`;
-  return `/files${encodeURI(normalized)}`;
-}

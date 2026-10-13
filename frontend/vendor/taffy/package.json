@@ -1,0 +1,19 @@
+{
+  "name": "tree-canvas-taffy",
+  "version": "3.0.0-trim.2",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    },
+    "./wasm": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  }
+}

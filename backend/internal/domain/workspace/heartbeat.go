@@ -15,6 +15,7 @@ import (
 type Beat struct {
 	SessionID, Sequence, Page, Interval int64
 	Document                            string
+	SourceHash                          string
 	Active                              bool
 }
 type BeatResult struct {
@@ -71,6 +72,9 @@ func recordBeat(
 	if err != nil {
 		return Session{}, err
 	}
+	if source != in.SourceHash {
+		return Session{}, ErrSourceChanged
+	}
 	if pages != nil && *pages > 0 && in.Page > *pages {
 		return Session{}, ErrInvalid
 	}
@@ -88,7 +92,8 @@ func validateBeat(in Beat) error {
 		in.Interval < 0 ||
 		in.Interval > 3600 ||
 		in.Document == "" ||
-		len(in.Document) > 200 {
+		len(in.Document) > 200 ||
+		in.SourceHash == "" || len(in.SourceHash) > 200 {
 		return ErrInvalid
 	}
 	return nil

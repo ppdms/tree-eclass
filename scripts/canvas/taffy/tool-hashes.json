@@ -1,0 +1,6 @@
+{
+  "typescript/lib/typescript.js": "569177652966bd528c319171c7dd22860dbf72bde116cbc4f644f1d02bb12e39",
+  "binaryen/index.js": "3c003d56ad65c2695964e47931825c6a92d4c55aef628e8e8812f69bb0981d71",
+  "binaryen/bin/wasm-metadce": "a440fe8039ae35eab6b560dea173d36e5387b213680ff172ef65707ffef69f2f",
+  "binaryen/bin/wasm-opt": "0284fdf9172127deaecccfc8d8ce1eba55ce06e3ea3d373a2ead8fda35f2b445"
+}

@@ -62,7 +62,7 @@ func (c *Controller) Check(ctx context.Context) (err error) {
 		{"ruff", "format", "--check", "."},
 		{filepath.Join(c.Repo, "frontend/node_modules/.bin/oxfmt"), "--check", "."},
 		{c.Config.Bun, "run", "--cwd", filepath.Join(c.Repo, "frontend"), "lint"},
-		{c.Config.Bun, "test", "frontend/tools/tests"},
+		{c.Config.Bun, "test", "--cwd", filepath.Join(c.Repo, "frontend")},
 	}
 	for _, args := range checks {
 		fmt.Printf("Checking %s\n", args[0])

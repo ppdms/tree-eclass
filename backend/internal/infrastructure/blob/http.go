@@ -26,12 +26,13 @@ func (s *Store) serve(w http.ResponseWriter, r *http.Request, ref Reference, fil
 	w.Header().Set("Content-Type", ref.MediaType)
 	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": filename}))
 	w.Header().Set("Cache-Control", "private, no-cache")
-	if matches(r.Header.Get("If-None-Match"), tag, true) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
+	// Source admission precedes cache validation: a cached newer revision cannot satisfy an older reader context.
 	if value := r.Header.Get("If-Match"); value != "" && !matches(value, tag, false) {
 		w.WriteHeader(http.StatusPreconditionFailed)
+		return
+	}
+	if matches(r.Header.Get("If-None-Match"), tag, true) {
+		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 	requested := r.Header.Get("Range")

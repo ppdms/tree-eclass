@@ -1,0 +1,184 @@
+{
+  "schema": 1,
+  "package": {
+    "name": "tree-canvas-taffy",
+    "version": "3.0.0-trim.2"
+  },
+  "upstream": {
+    "name": "taffy-layout",
+    "version": "3.0.0",
+    "gitHead": "1b42367e1c37a7d6d0e7afc645fa13b10c9b53fc",
+    "integrity": "sha512-d5IK13tpgAbGz8w4BBTpVdagN0GNMEV563FwuU8iHbGhBm9kWHZoZvS716sG2vUPZmol6DSuZZmRwLrG95s78Q=="
+  },
+  "tools": {
+    "typescript": "6.0.3",
+    "binaryen": "123.0.0"
+  },
+  "toolHashes": {
+    "typescript/lib/typescript.js": "569177652966bd528c319171c7dd22860dbf72bde116cbc4f644f1d02bb12e39",
+    "binaryen/index.js": "3c003d56ad65c2695964e47931825c6a92d4c55aef628e8e8812f69bb0981d71",
+    "binaryen/bin/wasm-metadce": "a440fe8039ae35eab6b560dea173d36e5387b213680ff172ef65707ffef69f2f",
+    "binaryen/bin/wasm-opt": "0284fdf9172127deaecccfc8d8ce1eba55ce06e3ea3d373a2ead8fda35f2b445"
+  },
+  "source": "Published taffy-layout 3.0.0 bytes, export trim, and a Binaryen-123 hash-locked single-native-function cutover removing callback Style clone/boxing/transfer. No Rust source rebuild.",
+  "runtimeAsset": "./taffy_wasm_bg.wasm",
+  "exports": {
+    ".": "./index.js",
+    "./wasm": "./index.js"
+  },
+  "instanceContract": "Root and /wasm share index.js and its sole generated taffy_wasm.js module. Await the unchanged upstream init before constructing classes.",
+  "apiAndGraph": {
+    "surface": "scripts/canvas/taffy/surface.json",
+    "generation": "generation-manifest.json",
+    "metadce": "metadce-graph.json"
+  },
+  "buildOnlyOutputsNotPackaged": [
+    "metadce-unused.txt",
+    "binaryen-diagnostics.txt"
+  ],
+  "recipe": {
+    "commands": [
+      "python3 -B scripts/canvas/taffy.py prepare --workspace \"$TAFFY_WORK\" --allow-downloads",
+      "python3 -B scripts/canvas/taffy.py generate --workspace \"$TAFFY_WORK\""
+    ],
+    "candidate": "$TAFFY_WORK/dist",
+    "supportedHost": "POSIX with Python 3.9+, Node 22+ and npm on PATH",
+    "newRecipeExecution": "Pinned trimming, native four-argument measure ABI and exact output checks completed before unused workspace helpers were removed; the retained recipe has not been rerun.",
+    "reproductionBoundary": "Every packaged file except build-manifest.json, including generation-manifest.json, must reproduce its existing byte count and SHA-256. Build-only diagnostics remain outside dist.",
+    "maximumWorkspaceBytes": 1073741824,
+    "minimumInitialFreeBytes": 2147483648,
+    "minimumRemainingFreeBytes": 1073741824,
+    "parallelism": "One Binaryen process; BINARYEN_CORES=1; native JS Binaryen single thread.",
+    "network": "Only explicit prepare downloads integrity-locked npm packages; generation is local.",
+    "npmConfiguration": "Distinct empty owned user/global config files avoid npm 10 rejecting a shared /dev/null.",
+    "cleanup": "Prepare/generate success removes owned npm and temporary caches. Stage failures remove only the identity-marked, locked workspace. Explicit clean removes the remaining owned tools/candidate, including when the recipe has changed.",
+    "cleanupCommands": [
+      "python3 -B scripts/canvas/taffy.py clean --workspace \"$TAFFY_WORK\""
+    ]
+  },
+  "proof": {
+    "generation": "Pinned native measure-body, ABI/export and exact output hash checks completed.",
+    "runtimeDifferential": {
+      "scope": "Separately executed against the preserved five-argument baseline and installed candidate, not run by the recipe.",
+      "scenarios": 48,
+      "comparedLayouts": 1444,
+      "callbacksPerSuite": 1312,
+      "actualCallbackStyleCopies": {
+        "baseline": 1312,
+        "candidate": 0
+      },
+      "geometrySHA256": "b8b630ae5ee1b9739f5887354bc1bc47352372df79ee56f96a23c2eccf14e06d",
+      "callbackErrors": "Throw, undefined, Promise and nonnumeric results preserved baseline behavior.",
+      "ownership": "Memory and externref growth reached the same observed repeat plateau in both variants."
+    },
+    "coldStartup": "Unmeasured"
+  },
+  "packagedFiles": {
+    "LICENSE": {
+      "bytes": 1084,
+      "sha256": "732fbe1fa6637bef291ffcb7d18ac45dc34998dd701125582ce270efaf7ab9bf"
+    },
+    "generation-manifest.json": {
+      "bytes": 12551,
+      "sha256": "654ad8db32a0dae35c5f9efa456c3e1f2119e5e9cde1c2addcf29041ac31be4a"
+    },
+    "index.d.ts": {
+      "bytes": 76,
+      "sha256": "6efd88573e0d8e6ebcff5b2203b50e9ce2b0a8b468ce0137dfe5ceedf41c014a"
+    },
+    "index.js": {
+      "bytes": 362,
+      "sha256": "a78c6280fafaf8012449456324436c3e39c3c88b9f7b0f0f45d2b3eb4d67a57b"
+    },
+    "metadce-graph.json": {
+      "bytes": 30875,
+      "sha256": "379171ccc688f542469726c1e32c7565c5cf1f06b45ca5c7b828c3906dfb1976"
+    },
+    "package.json": {
+      "bytes": 353,
+      "sha256": "5217ba09a0b14d31f7b5405e02d9cfacb7b3ca76564e0d763f4137b8be8b14cb"
+    },
+    "taffy_wasm.d.ts": {
+      "bytes": 13188,
+      "sha256": "33457c6eda9db06f47676269670f6e342683c458623083bc6b25f7c4afbdebd7"
+    },
+    "taffy_wasm.js": {
+      "bytes": 28685,
+      "sha256": "8d6a8a56a4fa8fcaf7bb240291654d3752f0c20702eac1b36859949962611c32"
+    },
+    "taffy_wasm_bg.wasm": {
+      "bytes": 435611,
+      "sha256": "4b24d0292294e0ea6339fd64b5def0858037a76cf7aa792f72f8299c4b04a6f2"
+    },
+    "taffy_wasm_bg.wasm.d.ts": {
+      "bytes": 2063,
+      "sha256": "109a058c907c4dda075ec90e08c1a5ed6605965182559de7ee94f72f7f983755"
+    }
+  },
+  "measureABI": {
+    "inputSHA256": "3e184ecd20404e275f89c21bf9dc428013ec61d0d109efcf51fb047242215542",
+    "callbackSHA256": "6c422caedb21078ab5254d797d8a968f87637b9230aa46ec04e7cf5c1538636e",
+    "blockSHA256": "22dd8fbd78c94db917d409c8cbfddc372082844f6df8b981200096687808b3df",
+    "changedFunctionsBeforeDCE": [
+      "26"
+    ],
+    "removedStatementIndices": [
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      54,
+      77
+    ],
+    "removedStatementHashes": [
+      "8d7cb71331a28e1fbc12d7a66b4a3b63285dfa79cd0e5a5c1db11c8cffaa1058",
+      "d4e5d159c6f12505ae586d752bca9cffbcaca09b0d3d31031c1f1571f576b100",
+      "7e27071cac3b40674a454926341e5dd62651519db8ea434cfb6a1c00c24640b4",
+      "380519cbd028efb168b1760266ccdf29248a2648ad251d60c18d05d9e4262f95",
+      "51f3527db1f1eb5b2cc48d1985360e5946e870784b9fad7ffd132bf80181dd18",
+      "9b8f70d2e4869d009bdffee479c9509bf467ae0bb11d177e0a437f8e7092383a",
+      "f5b3a5ceb6e980be67496bc9337b7fa1d17e9d2e0cc7d372914ec711ebe75b90",
+      "c7b281dd5cee63e60ed447c0d466c78c541882751ed6b9bb963f3a165ea860a7",
+      "68d1f4965e1b5a119882b38d0049211d4e2dcd43342bd214f1e44d6dacdda7e6",
+      "eccf439f3c6b7104cda1e07bec3012e52b4af82f28d66b461b828af61ced106a",
+      "035422b7125d3c38af5e79c40fb9220c27041d4edf3d19f5f1402377f8a2854f",
+      "1a57f254c60ed3d1e6de91edd2430ea1642b966f42a98410df5ca8d46f58d2ed",
+      "1ec6d402a06a4004ade047170ad86988c0f8684a4012fd4f4c9f4f1c85152771",
+      "f379dcffc6ede944ef079a13cadcb982b3dac626a6e664ba289d5daac8b18d36"
+    ],
+    "replacement": "Preserve exact original i64 node load as local.set 117; no stack Style copy",
+    "removed": [
+      "Style deep-clone call 191",
+      "400-byte stack memory.copy",
+      "416-byte Box allocation/copy call 323",
+      "Style wrapper transfer import",
+      "Style externref table allocation",
+      "fifth argument push",
+      "Style externref release"
+    ],
+    "outputSHA256": "4b24d0292294e0ea6339fd64b5def0858037a76cf7aa792f72f8299c4b04a6f2",
+    "outputBytes": 435611
+  },
+  "permanentRecipeFingerprint": {
+    "taffy/adapter/index.d.ts": "6efd88573e0d8e6ebcff5b2203b50e9ce2b0a8b468ce0137dfe5ceedf41c014a",
+    "taffy/adapter/index.js": "a78c6280fafaf8012449456324436c3e39c3c88b9f7b0f0f45d2b3eb4d67a57b",
+    "taffy/expected-products.json": "b0cfff4f7dfe2cff81edf06d3a77d2d39bab360ed222a95133a1e432dd932c7d",
+    "taffy/generate.mjs": "a5d49143ddedfc7428c0a6e8065c8dc58ff1dc91e25f67583fff2c605a1d41e5",
+    "taffy/measure-abi.mjs": "d1373def8e2b31c0845259713685984c12a8646eee044dc39938a6eb3bc649e7",
+    "taffy/package-lock.json": "70959ea344c07a596a3a76f53f1b87b780cbbc708d7c1ccba7df5d58a25f2958",
+    "taffy/package.json": "5b5231fc7ba2aa06ba7f1b9e05f1c8c8408e9d5e139d12b4ce55722317f3b598",
+    "taffy/surface.json": "a6fbec8edf4ad6495de0f83928851a18c4978c4b252c416ffe3fd0056325c929",
+    "taffy/tool-hashes.json": "e856da6c79b16e216e3f4d6179f92f87c3f3a298476e629f20350d02cf74854a",
+    "taffy/transform.mjs": "f574b4f6031138f4470724d9e732dfd3a43865be17ae3ace43f767f75a761a9f",
+    "taffy.py": "d284e7da4dabcc21b27df44881fb340d699eed17b00880cfa2f012f153da8561",
+    "workspace.py": "1aeafcf4e5dbb09d4af706c9ccd63bd01f98863b1791b9b469cdb5a78277e8ac"
+  }
+}

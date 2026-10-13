@@ -60,6 +60,9 @@ func (c *Create) Validate() error {
 	if c.DocumentID == "" || len(c.DocumentID) > 200 {
 		return errors.New("document_id is required and must fit 200 bytes")
 	}
+	if c.SourceHash == "" || len(c.SourceHash) > 200 {
+		return errors.New("source_hash is required and must fit 200 bytes")
+	}
 	c.IdempotencyKey = strings.TrimSpace(c.IdempotencyKey)
 	if !keyPattern.MatchString(c.IdempotencyKey) {
 		return errors.New(

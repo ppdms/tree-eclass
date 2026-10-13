@@ -4,12 +4,6 @@ A personal, evidence-backed university learning cockpit.
 
 > See what changed, choose one meaningful next action, read the source, and ask focused questions without losing provenance.
 
-<p align="center">
-  <img src="docs/screenshots/activity-dark.png" alt="tree-eClass activity inbox in dark mode" width="31%" />
-  <img src="docs/screenshots/courses-dark.png" alt="tree-eClass course shelf in dark mode" width="31%" />
-  <img src="docs/screenshots/ask-dark.png" alt="tree-eClass material-backed Ask conversation in dark mode" width="31%" />
-</p>
-
 The interface is intentionally serious and information-first. It is built for one learner working across university course trees, official course material, prior exams, personal notes, and community discussion. Activity, generated guidance, and system metadata stay distinguishable from learning itself.
 
 ## What it does
@@ -31,7 +25,7 @@ Evidence keeps its origin: official material, past exams, community-authored con
 ├── Objects directory   Local content-addressed document/object storage
 ├── tree-eclass         Go JSON API, read-only MCP, queues and background jobs
 │   └── native helpers  Short-lived Python parsers, OCR, PDF and Discord export
-└── Browser assets      React UI, routing and direct API requests; served by Go
+└── Browser assets      React-in-worker canvas UI and direct API requests; served by Go
 ```
 
 Services bind to loopback. Expensive work is serialized, database connections and
@@ -43,6 +37,36 @@ Application and domain code use typed, SQL-free persistence operations from
 `backend/internal/domain/database`. The single SQLite adapter in
 `backend/internal/infrastructure/rdbms` owns its directly written native SQL.
 Transactions span operation groups, with backend-neutral records and errors.
+
+### Canonical canvas frontend
+
+`frontend/index.html` starts `frontend/src/canvas/app/startup.ts`. The browser owns
+native input, clipboard, history and namespaced storage; a dedicated module worker
+owns the custom React renderer, React Router and Taffy WASM layout. Canvas2D paints
+content and text on one opaque visible canvas; WebGL2 composites Liquid Glass
+navigation offscreen, then Canvas2D draws that completed transparent layer onto
+the same output at the end of the worker frame. Browser FontFace loads
+the shipped Inter and Roboto Mono WOFF2 faces, with browser/system glyph fallback.
+The session reader uses pdf.js with worker-safe OffscreenCanvas rendering and a
+separate PDF parser worker.
+
+Author components against the bounded host vocabulary in `frontend/src/canvas/ui/`,
+not DOM elements or a parallel styling system. Routes and runtime bridges live in
+`frontend/src/canvas/app/`; the reader and learning-session workspace live in
+`frontend/src/canvas/session/`. See the authoritative
+[canvas authoring guide](docs/canvas-authoring.md) for supported styles, ownership,
+font/license inventory and verification procedures.
+
+The user-approved acceptance target is **at most 150 ms from warm-cache navigation
+to the full, correct, interactive first viewport**; cold navigation is best effort
+and must be reported separately. Model the real link at about **200 Mbit/s and
+15 ms RTT**, counting connection/request latency, assets, data, fonts,
+initialization, layout, drawing and usable input handling. Use repeated-run medians
+in Chromium, WebKit/Safari and Firefox with shipped browser APIs, visible windows
+initialized on `about:blank`, substantive nonblank content and trusted native input.
+Readiness/budget markers are diagnostic, not proof. The source cutover does not
+establish acceptance; a localhost pass is not a deployed-device pass, and no
+deployed-origin acceptance is established here.
 
 ## Local development and regular use
 
@@ -147,15 +171,26 @@ The native gate suspends the application, builds the React browser app, runs Go 
 private synthetic SQLite and objects-store fixtures, verifies relocated parser/helpers and
 static browser delivery, runs frontend tests and quality gates, cleans output, then resumes
 the previous mode. It does not synchronize real courses or call external providers.
+This gate does not by itself establish rendered fidelity, trusted native input or
+the warm-cache interactivity target or a deployed-origin pass. The canvas guide describes the separate
+headed-browser and disposable native workflow checks.
 
 Focused checks:
+
+For agent-run focused checks, keep build output, caches, browser profiles and
+fixtures under an owned gitignored `.tree-build/` workspace, not `/tmp`, and set
+`TMPDIR` there before tools create temporary files. The
+[canvas guide](docs/canvas-authoring.md#canonical-build-and-focused-checks) gives
+the production frontend workspace and native verification requirements.
 
 ```sh
 go -C backend test ./cmd/... ./internal/...
 go -C backend test -race ./cmd/... ./internal/...
 go -C backend vet ./cmd/... ./internal/...
 python3 scripts/quality/audit_limits.py
+(cd frontend && bun run typecheck)
 (cd frontend && bun run lint)
+bun test frontend/tools/tests frontend/src/canvas
 frontend/node_modules/.bin/oxfmt --check .
 ruff check . && ruff format --check .
 ```
@@ -184,8 +219,10 @@ backend/internal/services/    Analysis, chat, library, synthesis and sync
 backend/internal/integrations/ E-class, Discord, model and parser integrations
 backend/internal/infrastructure/ Storage, process, filesystem and runtime adapters
 parser/                       Short-lived Python document parser boundary
-frontend/src/                 React Router pages, Ask, study workspace and shell
-docs/                         StyleX authoring guide and UI screenshots
+frontend/src/canvas/          Canonical React-in-worker app, host renderer and reader
+frontend/src/assets/          Shipped WOFF2 fonts, unshipped regeneration inputs and license notices
+frontend/vendor/              Pinned Taffy WASM layout binding
+docs/canvas-authoring.md       Canonical canvas authoring and verification guide
 ```
 
 ## Trust boundary

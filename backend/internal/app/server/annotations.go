@@ -37,7 +37,7 @@ func queryID(w http.ResponseWriter, r *http.Request, key string) (int64, bool) {
 	return id, true
 }
 func (s *Server) annotationError(w http.ResponseWriter, err error) {
-	if errors.Is(err, annotations.ErrIdempotencyConflict) {
+	if errors.Is(err, annotations.ErrIdempotencyConflict) || errors.Is(err, annotations.ErrSourceChanged) {
 		writeFailure(w, http.StatusConflict, err.Error())
 		return
 	}

@@ -42,3 +42,6 @@ knowledge.db
 
 # Machine-specific operational and recovery docs; never published.
 /docs/private/
+
+# Local design notes are not part of published source.
+/Explain Liquid Glass--6acb4265.md

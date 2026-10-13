@@ -18,12 +18,14 @@ import (
 func annotationChecks(t *testing.T, db *sql.DB, base, document string) {
 	t.Helper()
 	var sourceHash string
-	if err := db.QueryRowContext(t.Context(), `SELECT source_hash FROM documents WHERE id=?`, document).Scan(&sourceHash); err != nil {
+	if err := db.QueryRowContext(t.Context(),
+		`SELECT source_hash FROM documents WHERE id=?`, document).Scan(&sourceHash); err != nil {
 		t.Fatal(err)
 	}
 	body := map[string]any{
 		"course_id":       "101",
 		"document_id":     document,
+		"source_hash":     sourceHash,
 		"page_number":     1,
 		"quote":           "Δένδρα\x00\ue000",
 		"idempotency_key": "synthetic-highlight-1",
@@ -37,6 +39,35 @@ func annotationChecks(t *testing.T, db *sql.DB, base, document string) {
 	if first.Annotation.ID == 0 || first.Annotation.Quote != body["quote"] {
 		t.Fatalf("annotation round trip: %+v", first)
 	}
+	annotationReplayChecks(t, base, body, first.Annotation.ID)
+	var result annotations.Listing
+	url := base + "/api/study/annotations?course_id=101&document_id=" + document
+	apiJSON(t, "GET", url, nil, 200, &result)
+	if len(result.Annotations) != 1 || result.NewlyOrphaned != 0 {
+		t.Fatalf("annotation listing: %+v", result)
+	}
+	if _, err := db.ExecContext(context.Background(),
+		`UPDATE documents SET source_hash='changed-source' WHERE id=?`, document); err != nil {
+		t.Fatal(err)
+	}
+	annotationSourceRaceChecks(t, base, body, first.Annotation.ID)
+	apiJSON(t, "GET", url, nil, 200, &result)
+	if result.NewlyOrphaned != 1 || result.Annotations[0].Status != "orphaned" ||
+		result.Annotations[0].SourceHash == "changed-source" {
+		t.Fatal("source replacement rewrote or lost learner evidence")
+	}
+	annotationHistoryChecks(t, base, url, first.Annotation.ID)
+	body["quote"] = ""
+	apiJSON(t, "POST", base+"/api/study/annotations", body, 422, nil)
+	body["course_id"] = true
+	apiJSON(t, "POST", base+"/api/study/annotations", body, 422, nil)
+	if _, err := db.ExecContext(t.Context(), `UPDATE documents SET source_hash=? WHERE id=?`, sourceHash, document); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func annotationReplayChecks(t *testing.T, base string, body map[string]any, id int64) {
+	t.Helper()
 	var wg sync.WaitGroup
 	for range 5 {
 		wg.Go(func() {
@@ -44,27 +75,18 @@ func annotationChecks(t *testing.T, db *sql.DB, base, document string) {
 				Annotation annotations.Annotation `json:"annotation"`
 			}
 			apiJSON(t, "POST", base+"/api/study/annotations", body, 200, &retry)
-			if retry.Annotation.ID != first.Annotation.ID {
+			if retry.Annotation.ID != id {
 				t.Errorf("idempotent retry duplicated annotation")
 			}
 		})
 	}
 	wg.Wait()
+}
+
+func annotationHistoryChecks(t *testing.T, base, url string, id int64) {
+	t.Helper()
 	var result annotations.Listing
-	url := base + "/api/study/annotations?course_id=101&document_id=" + document
-	apiJSON(t, "GET", url, nil, 200, &result)
-	if len(result.Annotations) != 1 || result.NewlyOrphaned != 0 {
-		t.Fatalf("annotation listing: %+v", result)
-	}
-	if _, err := db.ExecContext(context.Background(), `UPDATE documents SET source_hash='changed-source' WHERE id=?`, document); err != nil {
-		t.Fatal(err)
-	}
-	apiJSON(t, "GET", url, nil, 200, &result)
-	if result.NewlyOrphaned != 1 || result.Annotations[0].Status != "orphaned" ||
-		result.Annotations[0].SourceHash == "changed-source" {
-		t.Fatal("source replacement rewrote or lost learner evidence")
-	}
-	apiJSON(t, "DELETE", fmt.Sprintf("%s/api/study/annotations/%d", base, first.Annotation.ID), nil, 200, nil)
+	apiJSON(t, "DELETE", fmt.Sprintf("%s/api/study/annotations/%d", base, id), nil, 200, nil)
 	apiJSON(t, "GET", url, nil, 200, &result)
 	if len(result.Annotations) != 0 {
 		t.Fatal("deleted annotation still visible")
@@ -73,13 +95,25 @@ func annotationChecks(t *testing.T, db *sql.DB, base, document string) {
 	if len(result.Annotations) != 1 || result.Annotations[0].Status != "deleted" {
 		t.Fatal("deleted annotation history lost")
 	}
-	body["quote"] = ""
-	apiJSON(t, "POST", base+"/api/study/annotations", body, 422, nil)
-	body["course_id"] = true
-	apiJSON(t, "POST", base+"/api/study/annotations", body, 422, nil)
-	if _, err := db.ExecContext(t.Context(), `UPDATE documents SET source_hash=? WHERE id=?`, sourceHash, document); err != nil {
-		t.Fatal(err)
+}
+
+func annotationSourceRaceChecks(t *testing.T, base string, original map[string]any, id int64) {
+	t.Helper()
+	var replay struct {
+		Annotation annotations.Annotation `json:"annotation"`
 	}
+	apiJSON(t, "POST", base+"/api/study/annotations", original, 200, &replay)
+	if replay.Annotation.ID != id {
+		t.Fatal("old-source committed mark could not be replayed")
+	}
+	stale := make(map[string]any, len(original))
+	for key, value := range original {
+		stale[key] = value
+	}
+	stale["idempotency_key"] = "synthetic-stale-source-mark"
+	apiJSON(t, "POST", base+"/api/study/annotations", stale, 409, nil)
+	delete(stale, "source_hash")
+	apiJSON(t, "POST", base+"/api/study/annotations", stale, 422, nil)
 }
 
 func exerciseChecks(t *testing.T, db *sql.DB, base string) {

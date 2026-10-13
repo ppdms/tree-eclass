@@ -1,4 +1,3 @@
-import { storageKey } from '@/lib/browserStorage';
 import type {
   ActivityDay,
   ActivityFilter,
@@ -7,7 +6,7 @@ import type {
   ActivityItem,
   CourseTimelineItem,
 } from '@/lib/types';
-import { isServer, lookup } from '@/lib/display';
+import { lookup } from '@/lib/display';
 import { formatActivityDay } from '@/lib/format';
 
 const ACTIVITY_LABELS = {
@@ -91,15 +90,6 @@ export function timelineToActivityGroups(items: CourseTimelineItem[], courseId: 
     groups.push(group);
   });
   return groups;
-}
-
-export function readActivityIds(): Set<string | number> {
-  if (isServer()) return new Set<string | number>();
-  try {
-    return new Set<string | number>(JSON.parse(localStorage.getItem(storageKey('treeeclass:activity-read')) || '[]'));
-  } catch {
-    return new Set<string | number>();
-  }
 }
 
 export function filterActivity(

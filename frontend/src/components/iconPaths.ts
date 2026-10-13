@@ -13,15 +13,6 @@ const PATHS = {
 
 export type ShellIconName = keyof typeof PATHS;
 
-export function iconSvg(name: ShellIconName): string {
-  const viewBox = name === 'tree' ? '0 0 300 300' : '0 0 24 24';
-  return (
-    `<svg data-nav-icon="${name}" aria-hidden="true" viewBox="${viewBox}" ` +
-    'fill="none" stroke="currentColor" stroke-width="1.8" ' +
-    `stroke-linecap="round" stroke-linejoin="round" width="1em" height="1em">${PATHS[name]}</svg>`
-  );
-}
-
 export function iconPath(name: ShellIconName): string {
   return PATHS[name] ?? '';
 }

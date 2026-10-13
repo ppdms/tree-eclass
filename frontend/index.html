@@ -5,6 +5,7 @@
   data-tree-storage="__TREE_STORAGE__"
   data-tree-mode="__TREE_MODE__"
   data-tree-build="__TREE_BUILD__"
+  data-state="loading"
 >
   <head>
     <meta charset="UTF-8" />
@@ -14,10 +15,85 @@
     <link rel="apple-touch-icon" href="/favicon/apple-touch-icon.png" />
     <link rel="manifest" href="/favicon/site.webmanifest" />
     <title>tree-eClass</title>
-    <script type="module" src="/src/main.tsx"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
+        background: #09090b;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        touch-action: pinch-zoom;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+      #overlay {
+        position: fixed;
+        display: none;
+        box-sizing: border-box;
+        margin: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        /* Native editing remains real; the worker paints the text and selection. */
+        color: transparent;
+        -webkit-text-fill-color: transparent;
+        caret-color: transparent;
+        font-family: 'Inter Spike', sans-serif;
+        font-optical-sizing: auto;
+        -webkit-font-smoothing: antialiased;
+      }
+      #overlay::selection {
+        background: transparent;
+      }
+      #overlay::placeholder {
+        color: transparent;
+      }
+      #startup-status,
+      #error,
+      noscript {
+        position: fixed;
+        inset: auto 12px 12px;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 12px;
+        max-height: 40vh;
+        overflow: auto;
+        white-space: pre-wrap;
+        color: #e4e4e7;
+        background: #18181b;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+      #error {
+        display: none;
+        color: #fecaca;
+        background: #450a0a;
+        font:
+          12px/1.4 ui-monospace,
+          monospace;
+      }
+      html[data-state='ready'] #startup-status,
+      html[data-state='error'] #startup-status {
+        display: none;
+      }
+    </style>
+    <script type="module" src="/src/canvas/app/startup.ts"></script>
   </head>
   <body>
-    <div id="tree-root"><p role="status">Opening tree-eClass…</p></div>
+    <canvas id="stage" aria-label="tree-eClass application"></canvas>
+    <input id="overlay" type="text" autocomplete="off" spellcheck="true" lang="el" />
+    <p id="startup-status" role="status">Opening tree-eClass… If this does not finish, reload the page.</p>
+    <pre id="error" role="alert"></pre>
     <noscript>Enable JavaScript to use tree-eClass.</noscript>
   </body>
 </html>

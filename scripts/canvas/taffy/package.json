@@ -1,0 +1,14 @@
+{
+  "name": "tree-canvas-taffy-trim",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "binaryen": "123.0.0",
+    "typescript": "6.0.3",
+    "taffy-layout": "3.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

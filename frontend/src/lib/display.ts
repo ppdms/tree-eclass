@@ -1,16 +1,15 @@
 // Shared display helpers for heterogeneous API values.
 //
 // The roadmap/insight payloads carry fields that may be a string, a number,
-// an array, or a small object. These helpers render them without ad hoc
-// `typeof` narrowing: scalar checks go through zod, object shapes are
-// narrowed with `in` guards.
-
-import { z } from 'zod/v4';
+// an array, or a small object. Centralize scalar checks here; object shapes
+// are narrowed with `in` guards.
 
 /** Any value a JSON payload can carry. */
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
-const scalarSchema = z.string().or(z.number());
+function isScalar(value: JsonValue | ReadinessNote): value is string | number {
+  return typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value));
+}
 
 const DISPLAY_KEYS = [
   'summary',
@@ -32,8 +31,7 @@ export function lookup<T>(table: Record<string, T>, key: string, fallback: T): T
 /** Render a scalar, array, or known-shape object as display text. */
 export function readableValue(value: JsonValue | undefined, fallback = 'Not provided'): string {
   if (value == null || value === '') return fallback;
-  const scalar = scalarSchema.safeParse(value);
-  if (scalar.success) return String(scalar.data);
+  if (isScalar(value)) return String(value);
   if (Array.isArray(value)) return value.map((item) => readableValue(item)).join(', ');
   if (value instanceof Object && !Array.isArray(value)) {
     for (const key of DISPLAY_KEYS) {
@@ -46,11 +44,6 @@ export function readableValue(value: JsonValue | undefined, fallback = 'Not prov
   return fallback;
 }
 
-/** True when running outside a browser (no window global). */
-export function isServer(): boolean {
-  return globalThis.window == null;
-}
-
 /** A structured readiness note: one of the known reason keys. */
 export interface ReadinessNote {
   reason?: string;
@@ -61,9 +54,8 @@ export interface ReadinessNote {
 /** Render a readiness note: a plain string or a structured reason object. */
 export function readableReason(value: JsonValue | ReadinessNote | undefined, fallback: string): string {
   if (value == null) return fallback;
-  const scalar = scalarSchema.safeParse(value);
-  if (scalar.success) {
-    const text = String(scalar.data).trim();
+  if (isScalar(value)) {
+    const text = String(value).trim();
     return text || fallback;
   }
   if (value instanceof Object && !Array.isArray(value)) {
@@ -71,8 +63,7 @@ export function readableReason(value: JsonValue | ReadinessNote | undefined, fal
       if (key in value) {
         const nested = value[key];
         if (nested == null) continue;
-        const parsed = scalarSchema.safeParse(nested);
-        if (parsed.success && String(parsed.data).trim()) return String(parsed.data);
+        if (isScalar(nested) && String(nested).trim()) return String(nested);
       }
     }
   }

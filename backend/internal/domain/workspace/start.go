@@ -12,36 +12,47 @@ import (
 	"tree-eclass/internal/domain/navigation"
 )
 
-func (s Service) Start(ctx context.Context, in Start) (Session, error) {
+func (s Service) Start(ctx context.Context, in Start) (StartResult, error) {
 	if err := in.validate(); err != nil {
-		return Session{}, err
+		return StartResult{}, err
 	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return Session{}, err
+		return StartResult{}, err
 	}
 	defer tx.Rollback(ctx)
 	if err = tx.Workspace().LockVisibleCourse(ctx, in.CourseID); err != nil {
-		return Session{}, err
+		return StartResult{}, err
 	}
 	if err = tx.Workspace().LockSessionKey(ctx, in.Key); err != nil {
-		return Session{}, err
+		return StartResult{}, err
 	}
-	existing, err := sessionFromRow(tx.Workspace().SessionByKey(ctx, in.Key))
+	existing, err := tx.Workspace().SessionByKey(ctx, in.Key)
 	if err == nil {
-		if existing.CourseID != in.CourseID || existing.Action != in.Action || existing.Unit != in.Unit ||
-			existing.Revision != in.Revision ||
-			!same(existing.Planned, in.Planned) {
-			return Session{}, ErrConflict
-		}
-		return existing, tx.Commit(ctx)
+		return resumeStart(ctx, tx, in, existing.ID)
 	}
 	if !errors.Is(err, database.ErrNoRows) {
-		return Session{}, err
+		return StartResult{}, err
 	}
 	if err = validateAction(ctx, tx, in); err != nil {
-		return Session{}, err
+		return StartResult{}, err
 	}
+	return insertStart(ctx, tx, in)
+}
+
+func resumeStart(ctx context.Context, tx database.Tx, in Start, id int64) (StartResult, error) {
+	session, err := lockSession(ctx, tx, id)
+	if err != nil {
+		return StartResult{}, err
+	}
+	if session.CourseID != in.CourseID || session.Action != in.Action || session.Unit != in.Unit ||
+		session.Revision != in.Revision || !same(session.Planned, in.Planned) {
+		return StartResult{}, ErrConflict
+	}
+	return startResult(ctx, tx, session)
+}
+
+func insertStart(ctx context.Context, tx database.Tx, in Start) (StartResult, error) {
 	stored, err := tx.Workspace().InsertSession(ctx, database.InsertSessionParams{
 		CourseID: in.CourseID,
 		Action:   identity.Encode(in.Action),
@@ -51,13 +62,23 @@ func (s Service) Start(ctx context.Context, in Start) (Session, error) {
 		Planned:  in.Planned,
 	})
 	if err != nil {
-		return Session{}, err
+		return StartResult{}, err
 	}
-	result, err := sessionFromRow(stored, nil)
+	session, err := sessionFromRow(stored, nil)
 	if err != nil {
-		return Session{}, err
+		return StartResult{}, err
 	}
-	return result, tx.Commit(ctx)
+	return startResult(ctx, tx, session)
+}
+
+// Both callers hold the session write lock: resume explicitly locks it and
+// a new insert owns its row until this transaction commits.
+func startResult(ctx context.Context, tx database.Tx, session Session) (StartResult, error) {
+	next, err := tx.Workspace().NextBeatSequence(ctx, session.ID)
+	if err != nil {
+		return StartResult{}, err
+	}
+	return StartResult{Session: session, NextSequence: next}, tx.Commit(ctx)
 }
 
 func (in *Start) validate() error {

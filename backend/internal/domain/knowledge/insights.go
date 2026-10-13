@@ -38,6 +38,7 @@ type PageInsight struct {
 }
 type PageInsights struct {
 	DocumentID       string        `json:"document_id"`
+	SourceHash       string        `json:"source_hash"`
 	FirstPage        int64         `json:"first_page"`
 	LastPage         int64         `json:"last_page"`
 	Pages            []PageInsight `json:"pages"`
@@ -71,6 +72,7 @@ func pagesTx(ctx context.Context, tx database.Tx, course int64, document string,
 		return result, err
 	}
 	first, last = clampPageRange(first, last, count)
+	result.SourceHash = hash
 	result.FirstPage, result.LastPage = first, last
 	rows, err := tx.Documents().PageEnrichments(ctx, document, first, last, 262144)
 	if err != nil {
@@ -198,7 +200,7 @@ func (s Reader) pageSearchAnalysis(ctx context.Context, c candidate) (map[string
 	if err != nil {
 		return nil, err
 	}
-	if len(result.Pages) == 0 || result.Pages[0].Stale {
+	if result.SourceHash != c.SourceHash || len(result.Pages) == 0 || result.Pages[0].Stale {
 		return nil, nil
 	}
 	entry := result.Pages[0]

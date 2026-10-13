@@ -13,6 +13,7 @@ import (
 type Service struct{ Pool database.Store }
 
 var ErrIdempotencyConflict = errors.New("idempotency key belongs to another document")
+var ErrSourceChanged = errors.New("the original document source has changed; reopen it before saving a new mark")
 
 func annotationFromRow(row database.AnnotationRow) (Annotation, error) {
 	raw := assembleAnnotation(
@@ -93,14 +94,7 @@ func (s Service) Create(ctx context.Context, c Create) (Annotation, error) {
 	if err = tx.Annotations().LockAnnotationKey(ctx, c.DocumentID); err != nil {
 		return Annotation{}, err
 	}
-	c.SourceHash, err = tx.Annotations().ReadyDocumentHash(ctx, c.CourseID, c.DocumentID)
-	if err != nil {
-		return Annotation{}, err
-	}
-	id, err := tx.Annotations().FindExisting(ctx, c.IdempotencyKey, c.Kind, c.CourseID, c.DocumentID, c.PageNumber)
-	if errors.Is(err, database.ErrNoRows) {
-		id, err = insert(ctx, tx, c)
-	}
+	id, err := createID(ctx, tx, c)
 	if err != nil {
 		return Annotation{}, err
 	}
@@ -117,6 +111,40 @@ func (s Service) Create(ctx context.Context, c Create) (Annotation, error) {
 	return s.Get(ctx, id)
 }
 
+func createID(ctx context.Context, tx database.Tx, c Create) (int64, error) {
+	if err := tx.Annotations().CheckVisibleCourse(ctx, c.CourseID); err != nil {
+		return 0, err
+	}
+	id, err := tx.Annotations().FindExisting(ctx, c.IdempotencyKey, "", c.CourseID, c.DocumentID, c.PageNumber)
+	if err == nil {
+		row, err := tx.Annotations().AnnotationByID(ctx, id)
+		if err != nil {
+			return 0, err
+		}
+		if row.CourseID != c.CourseID || row.DocumentID != c.DocumentID {
+			return 0, ErrIdempotencyConflict
+		}
+		if row.SourceHash != c.SourceHash {
+			return 0, ErrSourceChanged
+		}
+		return id, nil
+	}
+	if !errors.Is(err, database.ErrNoRows) {
+		return 0, err
+	}
+	source, err := tx.Annotations().ReadyDocumentHash(ctx, c.CourseID, c.DocumentID)
+	if err != nil {
+		return 0, err
+	}
+	if source != c.SourceHash {
+		return 0, ErrSourceChanged
+	}
+	id, err = tx.Annotations().FindExisting(ctx, c.IdempotencyKey, c.Kind, c.CourseID, c.DocumentID, c.PageNumber)
+	if errors.Is(err, database.ErrNoRows) {
+		return insert(ctx, tx, c)
+	}
+	return id, err
+}
 func insert(ctx context.Context, tx database.Tx, c Create) (int64, error) {
 	chunk, err := tx.Annotations().PageChunkID(ctx, c.DocumentID, c.PageNumber)
 	var chunkID *string

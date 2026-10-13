@@ -1,9 +1,10 @@
 {
-  "basicCoursesVisibleMs": 1000,
-  "basicStudyVisibleMs": 1000,
+  "warmAppInteractiveMs": 150,
+  "basicCoursesVisibleMs": 150,
+  "basicStudyVisibleMs": 150,
   "hoverMenuVisibleMs": 150,
   "maxHoverApiRequests": 0,
   "maxInitialRscPrefetches": 2,
-  "courseOverviewVisibleMs": 1000,
+  "courseOverviewVisibleMs": 150,
   "overviewApiP95Ms": 300
 }

@@ -1,6 +1,7 @@
 FROM docker.io/oven/bun:1.4.2-slim AS browser-build
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/bun.lock ./
+COPY frontend/vendor/taffy ./vendor/taffy
 RUN bun install --frozen-lockfile
 COPY frontend ./
 RUN bun run build

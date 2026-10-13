@@ -10,7 +10,9 @@ export function parseTimestamp(value: DateValue): Date | null {
   if (!raw) return null;
   const normalized = raw.includes(' ') && !raw.includes('T') ? raw.replace(' ', 'T') : raw;
   const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
-  const date = new Date(hasZone ? normalized : `${normalized}Z`);
+  // ISO calendar dates already denote UTC; only a zoneless timestamp needs Z.
+  const needsZone = normalized.includes('T') && !hasZone;
+  const date = new Date(needsZone ? `${normalized}Z` : normalized);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 

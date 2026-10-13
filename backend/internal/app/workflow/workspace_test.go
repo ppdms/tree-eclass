@@ -14,18 +14,25 @@ func workspaceChecks(t *testing.T, pool *fixtureStore, base, document string) {
 	ctx := t.Context()
 	service := workspace.Service{Pool: pool}
 	start := map[string]any{"course_id": "101", "session_key": "synthetic-reader-001"}
-	var response struct {
-		Session workspace.Session `json:"session"`
-	}
+	var response workspace.StartResult
 	apiJSON(t, "POST", base+"/api/study/session/start", start, 200, &response)
 	id := response.Session.ID
+	if response.NextSequence != 0 {
+		t.Fatal("new sitting has a heartbeat watermark", response)
+	}
 	apiJSON(t, "POST", base+"/api/study/session/start", start, 200, &response)
 	if response.Session.ID != id {
 		t.Fatal("start retry created another session")
 	}
 	start["action_id"] = "changed-action"
 	apiJSON(t, "POST", base+"/api/study/session/start", start, 409, nil)
-	beat := workspace.Beat{SessionID: id, Sequence: 0, Page: 1, Interval: 3600, Document: document, Active: true}
+	var sourceHash string
+	if err := pool.Native.QueryRowContext(ctx,
+		`SELECT source_hash FROM documents WHERE id=?`, document).Scan(&sourceHash); err != nil {
+		t.Fatal(err)
+	}
+	beat := workspace.Beat{SessionID: id, Sequence: 0, Page: 1, Interval: 3600,
+		Document: document, SourceHash: sourceHash, Active: true}
 	var group sync.WaitGroup
 	errs := make(chan error, 12)
 	for range 12 {
@@ -44,7 +51,47 @@ func workspaceChecks(t *testing.T, pool *fixtureStore, base, document string) {
 			t.Fatal(err)
 		}
 	}
+	workspaceResumeChecks(t, service, id, beat)
 	workspaceProgressChecks(t, pool, base, document, service, id, beat)
+}
+
+func workspaceResumeChecks(t *testing.T, service workspace.Service, id int64, beat workspace.Beat) {
+	t.Helper()
+	ctx := t.Context()
+	in := workspace.Start{CourseID: 101, Key: "synthetic-reader-001"}
+	resumed, err := service.Start(ctx, in)
+	if err != nil || resumed.Session.ID != id || resumed.NextSequence != 1 {
+		t.Fatal("resume did not report committed sequence watermark", resumed, err)
+	}
+	beat.Sequence = 1
+	beat.Active = false
+	var group sync.WaitGroup
+	errs := make(chan error, 13)
+	group.Go(func() {
+		_, err := service.Heartbeat(ctx, beat)
+		errs <- err
+	})
+	for range 12 {
+		group.Go(func() {
+			result, err := service.Start(ctx, in)
+			if err == nil && (result.Session.ID != id ||
+				result.Session.Visible != result.NextSequence*90) {
+				err = fmt.Errorf("resume watermark and session snapshot disagree: %+v", result)
+			}
+			errs <- err
+		})
+	}
+	group.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	resumed, err = service.Start(ctx, in)
+	if err != nil || resumed.NextSequence != 2 || resumed.Session.Visible != 180 {
+		t.Fatal("resume missed concurrent committed beat", resumed, err)
+	}
 }
 
 func workspaceProgressChecks(
@@ -56,7 +103,6 @@ func workspaceProgressChecks(
 	beat workspace.Beat,
 ) {
 	t.Helper()
-	ctx := t.Context()
 	var recorded workspace.BeatResult
 	url := base + "/api/study/session/heartbeat"
 	payload := map[string]any{
@@ -65,6 +111,7 @@ func workspaceProgressChecks(
 		"page_number":      1,
 		"interval_seconds": 3600,
 		"document_id":      document,
+		"source_hash":      beat.SourceHash,
 		"active":           true,
 	}
 	apiJSON(t, "POST", url, payload, 200, &recorded)
@@ -84,26 +131,57 @@ func workspaceProgressChecks(
 	payload["page_number"] = 1
 	payload["document_id"] = "other-course-document"
 	apiJSON(t, "POST", url, payload, 404, nil)
+	payload["document_id"] = document
+	payload["source_hash"] = ""
+	apiJSON(t, "POST", url, payload, 422, nil)
+	beat = workspaceSourceChecks(t, pool, document, service, id, beat)
+	workspaceFinishChecks(t, pool, base, document, service, id, beat)
+}
+
+func workspaceSourceChecks(
+	t *testing.T, pool *fixtureStore, document string, service workspace.Service, id int64, beat workspace.Beat,
+) workspace.Beat {
+	t.Helper()
+	ctx := t.Context()
 	var original string
-	if err := pool.Native.QueryRowContext(ctx, `SELECT source_hash FROM documents WHERE id=?`, document).Scan(&original); err != nil {
+	if err := pool.Native.QueryRowContext(ctx,
+		`SELECT source_hash FROM documents WHERE id=?`, document).Scan(&original); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Native.ExecContext(ctx, `UPDATE documents SET source_hash='synthetic-second-revision' WHERE id=?`, document); err != nil {
+	if _, err := pool.Native.ExecContext(ctx,
+		`UPDATE documents SET source_hash='synthetic-second-revision' WHERE id=?`, document); err != nil {
 		t.Fatal(err)
+	}
+	if result, err := service.Heartbeat(ctx, beat); err != nil || result.Status != "duplicate" {
+		t.Fatal("committed old-source beat could not be replayed after replacement", result, err)
 	}
 	beat.Sequence = 2
 	beat.Interval = 30
+	if _, err := service.Heartbeat(ctx, beat); err != workspace.ErrSourceChanged {
+		t.Fatal("old-source heartbeat was admitted against replaced bytes", err)
+	}
+	beat.SourceHash = "synthetic-second-revision"
 	if _, err := service.Heartbeat(ctx, beat); err != nil {
 		t.Fatal(err)
 	}
 	var spans int
-	if err := pool.Native.QueryRowContext(ctx, `SELECT count(DISTINCT source_hash) FROM study_reading_spans WHERE session_id=?`, id).Scan(&spans); err != nil ||
+	if err := pool.Native.QueryRowContext(ctx,
+		`SELECT count(DISTINCT source_hash) FROM study_reading_spans WHERE session_id=?`, id).Scan(&spans); err != nil ||
 		spans != 2 {
 		t.Fatal("source revisions merged in reading ledger", spans, err)
 	}
-	if _, err := pool.Native.ExecContext(ctx, `UPDATE documents SET source_hash=? WHERE id=?`, original, document); err != nil {
+	if _, err := pool.Native.ExecContext(ctx,
+		`UPDATE documents SET source_hash=? WHERE id=?`, original, document); err != nil {
 		t.Fatal(err)
 	}
+	return beat
+}
+
+func workspaceFinishChecks(
+	t *testing.T, pool *fixtureStore, base, document string, service workspace.Service, id int64, beat workspace.Beat,
+) {
+	t.Helper()
+	ctx := t.Context()
 	var finished workspace.FinishResult
 	finish := map[string]any{"session_id": id, "outcome": "completed", "note": "  Ελληνικό\x00σημείωμα  "}
 	apiJSON(t, "POST", base+"/api/study/session/finish", finish, 200, &finished)

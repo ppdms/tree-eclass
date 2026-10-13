@@ -37,9 +37,13 @@ func TestDeletedBookmarkDoesNotHideItsReplacement(t *testing.T) {
 func createContractBookmark(t *testing.T, service annotations.Service, key string) annotations.Annotation {
 	t.Helper()
 	body := "σημείωση\x00tail"
+	hash, err := service.Pool.Annotations().ReadyDocumentHash(t.Context(), 77, "doc_a")
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := service.Create(t.Context(), annotations.Create{
 		Annotation: annotations.Annotation{CourseID: 77, DocumentID: "doc_a", PageNumber: 1,
-			Kind: "bookmark", Body: &body}, IdempotencyKey: key,
+			SourceHash: hash, Kind: "bookmark", Body: &body}, IdempotencyKey: key,
 	})
 	if err != nil {
 		t.Fatal(err)

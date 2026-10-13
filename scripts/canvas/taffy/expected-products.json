@@ -1,0 +1,38 @@
+{
+  "taffy_wasm_bg.wasm": {
+    "bytes": 435611,
+    "sha256": "4b24d0292294e0ea6339fd64b5def0858037a76cf7aa792f72f8299c4b04a6f2"
+  },
+  "taffy_wasm.js": {
+    "bytes": 28685,
+    "sha256": "8d6a8a56a4fa8fcaf7bb240291654d3752f0c20702eac1b36859949962611c32"
+  },
+  "taffy_wasm.d.ts": {
+    "bytes": 13188,
+    "sha256": "33457c6eda9db06f47676269670f6e342683c458623083bc6b25f7c4afbdebd7"
+  },
+  "taffy_wasm_bg.wasm.d.ts": {
+    "bytes": 2063,
+    "sha256": "109a058c907c4dda075ec90e08c1a5ed6605965182559de7ee94f72f7f983755"
+  },
+  "index.js": {
+    "bytes": 362,
+    "sha256": "a78c6280fafaf8012449456324436c3e39c3c88b9f7b0f0f45d2b3eb4d67a57b"
+  },
+  "index.d.ts": {
+    "bytes": 76,
+    "sha256": "6efd88573e0d8e6ebcff5b2203b50e9ce2b0a8b468ce0137dfe5ceedf41c014a"
+  },
+  "LICENSE": {
+    "bytes": 1084,
+    "sha256": "732fbe1fa6637bef291ffcb7d18ac45dc34998dd701125582ce270efaf7ab9bf"
+  },
+  "package.json": {
+    "bytes": 353,
+    "sha256": "5217ba09a0b14d31f7b5405e02d9cfacb7b3ca76564e0d763f4137b8be8b14cb"
+  },
+  "metadce-graph.json": {
+    "bytes": 30875,
+    "sha256": "379171ccc688f542469726c1e32c7565c5cf1f06b45ca5c7b828c3906dfb1976"
+  }
+}

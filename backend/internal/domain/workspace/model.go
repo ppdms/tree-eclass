@@ -17,6 +17,7 @@ type Service struct{ Pool database.Store }
 var ErrConflict = errors.New("the study request conflicts with existing state")
 var ErrInvalid = errors.New("invalid study session fields")
 var ErrDocumentPending = errors.New("this document is still being prepared for study")
+var ErrSourceChanged = errors.New("the original document source has changed; reopen it before recording new work")
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{8,128}$`)
 
 type Session struct {
@@ -41,6 +42,11 @@ type Start struct {
 	CourseID                    int64
 	Key, Action, Unit, Revision string
 	Planned                     *int64
+}
+
+type StartResult struct {
+	Session      Session `json:"session"`
+	NextSequence int64   `json:"next_sequence"`
 }
 
 func sessionFromRow(stored database.WorkspaceSession, err error) (Session, error) {

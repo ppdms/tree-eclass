@@ -20,6 +20,7 @@ export interface SessionDocument {
   document_kind?: string;
   download_url?: string;
   content_url?: string;
+  source_hash?: string;
 }
 
 export interface AnnotationRect {
@@ -34,6 +35,8 @@ export type AnnotationStatus = 'active' | 'deleted' | 'orphaned';
 
 export interface Annotation {
   id: string | number;
+  document_id?: string;
+  source_hash?: string;
   kind: AnnotationKind;
   status: AnnotationStatus;
   page_number: number;
@@ -110,5 +113,6 @@ export interface PageInsight {
 }
 
 export interface PagesPayload {
+  source_hash?: string;
   pages?: PageInsight[];
 }

@@ -10,30 +10,7 @@ import (
 
 func fileViewChecks(t *testing.T, pool *fixtureStore, base, document string) {
 	t.Helper()
-	ctx := t.Context()
-	a := settings.DefaultAI()
-	_, err := pool.Native.ExecContext(
-		ctx,
-		`INSERT INTO document_enrichments(document_id,source_hash,analysis_version,status,model,payload_json,available_at)
- SELECT id,source_hash,?,'ready',?,'{"summary":"Ελληνικός οδηγός","related_paths":[]}',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM documents WHERE id=?
- ON CONFLICT(document_id) DO UPDATE SET source_hash=excluded.source_hash,analysis_version=excluded.analysis_version,model=excluded.model,payload_json=excluded.payload_json`,
-		settings.DocumentAnalysisVersion,
-		a.Model,
-		document,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = pool.Native.ExecContext(
-		ctx,
-		`UPDATE page_enrichments SET analysis_version=?,requested_model=?,model='fallback-model' WHERE document_id=?`,
-		settings.PageAnalysisVersion,
-		a.Model,
-		document,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	prepareFileAnalysis(t, pool, document)
 	var metadata struct {
 		Files map[string]knowledge.FileMetadata `json:"file_insights"`
 	}
@@ -54,12 +31,8 @@ func fileViewChecks(t *testing.T, pool *fixtureStore, base, document string) {
 	if guide.AI["summary"] != "Ελληνικός οδηγός" {
 		t.Fatal("current guide missing", guide)
 	}
-	var pages knowledge.PageInsights
 	pagesURL := base + "/api/study/document/" + document + "/pages?course_id=101"
-	apiJSON(t, "GET", pagesURL, nil, 200, &pages)
-	if len(pages.Pages) != 1 || pages.Pages[0].Stale || pages.Pages[0].Insight["summary"] == nil {
-		t.Fatal("current requested-model fallback rejected", pages)
-	}
+	filePageSourceChecks(t, pool, document, pagesURL)
 	apiJSON(t, "GET", base+"/api/v1/courses/102/files/"+document+"/guide", nil, 404, nil)
 	apiJSON(t, "GET", base+"/api/v1/courses/101/files?include_knowledge=invalid", nil, 422, nil)
 	var files courses.Files
@@ -70,6 +43,67 @@ func fileViewChecks(t *testing.T, pool *fixtureStore, base, document string) {
 	}
 	coverageChecks(t, pool, base, path)
 	analysisGenerationChecks(t, pool, base, document, guideURL, pagesURL)
+}
+
+func prepareFileAnalysis(t *testing.T, pool *fixtureStore, document string) {
+	t.Helper()
+	ctx := t.Context()
+	a := settings.DefaultAI()
+	_, err := pool.Native.ExecContext(
+		ctx,
+		`INSERT INTO document_enrichments(
+ document_id,source_hash,analysis_version,status,model,payload_json,available_at)
+ SELECT id,source_hash,?,'ready',?,
+ '{"summary":"Ελληνικός οδηγός","related_paths":[]}',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM documents WHERE id=?
+ ON CONFLICT(document_id) DO UPDATE SET
+ source_hash=excluded.source_hash,analysis_version=excluded.analysis_version,
+ model=excluded.model,payload_json=excluded.payload_json`,
+		settings.DocumentAnalysisVersion,
+		a.Model,
+		document,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = pool.Native.ExecContext(
+		ctx,
+		`UPDATE page_enrichments SET analysis_version=?,requested_model=?,model='fallback-model' WHERE document_id=?`,
+		settings.PageAnalysisVersion,
+		a.Model,
+		document,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func filePageSourceChecks(t *testing.T, pool *fixtureStore, document, pagesURL string) {
+	t.Helper()
+	var hash string
+	if err := pool.Native.QueryRowContext(t.Context(),
+		`SELECT source_hash FROM documents WHERE id=?`, document).Scan(&hash); err != nil {
+		t.Fatal(err)
+	}
+	var pages knowledge.PageInsights
+	apiJSON(t, "GET", pagesURL, nil, 200, &pages)
+	if pages.SourceHash != hash || len(pages.Pages) != 1 || pages.Pages[0].Stale ||
+		pages.Pages[0].Insight["summary"] == nil {
+		t.Fatal("current requested-model fallback rejected", pages)
+	}
+	if _, err := pool.Native.ExecContext(t.Context(),
+		`UPDATE page_enrichments SET source_hash='older-page-source' WHERE document_id=?`, document); err != nil {
+		t.Fatal(err)
+	}
+	pages = knowledge.PageInsights{}
+	apiJSON(t, "GET", pagesURL, nil, 200, &pages)
+	if pages.SourceHash != hash || !pages.Pages[0].Stale || pages.Pages[0].Insight != nil {
+		t.Fatal("page source metadata came from stale aid rather than admitted document", pages)
+	}
+	if _, err := pool.Native.ExecContext(t.Context(),
+		`UPDATE page_enrichments SET source_hash=? WHERE document_id=?`, hash, document); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func analysisGenerationChecks(t *testing.T, pool *fixtureStore, base, document, guideURL, pagesURL string) {

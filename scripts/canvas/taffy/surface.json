@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "generator": "taffy-trim/2",
+  "package": {
+    "name": "taffy-layout",
+    "version": "3.0.0",
+    "gitHead": "1b42367e1c37a7d6d0e7afc645fa13b10c9b53fc",
+    "integrity": "sha512-d5IK13tpgAbGz8w4BBTpVdagN0GNMEV563FwuU8iHbGhBm9kWHZoZvS716sG2vUPZmol6DSuZZmRwLrG95s78Q=="
+  },
+  "tools": { "typescript": "6.0.3", "binaryen": "123.0.0" },
+  "inputs": {
+    "pkg/taffy_wasm.js": "c7197226f1a9372f34ed0af6ada7ba8f35530af9881682a8ec9a0e2dd49f637d",
+    "pkg/taffy_wasm_bg.wasm": "e850ef27d656fbc7a2ee9fa82a6de9286a0fe931c3c1f5ee20af4d59cb9e9c5b",
+    "pkg/taffy_wasm.d.ts": "e59ab1e63ac3361004f8435fa9d947adeb86bd98b6d9ce129f8372d18007bbad",
+    "pkg/taffy_wasm_bg.wasm.d.ts": "0fb4bfe238dfb96045962a368124692ebce63be5602f4918b0617515376ea4c7",
+    "LICENSE": "732fbe1fa6637bef291ffcb7d18ac45dc34998dd701125582ce270efaf7ab9bf",
+    "dist/index.js": "07e8b04bf537593988d1d4e99644fffbcca1694ee6a81a1b5418b2a6bb0edd5e"
+  },
+  "classes": {
+    "Layout": {
+      "runtime": ["__wrap", "__destroy_into_raw", "free", "get"],
+      "declarations": ["constructor", "free", "[Symbol.dispose]"]
+    },
+    "Style": {
+      "runtime": ["__destroy_into_raw", "free", "constructor"],
+      "declarations": ["constructor", "free", "[Symbol.dispose]"]
+    },
+    "TaffyError": {
+      "runtime": ["__wrap", "__destroy_into_raw", "free", "message"],
+      "declarations": ["constructor", "free", "[Symbol.dispose]", "message"]
+    },
+    "TaffyTree": {
+      "runtime": [
+        "__destroy_into_raw",
+        "free",
+        "constructor",
+        "disableRounding",
+        "newLeaf",
+        "newLeafWithContext",
+        "setStyle",
+        "setChildren",
+        "markDirty",
+        "computeLayoutWithMeasure",
+        "getLayout",
+        "remove"
+      ],
+      "declarations": [
+        "constructor",
+        "free",
+        "[Symbol.dispose]",
+        "disableRounding",
+        "newLeaf",
+        "newLeafWithContext",
+        "setStyle",
+        "setChildren",
+        "markDirty",
+        "computeLayoutWithMeasure",
+        "getLayout",
+        "remove"
+      ]
+    }
+  },
+  "enums": [
+    "AlignContent",
+    "AlignItems",
+    "AlignSelf",
+    "BoxSizing",
+    "Clear",
+    "Direction",
+    "Display",
+    "FlexDirection",
+    "FlexWrap",
+    "Float",
+    "GridAutoFlow",
+    "JustifyContent",
+    "Overflow",
+    "Position",
+    "TextAlign"
+  ],
+  "retainedWasmExports": [
+    "memory",
+    "__wbg_layout_free",
+    "__wbg_style_free",
+    "__wbg_taffyerror_free",
+    "__wbg_taffytree_free",
+    "layout_get",
+    "style_new",
+    "taffyerror_message",
+    "taffytree_computeLayoutWithMeasure",
+    "taffytree_disableRounding",
+    "taffytree_getLayout",
+    "taffytree_markDirty",
+    "taffytree_new",
+    "taffytree_newLeaf",
+    "taffytree_newLeafWithContext",
+    "taffytree_remove",
+    "taffytree_setChildren",
+    "taffytree_setStyle",
+    "__wbindgen_malloc",
+    "__wbindgen_realloc",
+    "__wbindgen_exn_store",
+    "__externref_table_alloc",
+    "__wbindgen_externrefs",
+    "__wbindgen_free",
+    "__externref_table_dealloc",
+    "__wbindgen_start"
+  ],
+  "binaryenFeatures": [
+    "--enable-mutable-globals",
+    "--enable-nontrapping-float-to-int",
+    "--enable-bulk-memory",
+    "--enable-sign-ext",
+    "--enable-reference-types",
+    "--enable-multivalue"
+  ],
+  "binaryenPasses": ["--dce", "--remove-unused-module-elements", "--vacuum"],
+  "preservedSourceFeatures": [
+    "std",
+    "taffy_tree",
+    "flexbox",
+    "grid",
+    "block_layout",
+    "float_layout",
+    "content_size",
+    "serde",
+    "detailed_layout_info",
+    "console_error_panic_hook"
+  ],
+  "originalWasmInventory": {
+    "exports": 228,
+    "imports": 56,
+    "rustc": "1.98.1 (48a229cea 2026-09-01)",
+    "walrus": "0.24.4",
+    "wasm-bindgen": "0.2.106 (11831fb89)",
+    "targetFeatures": [
+      "mutable-globals",
+      "nontrapping-fptoint",
+      "bulk-memory",
+      "sign-ext",
+      "reference-types",
+      "multivalue"
+    ]
+  }
+}

@@ -1,0 +1,481 @@
+{
+  "generator": "taffy-trim/2",
+  "package": {
+    "name": "taffy-layout",
+    "version": "3.0.0",
+    "gitHead": "1b42367e1c37a7d6d0e7afc645fa13b10c9b53fc",
+    "integrity": "sha512-d5IK13tpgAbGz8w4BBTpVdagN0GNMEV563FwuU8iHbGhBm9kWHZoZvS716sG2vUPZmol6DSuZZmRwLrG95s78Q=="
+  },
+  "tools": {
+    "typescript": "6.0.3",
+    "binaryen": "123.0.0"
+  },
+  "inputs": {
+    "pkg/taffy_wasm.js": "c7197226f1a9372f34ed0af6ada7ba8f35530af9881682a8ec9a0e2dd49f637d",
+    "pkg/taffy_wasm_bg.wasm": "e850ef27d656fbc7a2ee9fa82a6de9286a0fe931c3c1f5ee20af4d59cb9e9c5b",
+    "pkg/taffy_wasm.d.ts": "e59ab1e63ac3361004f8435fa9d947adeb86bd98b6d9ce129f8372d18007bbad",
+    "pkg/taffy_wasm_bg.wasm.d.ts": "0fb4bfe238dfb96045962a368124692ebce63be5602f4918b0617515376ea4c7",
+    "LICENSE": "732fbe1fa6637bef291ffcb7d18ac45dc34998dd701125582ce270efaf7ab9bf",
+    "dist/index.js": "07e8b04bf537593988d1d4e99644fffbcca1694ee6a81a1b5418b2a6bb0edd5e"
+  },
+  "output": {
+    "taffy_wasm_bg.wasm": {
+      "bytes": 435611,
+      "sha256": "4b24d0292294e0ea6339fd64b5def0858037a76cf7aa792f72f8299c4b04a6f2"
+    },
+    "taffy_wasm.js": {
+      "bytes": 28685,
+      "sha256": "8d6a8a56a4fa8fcaf7bb240291654d3752f0c20702eac1b36859949962611c32"
+    },
+    "taffy_wasm.d.ts": {
+      "bytes": 13188,
+      "sha256": "33457c6eda9db06f47676269670f6e342683c458623083bc6b25f7c4afbdebd7"
+    },
+    "taffy_wasm_bg.wasm.d.ts": {
+      "bytes": 2063,
+      "sha256": "109a058c907c4dda075ec90e08c1a5ed6605965182559de7ee94f72f7f983755"
+    },
+    "index.js": {
+      "bytes": 362,
+      "sha256": "a78c6280fafaf8012449456324436c3e39c3c88b9f7b0f0f45d2b3eb4d67a57b"
+    },
+    "index.d.ts": {
+      "bytes": 76,
+      "sha256": "6efd88573e0d8e6ebcff5b2203b50e9ce2b0a8b468ce0137dfe5ceedf41c014a"
+    },
+    "LICENSE": {
+      "bytes": 1084,
+      "sha256": "732fbe1fa6637bef291ffcb7d18ac45dc34998dd701125582ce270efaf7ab9bf"
+    },
+    "package.json": {
+      "bytes": 353,
+      "sha256": "5217ba09a0b14d31f7b5405e02d9cfacb7b3ca76564e0d763f4137b8be8b14cb"
+    },
+    "metadce-graph.json": {
+      "bytes": 30875,
+      "sha256": "379171ccc688f542469726c1e32c7565c5cf1f06b45ca5c7b828c3906dfb1976"
+    },
+    "metadce-unused.txt": {
+      "bytes": 11677,
+      "sha256": "0780ddd6ccc0da3d7b7c711bdfb9a41d55bddc47f6b15dd2c457de7653d40733"
+    },
+    "binaryen-diagnostics.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "retainedWasmExports": [
+    "memory",
+    "__wbg_layout_free",
+    "__wbg_style_free",
+    "__wbg_taffyerror_free",
+    "__wbg_taffytree_free",
+    "layout_get",
+    "style_new",
+    "taffyerror_message",
+    "taffytree_computeLayoutWithMeasure",
+    "taffytree_disableRounding",
+    "taffytree_getLayout",
+    "taffytree_markDirty",
+    "taffytree_new",
+    "taffytree_newLeaf",
+    "taffytree_newLeafWithContext",
+    "taffytree_remove",
+    "taffytree_setChildren",
+    "taffytree_setStyle",
+    "__wbindgen_malloc",
+    "__wbindgen_realloc",
+    "__wbindgen_exn_store",
+    "__externref_table_alloc",
+    "__wbindgen_externrefs",
+    "__wbindgen_free",
+    "__externref_table_dealloc",
+    "__wbindgen_start"
+  ],
+  "liveWasmImports": [
+    {
+      "module": "wbg",
+      "name": "__wbindgen_cast_4625c577ab2ec9ee",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbindgen_cast_9ae0607507abb057",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbindgen_cast_d6cd19b81560fd6e",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbindgen_cast_2241b6af4c4b2941",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_String_8f0eb39a4a4c2f66",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_get_with_ref_key_1dc361bd10053bfe",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_set_3f1d0b984ed272ed",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_error_7534b8e9a36f1ab4",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbindgen_init_externref_table",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_debug_string_adfb662ae34724b6",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_stack_0ed75d68575b0f3c",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_bigint_get_as_i64_6e32f5e6aff02e1d",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_jsval_loose_eq_766057600fdd1b0d",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_is_undefined_f6b95eab589e0269",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_is_function_8d400b8b1af978cd",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_boolean_get_dea25b33882b895b",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_string_get_a2a31e16edf96e42",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_is_object_ce774f3490692386",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_is_bigint_0e1a2e3f55cfae27",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_Error_52673b7de5a0ca89",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_Number_2d1dcfcf4ec51736",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_new_8a6f238a6ece86ea",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_jsval_eq_b6101cc9cef1fe36",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_is_null_dfda7d66506c95b5",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_throw_dd24417ed36fc46e",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_in_0d3e1e8f0c669317",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg___wbindgen_number_get_9619185a74197f95",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_instanceof_ArrayBuffer_f3320d2419cd0355",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_instanceof_Uint8Array_da54ccc9d3e09434",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_instanceof_Map_084be8da74364158",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_get_af9dab7e9603ea93",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbindgen_object_is_undefined",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_next_138a17bbf04e926c",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_new_6421f6084cc5bc5a",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_prototypesetcall_dfe9b766cdc1f1fd",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_length_22ac23eaec9d8053",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_new_1ba21ce319a06297",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_entries_83c79938054e065f",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_value_57b7b035e117f7ee",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_done_62ea16af4ce34b24",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_next_3cfe5c0fe2a4cc53",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_isSafeInteger_ae7d3f054d55fa16",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_log_725a3bd25b473a36",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_call_abb4ff46ce38be40",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_apply_52e9ae668d017009",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_length_d45040a40c570362",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_isArray_51fd9e6422c0a395",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_from_29a8414a7a7cd19d",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_get_6b7bd52aca3f9671",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_new_25f239778d6112b9",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_push_7d9be8f38fc13975",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_iterator_27b7c8b35ab3e86b",
+      "kind": "function"
+    },
+    {
+      "module": "wbg",
+      "name": "__wbg_taffyerror_new",
+      "kind": "function"
+    }
+  ],
+  "binaryenFeatures": [
+    "--enable-mutable-globals",
+    "--enable-nontrapping-float-to-int",
+    "--enable-bulk-memory",
+    "--enable-sign-ext",
+    "--enable-reference-types",
+    "--enable-multivalue"
+  ],
+  "binaryenPasses": [
+    "--dce",
+    "--remove-unused-module-elements",
+    "--vacuum"
+  ],
+  "measureABI": {
+    "inputSHA256": "3e184ecd20404e275f89c21bf9dc428013ec61d0d109efcf51fb047242215542",
+    "callbackSHA256": "6c422caedb21078ab5254d797d8a968f87637b9230aa46ec04e7cf5c1538636e",
+    "blockSHA256": "22dd8fbd78c94db917d409c8cbfddc372082844f6df8b981200096687808b3df",
+    "changedFunctionsBeforeDCE": [
+      "26"
+    ],
+    "removedStatementIndices": [
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      54,
+      77
+    ],
+    "removedStatementHashes": [
+      "8d7cb71331a28e1fbc12d7a66b4a3b63285dfa79cd0e5a5c1db11c8cffaa1058",
+      "d4e5d159c6f12505ae586d752bca9cffbcaca09b0d3d31031c1f1571f576b100",
+      "7e27071cac3b40674a454926341e5dd62651519db8ea434cfb6a1c00c24640b4",
+      "380519cbd028efb168b1760266ccdf29248a2648ad251d60c18d05d9e4262f95",
+      "51f3527db1f1eb5b2cc48d1985360e5946e870784b9fad7ffd132bf80181dd18",
+      "9b8f70d2e4869d009bdffee479c9509bf467ae0bb11d177e0a437f8e7092383a",
+      "f5b3a5ceb6e980be67496bc9337b7fa1d17e9d2e0cc7d372914ec711ebe75b90",
+      "c7b281dd5cee63e60ed447c0d466c78c541882751ed6b9bb963f3a165ea860a7",
+      "68d1f4965e1b5a119882b38d0049211d4e2dcd43342bd214f1e44d6dacdda7e6",
+      "eccf439f3c6b7104cda1e07bec3012e52b4af82f28d66b461b828af61ced106a",
+      "035422b7125d3c38af5e79c40fb9220c27041d4edf3d19f5f1402377f8a2854f",
+      "1a57f254c60ed3d1e6de91edd2430ea1642b966f42a98410df5ca8d46f58d2ed",
+      "1ec6d402a06a4004ade047170ad86988c0f8684a4012fd4f4c9f4f1c85152771",
+      "f379dcffc6ede944ef079a13cadcb982b3dac626a6e664ba289d5daac8b18d36"
+    ],
+    "replacement": "Preserve exact original i64 node load as local.set 117; no stack Style copy",
+    "removed": [
+      "Style deep-clone call 191",
+      "400-byte stack memory.copy",
+      "416-byte Box allocation/copy call 323",
+      "Style wrapper transfer import",
+      "Style externref table allocation",
+      "fifth argument push",
+      "Style externref release"
+    ],
+    "outputSHA256": "4b24d0292294e0ea6339fd64b5def0858037a76cf7aa792f72f8299c4b04a6f2",
+    "outputBytes": 435611
+  },
+  "preservedSourceFeatures": [
+    "std",
+    "taffy_tree",
+    "flexbox",
+    "grid",
+    "block_layout",
+    "float_layout",
+    "content_size",
+    "serde",
+    "detailed_layout_info",
+    "console_error_panic_hook"
+  ],
+  "runtimeClasses": {
+    "Layout": [
+      "__wrap",
+      "__destroy_into_raw",
+      "free",
+      "get"
+    ],
+    "Style": [
+      "__destroy_into_raw",
+      "free",
+      "constructor"
+    ],
+    "TaffyError": [
+      "__wrap",
+      "__destroy_into_raw",
+      "free",
+      "message"
+    ],
+    "TaffyTree": [
+      "__destroy_into_raw",
+      "free",
+      "constructor",
+      "disableRounding",
+      "newLeaf",
+      "newLeafWithContext",
+      "setStyle",
+      "setChildren",
+      "markDirty",
+      "computeLayoutWithMeasure",
+      "getLayout",
+      "remove"
+    ]
+  },
+  "comparisonInputs": {
+    "wasmBytes": 597714,
+    "glueBytes": 148034
+  },
+  "verification": {
+    "executedModule": false,
+    "browserFixtures": false,
+    "appBuild": false
+  }
+}

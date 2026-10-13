@@ -94,6 +94,13 @@ func (w sqliteWorkspace) InsertSession(
 		params.CourseID, params.Action, params.Unit, params.Revision, params.Key, params.Planned))
 }
 
+func (w sqliteWorkspace) NextBeatSequence(ctx context.Context, session int64) (int64, error) {
+	var sequence int64
+	err := w.db.QueryRow(ctx, `SELECT coalesce(max(sequence),-1)+1 FROM study_reading_beats`+
+		` WHERE session_id=?`, session).Scan(&sequence)
+	return sequence, err
+}
+
 func (w sqliteWorkspace) BeatHash(ctx context.Context, session, sequence int64) (*string, error) {
 	var hash *string
 	err := w.db.QueryRow(ctx, `SELECT request_hash FROM study_reading_beats`+

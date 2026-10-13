@@ -1,4 +1,4 @@
-import { z } from 'zod/v4';
+import type { JsonValue } from './display';
 
 /** Error thrown by fetchJson; carries the HTTP status for callers that need it. */
 export class ApiError extends Error {
@@ -11,19 +11,23 @@ export class ApiError extends Error {
   }
 }
 
-const errorBodySchema = z
-  .object({
-    detail: z.unknown(),
-    message: z.unknown(),
-  })
-  .partial();
+function isErrorObject(value: JsonValue): value is { [key: string]: JsonValue } {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
-const detailItemSchema = z
-  .object({
-    msg: z.unknown(),
-    message: z.unknown(),
-  })
-  .partial();
+function detailText(item: JsonValue): string {
+  if (!isErrorObject(item)) return String(item);
+  const msg = 'msg' in item ? item.msg : undefined;
+  const message = 'message' in item ? item.message : undefined;
+  return String(msg ?? message ?? item);
+}
+
+function errorText(body: JsonValue, fallback: string): string {
+  if (!isErrorObject(body)) return fallback;
+  const detail = 'detail' in body ? body.detail : undefined;
+  const message = 'message' in body ? body.message : undefined;
+  return Array.isArray(detail) ? detail.map(detailText).join('. ') : String(detail ?? message ?? fallback);
+}
 
 export type FetchJsonOptions = Omit<RequestInit, 'cache'>;
 
@@ -42,20 +46,7 @@ export async function fetchJson<T>(path: string, options: FetchJsonOptions = {})
   if (!res.ok) {
     let message = `Server returned HTTP ${res.status}`;
     try {
-      const parsed = errorBodySchema.safeParse(await res.json());
-      if (parsed.success) {
-        const { detail, message: bodyMessage } = parsed.data;
-        message = Array.isArray(detail)
-          ? detail
-              .map((item) => {
-                const parsedItem = detailItemSchema.safeParse(item);
-                return parsedItem.success
-                  ? String(parsedItem.data.msg ?? parsedItem.data.message ?? item)
-                  : String(item);
-              })
-              .join('. ')
-          : String(detail ?? bodyMessage ?? message);
-      }
+      message = errorText(await res.json(), message);
     } catch {
       /* Keep the status fallback for non-JSON error bodies. */
     }

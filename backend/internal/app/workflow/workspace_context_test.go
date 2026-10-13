@@ -12,13 +12,53 @@ import (
 func workspaceContextChecks(t *testing.T, pool *fixtureStore, base, document, action string) {
 	t.Helper()
 	ctx := t.Context()
+	var sourceHash string
+	if err := pool.Native.QueryRowContext(ctx,
+		`SELECT source_hash FROM documents WHERE id=?`, document).Scan(&sourceHash); err != nil {
+		t.Fatal(err)
+	}
 	service := annotations.Service{Pool: pool}
+	bookmark, live := workspaceContextBookmarks(t, service, document, action, sourceHash)
+	workspaceContextReads(t, base, document, action)
+	root := base + "/api/study/session/context?course_id=101"
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE documents SET status='pending' WHERE id=?`, document); err != nil {
+		t.Fatal(err)
+	}
+	apiJSON(t, "GET", root+"&document_id="+url.QueryEscape(document), nil, 409, nil)
+	if _, err := pool.Native.ExecContext(ctx, `UPDATE documents SET status='ready' WHERE id=?`, document); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Native.ExecContext(ctx,
+		`UPDATE study_annotations SET source_hash='older-revision' WHERE id=?`, live.ID); err != nil {
+		t.Fatal(err)
+	}
+	var view workspace.ContextView
+	apiJSON(t, "GET", root+"&document_id="+url.QueryEscape(document), nil, 200, &view)
+	if view.Annotations[1].Status != "orphaned" || view.Documents[0]["orphaned_annotations"] != float64(1) {
+		t.Fatal("source-bound orphan context", view)
+	}
+	listing, err := service.List(ctx, 101, document, "", true)
+	if err != nil || len(listing.Annotations) != 2 {
+		t.Fatal("deleted bookmark hid live bookmark", listing, err)
+	}
+	if _, err = pool.Native.ExecContext(ctx,
+		`DELETE FROM study_annotations WHERE id=? OR id=?`, bookmark.ID, live.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func workspaceContextBookmarks(
+	t *testing.T, service annotations.Service, document, action, sourceHash string,
+) (annotations.Annotation, annotations.Annotation) {
+	t.Helper()
+	ctx := t.Context()
 	bookmark, err := service.Create(
 		ctx,
 		annotations.Create{
 			Annotation: annotations.Annotation{
 				CourseID:   101,
 				DocumentID: document,
+				SourceHash: sourceHash,
 				PageNumber: 1,
 				Kind:       "bookmark",
 			},
@@ -38,6 +78,7 @@ func workspaceContextChecks(t *testing.T, pool *fixtureStore, base, document, ac
 			Annotation: annotations.Annotation{
 				CourseID:   101,
 				DocumentID: document,
+				SourceHash: sourceHash,
 				PageNumber: 1,
 				Kind:       "bookmark",
 				ActionID:   action,
@@ -48,6 +89,11 @@ func workspaceContextChecks(t *testing.T, pool *fixtureStore, base, document, ac
 	if err != nil || live.ID == bookmark.ID {
 		t.Fatal("deleted bookmark blocked fresh bookmark", err)
 	}
+	return bookmark, live
+}
+
+func workspaceContextReads(t *testing.T, base, document, action string) {
+	t.Helper()
 	root := base + "/api/study/session/context?course_id=101"
 	var view workspace.ContextView
 	apiJSON(t, "GET", root+"&document_id="+url.QueryEscape(document), nil, 200, &view)
@@ -75,25 +121,4 @@ func workspaceContextChecks(t *testing.T, pool *fixtureStore, base, document, ac
 		nil,
 	)
 	apiJSON(t, "GET", root+"&document_id=missing", nil, 404, nil)
-	if _, err = pool.Native.ExecContext(ctx, `UPDATE documents SET status='pending' WHERE id=?`, document); err != nil {
-		t.Fatal(err)
-	}
-	apiJSON(t, "GET", root+"&document_id="+url.QueryEscape(document), nil, 409, nil)
-	if _, err = pool.Native.ExecContext(ctx, `UPDATE documents SET status='ready' WHERE id=?`, document); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = pool.Native.ExecContext(ctx, `UPDATE study_annotations SET source_hash='older-revision' WHERE id=?`, live.ID); err != nil {
-		t.Fatal(err)
-	}
-	apiJSON(t, "GET", root+"&document_id="+url.QueryEscape(document), nil, 200, &view)
-	if view.Annotations[1].Status != "orphaned" || view.Documents[0]["orphaned_annotations"] != float64(1) {
-		t.Fatal("source-bound orphan context", view)
-	}
-	listing, err := service.List(ctx, 101, document, "", true)
-	if err != nil || len(listing.Annotations) != 2 {
-		t.Fatal("deleted bookmark hid live bookmark", listing, err)
-	}
-	if _, err = pool.Native.ExecContext(ctx, `DELETE FROM study_annotations WHERE id=? OR id=?`, bookmark.ID, live.ID); err != nil {
-		t.Fatal(err)
-	}
 }

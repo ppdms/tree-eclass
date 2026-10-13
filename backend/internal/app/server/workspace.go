@@ -54,6 +54,8 @@ func (s *Server) workspaceError(w http.ResponseWriter, err error) {
 		writeFailure(w, http.StatusUnprocessableEntity, "Invalid study session fields")
 	case errors.Is(err, workspace.ErrDocumentPending):
 		writeFailure(w, http.StatusConflict, "This document is still being prepared for study. It opens automatically once indexing finishes.")
+	case errors.Is(err, workspace.ErrSourceChanged):
+		writeFailure(w, http.StatusConflict, err.Error())
 	case errors.Is(err, workspace.ErrConflict):
 		writeFailure(w, http.StatusConflict, "This study request conflicts with the saved session or current roadmap")
 	case errors.Is(err, database.ErrNoRows):
@@ -115,7 +117,7 @@ func (s *Server) workspaceStart(w http.ResponseWriter, r *http.Request) {
 		s.workspaceError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"session": result})
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) workspaceHeartbeat(w http.ResponseWriter, r *http.Request) {
@@ -125,12 +127,13 @@ func (s *Server) workspaceHeartbeat(w http.ResponseWriter, r *http.Request) {
 		Page     json.Number `json:"page_number"`
 		Interval json.Number `json:"interval_seconds"`
 		Document string      `json:"document_id"`
+		Source   string      `json:"source_hash"`
 		Active   bool        `json:"active"`
 	}
 	if !bodyJSON(w, r, &body) {
 		return
 	}
-	in := workspace.Beat{Document: body.Document, Active: body.Active}
+	in := workspace.Beat{Document: body.Document, SourceHash: body.Source, Active: body.Active}
 	for _, field := range []struct {
 		Value     json.Number
 		Name      string

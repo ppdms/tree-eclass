@@ -133,6 +133,9 @@ type Workspace interface {
 	LockSession(ctx context.Context, id int64) (WorkspaceSession, error)
 	// InsertSession journals one sitting and returns the stored row.
 	InsertSession(ctx context.Context, params InsertSessionParams) (WorkspaceSession, error)
+	// NextBeatSequence returns one beyond the highest committed sequence,
+	// or zero for a new sitting. Call while holding the session write lock.
+	NextBeatSequence(ctx context.Context, session int64) (int64, error)
 	// BeatHash returns the stored request hash for a beat. It reports
 	// ErrNoRows when the sequence was never recorded; a nil hash preserves
 	// a legacy row stored without one.

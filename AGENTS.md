@@ -79,8 +79,9 @@ the artifact. Keep parser dependencies and source relocatable; run the packaged
 parser fixture after changing its explicitly scoped source inventory.
 Native parser OCR tests additionally take `TREE_TEST_TESSDATA`; setup provisions
 only pinned Greek/English models. Keep browser persistence behind
-`frontend/src/lib/browserStorage.ts` so development preferences cannot overwrite
-stable keys. Native process creation must use the committed-child bootstrap in
+`frontend/src/canvas/app/browserStorage.ts`, using the shared
+`frontend/src/lib/browserStorage.ts` namespace boundary, so development preferences
+cannot overwrite stable keys. Native process creation must use the committed-child bootstrap in
 `backend/internal/infrastructure/process/execute.go`: a storage writer may execute only after its kernel
 process identity has been durably journaled. Never replace that handshake with
 starting a child and recording its PID afterward. Finite migration commands use
@@ -151,8 +152,10 @@ materials occupy separate `eclass` and `external` catalog namespaces.
 
 Browser settings submit multipart `FormData`; native handlers must use the bounded
 `formBody` parser. Go serves both page routes and API responses on one origin,
-so legacy redirects return directly to the browser. React Router owns page
-navigation and cancellation; API streaming never passes through a JavaScript proxy.
+so legacy redirects return directly to the browser. React Router in the canvas
+worker owns route loading and cancellation; its browser history host preserves
+native URL/history entries and scroll restoration. API streaming never passes
+through a JavaScript proxy.
 
 Browser writes carry the session embedded in the page, through `X-Tree-Runtime`
 or the legacy form's `_tree_runtime` field. Never replace it with the current
@@ -264,6 +267,10 @@ editing. Keep this guide current using the learning rules below.
   safety, or a user-visible tradeoff.
 - **Space beats rebuild speed.** The low-disk requirement below is a design
   constraint for commands and experiments, not an optional end-of-task tidy-up.
+- **Keep agent work in the repository.** Use an owned directory under the
+  gitignored `.tree-build/` for experiments, build caches, browser profiles and
+  disposable verification artifacts, not `/tmp`. Set `TMPDIR` there for tools
+  that create temporary files; keep synthetic datasets separate from live data.
 - **Local development is not production work.** Do not publish, deploy, refresh
   staging, enable workers, commit, or push merely to finish an unrelated task.
   These actions need authorization in the task. Never expose private services
@@ -307,7 +314,7 @@ and fix the controller rather than institutionalizing a manual workaround.
 | Native schema and recovery boundaries                                | `./tree snapshot list`; use cold checkpoints and forward migrations                                                      |
 | Full application validation                                          | `./tree check`; uses disposable SQLite files and removes generated build output afterward                                |
 | Native build cleanup                                                 | `./tree clean` while stopped; see [low-disk policy](README.md#low-disk-development-policy)                               |
-| Frontend composition and styling                                     | Read [StyleX authoring](docs/stylex-authoring.md) and follow the design-system rules below                               |
+| Frontend composition and styling                                     | Read [canvas authoring](docs/canvas-authoring.md) and follow the canonical frontend rules below                          |
 
 Do not boot Colima, start the tunnel, or build application images for a
 documentation-only change. Validate documentation formatting and local links;
@@ -351,9 +358,17 @@ agent should not have to rediscover?**
   and there is no `src/` or `pkg/` tree because the application exposes no public
   Go library. SQL-free database contracts live in `backend/internal/domain/database/`;
   native adapters and embedded migrations live in `backend/internal/infrastructure/rdbms/`.
-- Frontend: React 19 + React Router under `frontend/`, built with Vite. Go serves its assets and API on one port; browser writes preserve their original page runtime session.
+- Frontend: custom React 19 renderer + React Router in a dedicated worker under
+  `frontend/src/canvas/`, with Canvas2D content/text, offscreen WebGL2 navigation
+  glass and Taffy WASM layout, built by the canonical `frontend/vite.config.ts`.
+  One visible Canvas2D output receives the completed navigation layer each frame.
+  Go serves assets and API on one port; browser writes preserve the original page runtime session.
 - Document parsing is the pure Python boundary under `parser/`; stable artifacts contain only its explicitly inventoried parser sources. Application API, storage, workers and migrations are implemented in Go.
-- The design system is under `frontend/src/styles/`, assembled by `entry.css`. Navigation chrome is wired by `frontend/src/shell/navChrome.ts`.
+- Canvas host primitives, bounded styles, palette, layout, input and painting live in
+  `frontend/src/canvas/ui/`; application routes and browser bridges live in
+  `frontend/src/canvas/app/`. The session workspace and reader live in
+  `frontend/src/canvas/session/`. Read [canvas authoring](docs/canvas-authoring.md)
+  before changing these contracts.
 - Native storage is a SQLite file plus the active dataset's local content-addressed objects directory. Provider keys live in the active dataset's private settings.
 - The local catalog mirror is optional and configured by the Settings
   `download_base_path`; a course check refreshes upstream `eclass` files and
@@ -478,22 +493,78 @@ progress updates independently of immutable guidance.
 ## Known deliberate removals
 
 - Standalone knowledge search (the `/knowledge` page) was removed with the React migration; `/api/knowledge/search` still exists server-side but has no frontend entry point. Reintroduce it deliberately, not by accident.
-- The obsolete standalone session entry was deleted with the SSR migration: it mounted into a `#session-root` that never existed in the server shell, so it was dead code — the session workspace now mounts through React Router and lazy-loads the PDF reader.
 
-## Frontend design system
+## Canonical canvas frontend
 
-- Use `@astryxdesign/core` primitives for buttons, cards, layout, overlays, badges,
-  banners, and dividers when their contracts match the surface.
-- Use StyleX for application-owned composition and visual variants. StyleX is
-  compiled by Vite's Babel transform and the matching PostCSS plugin. Keep their
-  options aligned and register shared StyleX definitions as transform watch dependencies.
-- When creating or modifying StyleX styles or StyleX-styled components, MUST read
-  `docs/stylex-authoring.md` first and follow its authoring rules.
-- Prefer StyleX tokens from `frontend/src/styles/tokens.stylex.ts`; do not add
-  global CSS for application-owned styling.
-- Keep application-owned CSS only for browser contracts that cannot be expressed
-  as a component or StyleX rule, including the global font/theme/scrollbar/
-  selection rules in `frontend/src/styles/entry.css` and the PDF text layer in
-  `frontend/src/features/session/reader/*.css`.
-- Use semantic HTML for content and form structure. Use Astryx
-  layout primitives where they replace an application-owned layout wrapper.
+Read [canvas authoring](docs/canvas-authoring.md) before changing UI composition,
+styles, worker/browser bridges, fonts or rendering. It is the authoritative
+implementation and verification guide; do not introduce a second DOM or styling
+convention. The user is the sole user and has waived accessibility requirements
+for this canvas direction; that does not waive correct native editing or input.
+
+- `frontend/index.html` starts `frontend/src/canvas/app/startup.ts`; the canonical
+  Vite config and package scripts build this application for Go delivery.
+  `bun run dev` from `frontend/` is a build watcher, not an HTTP development server.
+  Preserve the runtime/storage/mode/build HTML markers, strict module-worker entry
+  signatures and atomic index-last publication after hashed assets.
+- Author with `View`, `Text`, `Icon`, `Vector`, `Raster`, `TextField` and the shared
+  canvas controls. Use `HostProps`/`UIStyle` from `frontend/src/canvas/ui/types.ts`
+  and the palette there, not arbitrary CSS or native DOM JSX. Strings belong
+  inside `Text`. React owns structure; the renderer owns scrolling, hover and
+  press motion. Allocate Taffy WASM resources only for committed nodes and free
+  ordinary Style/Layout wrappers. Clear removed paragraph/path references and
+  release owned ImageBitmaps; browser Canvas2D text has no native paragraph handle.
+- Browser input, clipboard, synchronous trusted activation, visual-viewport
+  insets, history and storage use the shared hosts under `canvas/app/`.
+  Mount transparent native controls before their first trusted pointerdown,
+  preserve native selection/composition/scroll and modal clipping, and forward
+  unconsumed wheel deltas to canvas scrolling. Do not substitute worker caret
+  guesses or scripted events for trusted native behavior.
+- React Router in the worker and `browserHistory.ts` share the canonical routes,
+  browser entry identities, query/hash/user state and scroll restoration. Lazy
+  routes import ordinary shared modules, never the worker entry. Worker API
+  mutations keep the original page's runtime token; namespaced storage must not
+  let development writes reach stable preference keys.
+- Preserve opaque Canvas2D content → ordered offscreen WebGL2 navigation/glass
+  composition → completed navigation draw onto the single visible Canvas2D output
+  within one worker frame. Separate visible canvases can present different frames
+  even when drawn in one worker task; do not rely on scheduling alone for optical
+  synchronization. Each glass surface samples current content and previously
+  composited navigation beneath it; preserve RGBA, premultiplied-alpha handling
+  and regional backdrop uploads, not full-content GPU uploads. Reader cancellation must acknowledge
+  PDF parser termination before replacement work; an early rejection is not
+  proof of teardown. Keep source-hash guards, upload/bitmap/image ownership and
+  disposed-node focus invalidation.
+- Liquid Glass follows Apple's rule (user decision): glass only on the navigation
+  layer (floating bars, menus, popovers, dialogs); content stays solid. Apple's
+  macOS/iOS/iPadOS pages are the visual reference. Get the look right before
+  renderer-dependent optimization; see the canvas guide's Liquid Glass section.
+- Use `./tree check` and the existing native/static browser tests as the permanent
+  gate surface. Full browser-workflow proof additionally requires an isolated
+  synthetic fixture using the compiled canonical build and real native handlers,
+  external workers disabled and non-loopback outbound HTTP blocked; there is no
+  permanent full-workflow held-server command. Never point verification at live
+  data or real providers. Use repository-owned scratch, build, browser-profile
+  and temporary paths as required above.
+- Profile the render worker as well as the browser and complete request path.
+  Distinguish elapsed GPU/driver waits from thread CPU, shipping from profiling
+  Taffy WASM, cold navigation from warm-cache navigation, and drawing culling from eager
+  text/layout preparation. Font regeneration paths and shipped license inventory
+  are documented in the canvas guide.
+
+The user-approved acceptance target is **at most 150 ms from warm-cache navigation
+to the full, correct, interactive first viewport**; cold navigation is best effort
+and must be reported separately. Model the real link at about **200 Mbit/s and
+15 ms RTT**, using shipped APIs in Chromium, WebKit/Safari and Firefox.
+Count connection/request latency, assets, data, fonts, initialization, layout,
+drawing and usable input handling—not a screenshot, loading shell or time measured
+only after downloads finish. `frontend/performance-budgets.json` owns
+`warmAppInteractiveMs`. Warm-cache navigation uses populated browser asset caches
+but still measures a full new document; cold runs use an empty browser cache.
+Report repeated-run medians, not single runs. Readiness/budget markers do not prove
+cache state, network conditions, visual correctness or acceptance. Use visible
+browser windows initialized on `about:blank`, inspect substantive nonblank content
+and exercise trusted native input. Blank-equals-blank comparisons do not establish
+fidelity. A localhost pass does not establish a deployed-device pass. No
+deployed-origin acceptance pass is established here; functional parity or CPU
+savings alone cannot approve takeover.

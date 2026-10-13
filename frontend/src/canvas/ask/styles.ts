@@ -1,0 +1,43 @@
+import { colors } from '../ui/palette';
+import type { UIStyle } from '../ui/types';
+
+export const styles = {
+  page: { width: '100%', maxWidth: 1180, marginLeft: 'auto', marginRight: 'auto', gap: 20, padding: 20 },
+  layout: { flexDirection: 'row', alignItems: 'start', gap: 24, minWidth: 0 },
+  main: { flexGrow: 1, flexShrink: 1, minWidth: 0, width: '100%', gap: 18, maxWidth: 800 },
+  header: { gap: 10, paddingBottom: 14, borderBottomWidth: 1, borderColor: colors.border },
+  title: { fontSize: 30, fontWeight: 650, color: colors.text, lineHeight: 1.15 },
+  text: { fontSize: 15, lineHeight: 1.55, color: colors.text },
+  muted: { fontSize: 14, lineHeight: 1.5, color: colors.muted },
+  small: { fontSize: 12, lineHeight: 1.45, color: colors.muted },
+  row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
+  column: { gap: 12, minWidth: 0 },
+  link: { fontSize: 14, color: colors.link, paddingTop: 6, paddingBottom: 6 },
+  rail: { width: 286, flexShrink: 0, gap: 14 },
+  railMobile: { width: '100%', gap: 14 },
+  transcript: { gap: 26, paddingRight: 10, paddingBottom: 20 },
+  message: { gap: 12, width: '100%', minWidth: 0 },
+  question: {
+    alignSelf: 'end',
+    maxWidth: '85%',
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: colors.raised,
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 1.5,
+  },
+  sources: { gap: 8, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 12 },
+  source: { gap: 6, padding: 10, borderRadius: 10, backgroundColor: colors.raised },
+  tool: { flexDirection: 'row', gap: 8, alignItems: 'center', padding: 10, borderRadius: 10 },
+  composer: { gap: 12, padding: 14, borderRadius: 20, borderWidth: 1, borderColor: colors.border },
+  historyItem: {
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    hoverBackground: colors.raised,
+  },
+  activeItem: { backgroundColor: colors.hover, borderColor: colors.accent },
+} satisfies Record<string, UIStyle>;
